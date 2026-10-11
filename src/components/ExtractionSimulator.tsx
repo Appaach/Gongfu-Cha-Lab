@@ -653,8 +653,11 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     setRawTempStr(null);
     setRawSteepsStr(null);
 
-    // If active goal was oil_tar but current tea does not support it, reset to balanced
+    // If active goal was oil_tar or white_debitter but current tea does not support it, reset to balanced
     if (optimizationGoal === 'oil_tar' && tea.type !== 'shou_puerh' && tea.type !== 'heicha') {
+      setOptimizationGoal('balanced');
+    }
+    if (optimizationGoal === 'white_debitter' && tea.type !== 'white') {
       setOptimizationGoal('balanced');
     }
 
@@ -782,7 +785,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     setActiveCategoryTab('generic');
   };
 
-  // Brewing Method State: 'gongfu' (Полный слив) or 'liu_gen' (Оставление корня)
+  // Brewing Method State: 'gongfu' (Полный слив), 'liu_gen' (Оставление корня), 'grandpa_cup' (Бэй Пао Фа)
   const [brewingMethod, setBrewingMethod] = useState<BrewingMethod>('gongfu');
   const [rootFraction, setRootFraction] = useState<number>(0.333);
 
@@ -2418,7 +2421,11 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                 <span>Метод заваривания:</span>
               </span>
               <span className="text-[10px] font-mono text-stone-500">
-                {brewingMethod === 'liu_gen' ? 'Лю Гэнь (留根法)' : brewingMethod === 'grandpa_cup' ? 'Ленивый метод (杯泡法)' : 'Гунфу Ча (功夫茶)'}
+                {brewingMethod === 'liu_gen'
+                  ? 'Лю Гэнь (留根法)'
+                  : brewingMethod === 'grandpa_cup'
+                  ? 'Ленивый метод (杯泡法)'
+                  : 'Гунфу Ча (功夫茶)'}
               </span>
             </div>
 
@@ -2580,7 +2587,13 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                     Выберите стиль экстракции:
                   </div>
 
-                  {OPTIMIZATION_PRESETS.map((preset) => {
+                  {OPTIMIZATION_PRESETS.slice().sort((a, b) => {
+                    const aEligible = !a.allowedTeaTypes || a.allowedTeaTypes.includes(selectedTea.type);
+                    const bEligible = !b.allowedTeaTypes || b.allowedTeaTypes.includes(selectedTea.type);
+                    if (aEligible && !bEligible) return -1;
+                    if (!aEligible && bEligible) return 1;
+                    return 0;
+                  }).map((preset) => {
                     const isSelected = optimizationGoal === preset.id;
                     const isEligible = !preset.allowedTeaTypes || preset.allowedTeaTypes.includes(selectedTea.type);
 
@@ -2615,8 +2628,10 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                           <p className="text-[10px] text-stone-500 leading-relaxed">
                             {preset.descriptionRu}
                             {!isEligible && (
-                              <span className="block text-rose-600 font-medium mt-0.5">
-                                (Только для Шу/Шэн Пуэров и Хэйча)
+                              <span className="block text-amber-800 font-semibold mt-0.5">
+                                {preset.id === 'white_debitter'
+                                  ? '(Доступно только для Белых чаев)'
+                                  : '(Доступно только для Шу Пуэров и Хэй Ча)'}
                               </span>
                             )}
                           </p>

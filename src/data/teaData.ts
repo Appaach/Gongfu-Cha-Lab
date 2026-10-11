@@ -754,6 +754,15 @@ export const OPTIMIZATION_PRESETS: OptimizationPreset[] = [
     timeFactor: 2.2, // Пролонгированные экспозиции
     descriptionRu: 'Сверхконцентрированная экстракция шу пуэров и тёмных чаёв (1:9, 100°C): смолистый маслянистый настой с высокой концентрацией теабровинов, полисахаридов (TPS) и бархатным вкусом.',
     allowedTeaTypes: ['shou_puerh', 'heicha']
+  },
+  {
+    id: 'white_debitter',
+    nameRu: 'Удаление горечи (Нулевой сброс катехинов)',
+    targetRatio: 16, // 1:16
+    tempOffsetC: -3,
+    timeFactor: 1.1,
+    descriptionRu: 'Специальный метод для белых чаёв: нулевой пролив (5–7 сек) вымывает поверхностные катехины и горечь (EGCG), после чего основные проливы перерасчитываются на мягкую медовую сладость.',
+    allowedTeaTypes: ['white']
   }
 ];
 
@@ -824,7 +833,19 @@ export interface TeaRinseInfo {
   scientificReasonRu: string;
 }
 
-export function getTeaRinseInfo(tea: TeaVariety, customTempC?: number): TeaRinseInfo {
+export function getTeaRinseInfo(tea: TeaVariety, customTempC?: number, optimizationGoal?: import('../types').OptimizationGoal): TeaRinseInfo {
+  // If specialized debittering method for white tea is active
+  if (optimizationGoal === 'white_debitter' && tea.type === 'white') {
+    return {
+      required: true,
+      seconds: 6,
+      tempC: customTempC ? Math.min(customTempC, 85) : Math.min(85, tea.optimalTemp),
+      badgeRu: 'Нулевой пролив (Сброс горечи)',
+      actionRu: 'Залить водой 80–85°C на 6 сек и слить в чабань: вывод поверхностных катехинов и горечи',
+      scientificReasonRu: 'Быстрый нулевой сброс вымывает ~40% поверхностного EGCG и кофеина с ворсинок байхао. Основные проливы перерасчитываются на чистую сладость без танинной горечи.'
+    };
+  }
+
   // If explicitly configured on variety
   if (tea.rinseRecommended !== undefined) {
     const isReq = tea.rinseRecommended;

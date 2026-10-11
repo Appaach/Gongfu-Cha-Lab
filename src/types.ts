@@ -281,7 +281,7 @@ export interface VesselMaterialInfo {
   scientificImpactRu: string;
 }
 
-export type OptimizationGoal = 'balanced' | 'umami_sweetness' | 'body_density' | 'aroma_peak' | 'max_longevity' | 'oil_tar';
+export type OptimizationGoal = 'balanced' | 'umami_sweetness' | 'body_density' | 'aroma_peak' | 'max_longevity' | 'oil_tar' | 'white_debitter';
 
 export interface OptimizationPreset {
   id: OptimizationGoal;

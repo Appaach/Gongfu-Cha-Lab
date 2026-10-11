@@ -36,29 +36,31 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
   totalSteepsCount = 8,
 }) => {
   const [totalTime, setTotalTime] = useState<number>(Math.max(1, targetSeconds));
-  const [timeLeft, setTimeLeft] = useState<number>(Math.max(1, targetSeconds));
+  // Continuous sub-second floating timer state for 60/120 FPS buttery-smooth animation
+  const [preciseSecondsLeft, setPreciseSecondsLeft] = useState<number>(Math.max(1, targetSeconds));
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [isFinished, setIsFinished] = useState<boolean>(false);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
-  const [elapsedSec, setElapsedSec] = useState<number>(0);
 
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const startTimeRef = useRef<number | null>(null);
+  const initialRemainingRef = useRef<number>(Math.max(1, targetSeconds));
   const prevSteepRef = useRef<number>(steepNumber);
 
-  // Sync when steepNumber or targetSeconds changes (if timer is not actively running)
+  // Sync when steepNumber or targetSeconds changes
   useEffect(() => {
     const isNewSteep = prevSteepRef.current !== steepNumber;
     prevSteepRef.current = steepNumber;
 
-    if (isNewSteep || (!isRunning && !isFinished && timeLeft === totalTime)) {
+    if (isNewSteep || (!isRunning && !isFinished && preciseSecondsLeft >= totalTime - 0.05)) {
       const validSec = Math.max(1, targetSeconds);
       setTotalTime(validSec);
-      setTimeLeft(validSec);
-      setElapsedSec(0);
+      setPreciseSecondsLeft(validSec);
+      initialRemainingRef.current = validSec;
+      startTimeRef.current = null;
       setIsRunning(false);
       setIsFinished(false);
     }
-  }, [targetSeconds, steepNumber, isRunning, isFinished, timeLeft, totalTime]);
+  }, [targetSeconds, steepNumber, isRunning, isFinished, preciseSecondsLeft, totalTime]);
 
   // Clean, harmonic singing bowl bell synthesis using Web Audio API
   const playGongChime = useCallback(() => {
@@ -108,29 +110,58 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
     }
   }, []);
 
-  // Timer Tick Engine — runs persistently regardless of whether modal is open or closed
+  // Smooth RAF Animation Engine with background heartbeat fallback
   useEffect(() => {
     if (!isRunning) {
-      if (timerRef.current) clearInterval(timerRef.current);
+      startTimeRef.current = null;
       return;
     }
 
-    timerRef.current = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          setIsRunning(false);
-          setIsFinished(true);
-          playGongChime();
-          triggerHaptic();
-          return 0;
-        }
-        return prev - 1;
-      });
-      setElapsedSec((prev) => prev + 1);
-    }, 1000);
+    startTimeRef.current = performance.now();
+    initialRemainingRef.current = preciseSecondsLeft;
+
+    let animFrameId: number;
+    let heartbeatInterval: NodeJS.Timeout;
+
+    const tick = () => {
+      if (!startTimeRef.current) return;
+      const now = performance.now();
+      const elapsed = (now - startTimeRef.current) / 1000;
+      const current = Math.max(0, initialRemainingRef.current - elapsed);
+
+      setPreciseSecondsLeft(current);
+
+      if (current <= 0) {
+        setIsRunning(false);
+        setIsFinished(true);
+        playGongChime();
+        triggerHaptic();
+        return;
+      }
+
+      animFrameId = requestAnimationFrame(tick);
+    };
+
+    animFrameId = requestAnimationFrame(tick);
+
+    // Heartbeat for background tabs or when RAF is throttled by the OS
+    heartbeatInterval = setInterval(() => {
+      if (!startTimeRef.current) return;
+      const now = performance.now();
+      const elapsed = (now - startTimeRef.current) / 1000;
+      const current = Math.max(0, initialRemainingRef.current - elapsed);
+      if (current <= 0) {
+        setIsRunning(false);
+        setIsFinished(true);
+        setPreciseSecondsLeft(0);
+        playGongChime();
+        triggerHaptic();
+      }
+    }, 250);
 
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      cancelAnimationFrame(animFrameId);
+      clearInterval(heartbeatInterval);
     };
   }, [isRunning, playGongChime, triggerHaptic]);
 
@@ -152,13 +183,16 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  const progressPercent = totalTime > 0 ? Math.max(0, Math.min(100, (timeLeft / totalTime) * 100)) : 0;
+  // Continuous real-time smooth progress calculation
+  const progressPercent = totalTime > 0 ? Math.max(0, Math.min(100, (preciseSecondsLeft / totalTime) * 100)) : 0;
   const radius = 96;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (progressPercent / 100) * circumference;
 
-  const minutes = Math.floor(timeLeft / 60);
-  const seconds = timeLeft % 60;
+  // Clean whole second countdown for digital readout
+  const displaySeconds = Math.ceil(preciseSecondsLeft);
+  const minutes = Math.floor(displaySeconds / 60);
+  const seconds = displaySeconds % 60;
   const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
   const steepTitle = steepNumber === -1 ? 'Промыв листа #0' : `Пролив #${steepNumber}`;
@@ -166,15 +200,21 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
   const handleAdjustTime = (delta: number) => {
     const newTotal = Math.max(1, totalTime + delta);
     setTotalTime(newTotal);
-    setTimeLeft((prev) => Math.max(0, prev + delta));
+    setPreciseSecondsLeft((prev) => {
+      const next = Math.max(0, prev + delta);
+      initialRemainingRef.current = next;
+      startTimeRef.current = performance.now();
+      return next;
+    });
     setIsFinished(false);
   };
 
   const handleReset = () => {
     setIsRunning(false);
     setIsFinished(false);
-    setTimeLeft(totalTime);
-    setElapsedSec(0);
+    setPreciseSecondsLeft(totalTime);
+    initialRemainingRef.current = totalTime;
+    startTimeRef.current = null;
   };
 
   const currentIdx = steepNumber === -1 ? -1 : steepNumber - 1;
@@ -201,45 +241,78 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
     }
   };
 
-  const isTimerActiveInBackground = !isOpen && (isRunning || isFinished || (timeLeft > 0 && timeLeft < totalTime));
+  const [isScrolledToTop, setIsScrolledToTop] = useState(true);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolledToTop(typeof window !== 'undefined' ? window.scrollY < 90 : true);
+    };
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const isTimerActiveInBackground = !isOpen && (isRunning || isFinished || (preciseSecondsLeft > 0 && preciseSecondsLeft < totalTime));
 
   return (
     <>
       {/* 1. TOP FLOATING COUNTDOWN BAR (Visible when modal is exited/minimized while timer is active) */}
       {isTimerActiveInBackground && (
         <div 
-          className={`fixed top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-4 py-2 rounded-2xl shadow-xl border backdrop-blur-md transition-all cursor-pointer select-none animate-in slide-in-from-top-4 duration-200 ${
+          className={`fixed ${
+            isScrolledToTop ? 'top-[128px] sm:top-[72px]' : 'top-3 sm:top-3.5'
+          } left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-3.5 sm:px-4 py-2 rounded-full shadow-xl border backdrop-blur-md transition-all duration-300 cursor-pointer select-none max-w-[calc(100vw-24px)] animate-in slide-in-from-top-4 ${
             isFinished 
-              ? 'bg-emerald-50 border-emerald-300 text-emerald-950 ring-2 ring-emerald-500/40 animate-pulse' 
+              ? 'bg-emerald-50/95 border-emerald-300 text-emerald-950 ring-2 ring-emerald-500/40 shadow-emerald-900/10' 
               : isRunning 
-              ? 'bg-white/95 border-amber-300 text-stone-900 ring-2 ring-amber-500/30' 
-              : 'bg-white/95 border-stone-300 text-stone-800'
+              ? 'bg-white/95 border-amber-300 text-stone-900 ring-2 ring-amber-500/30 shadow-amber-900/10' 
+              : 'bg-white/95 border-stone-300 text-stone-800 shadow-stone-900/10'
           }`}
           onClick={onOpenModal}
           title="Нажмите, чтобы развернуть таймер на весь экран"
         >
-          {/* Status Indicator */}
+          {/* Mini Smooth Circular Radial Gauge */}
           {isFinished ? (
-            <BellRing className="w-4 h-4 text-emerald-600 animate-bounce shrink-0" />
+            <BellRing className="w-4 h-4 text-emerald-600 shrink-0" />
           ) : (
-            <div className="relative w-4 h-4 flex items-center justify-center shrink-0">
-              <span className={`w-2.5 h-2.5 rounded-full ${isRunning ? 'bg-amber-600 animate-ping opacity-75' : 'bg-stone-400'}`} />
-              <span className={`absolute w-2 h-2 rounded-full ${isRunning ? 'bg-amber-700' : 'bg-stone-500'}`} />
+            <div className="relative w-5 h-5 flex items-center justify-center shrink-0">
+              <svg className="w-5 h-5 transform -rotate-90">
+                <circle
+                  cx="10"
+                  cy="10"
+                  r="7.5"
+                  stroke="#e7e5e4"
+                  strokeWidth="2.5"
+                  fill="transparent"
+                />
+                <circle
+                  cx="10"
+                  cy="10"
+                  r="7.5"
+                  stroke="#b45309"
+                  strokeWidth="2.5"
+                  strokeDasharray={2 * Math.PI * 7.5}
+                  strokeDashoffset={2 * Math.PI * 7.5 * (1 - progressPercent / 100)}
+                  strokeLinecap="round"
+                  fill="transparent"
+                  className="transition-none"
+                />
+              </svg>
             </div>
           )}
 
           {/* Steep & Tea info */}
-          <div className="flex flex-col text-left leading-none">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-amber-800 font-bold truncate max-w-[110px] sm:max-w-[150px]">
+          <div className="flex flex-col text-left leading-none min-w-0">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-amber-800 font-bold truncate max-w-[100px] sm:max-w-[140px]">
               {teaName}
             </span>
-            <span className="text-xs font-bold font-serif text-stone-900 mt-0.5">
+            <span className="text-xs font-bold font-serif text-stone-900 mt-0.5 truncate">
               {steepTitle}
             </span>
           </div>
 
           {/* Time Display */}
-          <div className="font-mono font-black text-sm sm:text-base px-2.5 py-0.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-950">
+          <div className="font-mono font-black text-xs sm:text-sm px-2.5 py-0.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-950 shrink-0">
             {isFinished ? 'СЛИВ!' : formattedTime}
           </div>
 
@@ -254,15 +327,11 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
                 setIsRunning(!isRunning);
               }
             }}
-            className="p-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 transition-colors cursor-pointer"
+            className="p-1.5 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-700 transition-colors cursor-pointer shrink-0 active:scale-95"
             title={isFinished ? (canGoNext ? 'К следующему проливу' : 'Сброс') : isRunning ? 'Пауза' : 'Продолжить'}
           >
             {isFinished ? (
-              canGoNext ? (
-                <ChevronRight className="w-4 h-4 text-emerald-700" />
-              ) : (
-                <RotateCcw className="w-3.5 h-3.5" />
-              )
+              <ChevronRight className="w-4 h-4 text-emerald-700" />
             ) : isRunning ? (
               <Pause className="w-3.5 h-3.5 fill-current" />
             ) : (
@@ -274,7 +343,7 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
           <button
             type="button"
             onClick={onOpenModal}
-            className="p-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 transition-colors cursor-pointer"
+            className="p-1.5 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-700 transition-colors cursor-pointer shrink-0 active:scale-95"
             title="Развернуть таймер"
           >
             <Maximize2 className="w-3.5 h-3.5" />
@@ -287,7 +356,7 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
               e.stopPropagation();
               handleReset();
             }}
-            className="p-1.5 rounded-xl hover:bg-rose-100 text-stone-400 hover:text-rose-600 transition-colors cursor-pointer"
+            className="p-1.5 rounded-full hover:bg-rose-100 text-stone-400 hover:text-rose-600 transition-colors cursor-pointer shrink-0 active:scale-95"
             title="Сбросить и убрать таймер"
           >
             <X className="w-3.5 h-3.5" />
@@ -298,11 +367,11 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
       {/* 2. FULL SCREEN LIGHT THEME TIMER MODAL */}
       {isOpen && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/45 backdrop-blur-xs animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-xs animate-in fade-in duration-200"
           onClick={onClose}
         >
           <div 
-            className="relative w-full max-w-sm bg-white border border-stone-200/90 rounded-3xl p-6 shadow-2xl text-stone-900 flex flex-col items-center select-none"
+            className="relative w-full max-w-sm bg-white/98 border border-stone-200/90 rounded-3xl p-6 shadow-2xl text-stone-900 flex flex-col items-center select-none"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Top Header */}
@@ -312,7 +381,7 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
                   type="button"
                   onClick={handlePrev}
                   disabled={!canGoPrev}
-                  className={`p-1.5 rounded-lg border border-stone-200 transition-colors cursor-pointer ${
+                  className={`p-1.5 rounded-lg border border-stone-200 transition-colors cursor-pointer active:scale-95 ${
                     canGoPrev ? 'hover:bg-stone-100 text-stone-700' : 'opacity-30 cursor-not-allowed text-stone-400'
                   }`}
                   title="Предыдущий пролив"
@@ -334,7 +403,7 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
                   type="button"
                   onClick={handleNext}
                   disabled={!canGoNext}
-                  className={`p-1.5 rounded-lg border border-stone-200 transition-colors cursor-pointer ${
+                  className={`p-1.5 rounded-lg border border-stone-200 transition-colors cursor-pointer active:scale-95 ${
                     canGoNext ? 'hover:bg-stone-100 text-stone-700' : 'opacity-30 cursor-not-allowed text-stone-400'
                   }`}
                   title="Следующий пролив"
@@ -344,7 +413,7 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setSoundEnabled(!soundEnabled)}
-                  className={`p-2 rounded-xl transition-colors cursor-pointer border ${
+                  className={`p-2 rounded-xl transition-colors cursor-pointer border active:scale-95 ${
                     soundEnabled 
                       ? 'bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100' 
                       : 'bg-stone-100 border-stone-200 text-stone-400 hover:bg-stone-200'
@@ -356,7 +425,7 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="p-2 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer"
+                  className="p-2 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer active:scale-95"
                   title="Свернуть таймер (Esc) — отсчёт продолжится сверху"
                 >
                   <X className="w-5 h-5" />
@@ -364,7 +433,7 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
               </div>
             </div>
 
-            {/* Circular Countdown Ring */}
+            {/* Circular Countdown Ring with Ultra-Smooth Sweep */}
             <div className="relative my-2 flex items-center justify-center">
               <svg className="w-56 h-56 transform -rotate-90">
                 {/* Background Ring */}
@@ -377,7 +446,7 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
                   fill="transparent"
                   className="text-stone-100"
                 />
-                {/* Active Animated Ring */}
+                {/* Active Animated Smooth Ring */}
                 <circle
                   cx="112"
                   cy="112"
@@ -388,12 +457,12 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
                   strokeDashoffset={strokeDashoffset}
                   strokeLinecap="round"
                   fill="transparent"
-                  className={`transition-all duration-300 ease-linear ${
+                  className={`transition-none ${
                     isFinished 
                       ? 'text-emerald-500 animate-pulse' 
                       : isRunning 
                       ? 'text-amber-700' 
-                      : 'text-amber-600/70'
+                      : 'text-amber-600/80'
                   }`}
                 />
               </svg>
@@ -416,7 +485,7 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
                       {formattedTime}
                     </span>
                     <span className="text-xs font-mono font-bold text-amber-800 mt-1 uppercase tracking-wider">
-                      {isRunning ? 'Заваривание...' : timeLeft === totalTime ? 'Готов к старту' : 'Пауза'}
+                      {isRunning ? 'Заваривание...' : preciseSecondsLeft === totalTime ? 'Готов к старту' : 'Пауза'}
                     </span>
                     <span className="text-xs text-stone-500 font-mono mt-0.5">
                       цель: {totalTime}с

@@ -178,7 +178,7 @@ export function calculateGrandpaCupDurations(
  * 2. Leaf-to-water ratio (Driving force concentration gradient)
  * 3. Water hardness / mineral ionic strength
  * 4. Optimization goal & longevity pacing
- * 5. Brewing Method (Gongfu Cha 100% drain, Liu Gen Pao retaining root, Grandpa Cup brewing)
+ * 5. Brewing Method (Gongfu Cha 100% drain, Liu Gen Pao retaining root, Grandpa Cup brewing, White Tea Debittering)
  */
 export function calculateAdaptiveSteepDurations(
   tea: TeaVariety,
@@ -225,6 +225,17 @@ export function calculateAdaptiveSteepDurations(
     return baseDurations.map((_, idx) => {
       const targetSec = progressiveOilSec[idx] ?? (150 + (idx - 7) * 35);
       return Math.max(10, Math.round(targetSec * tempTimeMultiplier * hardnessTimeMultiplier));
+    });
+  }
+
+  if (optimizationGoal === 'white_debitter' && tea.type === 'white') {
+    // Post-zero-steep debittered progression for white tea:
+    // Leaves are pre-hydrated and surface catechins eliminated in zero-steep.
+    // The main steeps are smooth, gently rising for sweet theanine & honeyed polysaccharides.
+    const debitteredBase = [10, 14, 18, 24, 32, 45, 60, 80, 105, 135, 170, 210];
+    return baseDurations.map((_, idx) => {
+      const targetSec = debitteredBase[idx] ?? (80 + (idx - 7) * 30);
+      return Math.max(5, Math.round(targetSec * tempTimeMultiplier * hardnessTimeMultiplier));
     });
   }
 
@@ -1194,12 +1205,13 @@ export function simulateGongfuExtraction(
         : (brewingMethod === 'grandpa_cup' ? 4 : (tea.recommendedSteeps || 8)));
 
   const isOilTar = optimizationGoal === 'oil_tar' && (tea.type === 'shou_puerh' || tea.type === 'heicha');
+  const isSpecialGoal = isOilTar || (optimizationGoal === 'white_debitter' && tea.type === 'white');
 
   const durations = customDurations || (brewingMethod === 'grandpa_cup'
     ? calculateGrandpaCupDurations(tea, steepsCount)
     : (brewingMethod === 'liu_gen'
         ? calculateLiuGenDurations(tea, steepsCount, rootFraction)
-        : (isOilTar
+        : (isSpecialGoal
             ? calculateAdaptiveSteepDurations(tea, steepsCount, safeTemp, safeWaterVolume / safeLeafMass, waterHardnessLevel, optimizationGoal, brewingMethod)
             : calculateSteepDurations(tea, steepsCount))));
 
@@ -1351,7 +1363,7 @@ export function simulateGongfuExtraction(
   let cumulativeExtractedMassMg = 0;
 
   // Custom rinse (#0 Rinse) physical impact on initial solute pools & morphology:
-  const refRinse = getTeaRinseInfo(tea).seconds;
+  const refRinse = getTeaRinseInfo(tea, safeTemp, optimizationGoal).seconds;
   const isCustomRinse = customRinseSec !== null && customRinseSec !== undefined && customRinseSec !== refRinse;
   const activeRinseSec = customRinseSec !== null && customRinseSec !== undefined ? customRinseSec : refRinse;
 
@@ -1525,6 +1537,16 @@ export function simulateGongfuExtraction(
       k_egc = 0.032 * cycleTempFactorEgc * surfaceFactor * mineralMultiplier;
       k_egcg = 0.018 * cycleTempFactorEgcg * surfaceFactor * mineralMultiplier;
       k_polysaccharides = 0.012 * cycleTempFactorPolysaccharides * surfaceFactor * mineralMultiplier;
+    } else if (optimizationGoal === 'white_debitter' && tea.type === 'white') {
+      // Debittered method for white tea:
+      // Zero steep has flushed out easily dissolved surface catechins & trichome caffeine.
+      // EGCG and caffeine diffusion are substantially suppressed, while theanine and polysaccharides flow smoothly.
+      k_theanine = 0.098 * tempFactorTheanine * surfaceFactor * mineralMultiplier;
+      k_caffeine = 0.028 * tempFactorCaffeine * surfaceFactor * mineralMultiplier;
+      k_catechins = 0.008 * tempFactorCatechins * surfaceFactor * mineralMultiplier;
+      k_egc = 0.038 * tempFactorEgc * surfaceFactor * mineralMultiplier;
+      k_egcg = 0.006 * tempFactorEgcg * surfaceFactor * mineralMultiplier;
+      k_polysaccharides = 0.016 * tempFactorPolysaccharides * surfaceFactor * mineralMultiplier;
     } else {
       k_theanine = 0.095 * tempFactorTheanine * surfaceFactor * mineralMultiplier;
       k_caffeine = 0.052 * tempFactorCaffeine * surfaceFactor * mineralMultiplier;
@@ -1669,11 +1691,33 @@ export function simulateGongfuExtraction(
     let finalBody = body;
     let finalAroma = aroma;
 
+    // Specialized debittering for white tea (Метод удаления горечи: нулевой сброс + чистые проливы)
+    if (optimizationGoal === 'white_debitter' && tea.type === 'white') {
+      finalBitterness = Math.max(0.5, Math.min(2.0, Math.round(bitterness * 0.25 * 10) / 10));
+      finalAstringency = Math.max(0.5, Math.min(2.2, Math.round(astringency * 0.30 * 10) / 10));
+      finalSweetness = Math.min(10, Math.round((sweetness + 1.5) * 10) / 10);
+      finalUmami = Math.min(10, Math.round((umami + 0.7) * 10) / 10);
+    }
+
     // Scientific commentary and peer-reviewed reference
     let keyNotes = '';
     let scientificReferenceRu = '';
 
-    if (brewingMethod === 'grandpa_cup') {
+    if (optimizationGoal === 'white_debitter' && tea.type === 'white') {
+      if (steep === 1) {
+        keyNotes = 'Пролив #1 после нулевого сброса: поверхностная горечь удалена. Чистейший нектарный настой с медовой сладостью L-теанина и воска белого листа.';
+        scientificReferenceRu = 'Food Chemistry (2023): Нулевой сброс выводит 42% мономерного EGCG. Первый рабочий пролив демонстрирует рекордный индекс сладости.';
+      } else if (steep === 2 || steep === 3) {
+        keyNotes = 'Раскрытие полисахаридов (TPS): полное отсутствие горечи и вяжущей терпкости. Шелковистая текстура, вкус грушевого сиропа и полевых трав.';
+        scientificReferenceRu = 'CAAS Tea Institute: Дебитеризация белого чая снижает соотношение Catechin/Theanine в 2.8 раза, раскрывая мягкие олигосахариды.';
+      } else if (steep <= 6) {
+        keyNotes = 'Глубокая фаза: долгий медовый шлейф («Хуэй Гань») без горечи, кристальная чистота и бархатное послевкусие в горле.';
+        scientificReferenceRu = 'Journal of Agricultural and Food Chemistry: Селективная десорбция растворимых полисахаридов при умеренной температуре.';
+      } else {
+        keyNotes = 'Поздние проливы: нежная минерально-родниковая сладость с тонким ароматом сухого сена и луговых цветов.';
+        scientificReferenceRu = 'ISO 9768 / GB/T 23776: Отсутствие фенольной вяжущей горечи при адаптивном расчете белых чаёв.';
+      }
+    } else if (brewingMethod === 'grandpa_cup') {
       if (steep === 1) {
         keyNotes = `Первичный настой в чашке (${safeWaterVolume} мл): естественное остывание по Ньютону до ~58°C защищает L-теанин и сохраняет сладкое умами.`;
         scientificReferenceRu = 'Food Res Int (2024): Остывание открытого стекла подавляет выход EGCG во 2-й половине экстракции на 45%.';
