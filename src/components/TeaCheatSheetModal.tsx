@@ -482,7 +482,7 @@ ${steepSchedule.map((sec, idx) => `#${idx + 1}: ${sec}с`).join(', ')}
 
           {/* Footer Note */}
           <div className="pt-2 border-t border-stone-200 flex items-center justify-between text-[10px] text-stone-400">
-            <span>Параметры рассчитаны в Gongfu Tea Lab</span>
+            <span>Параметры рассчитаны в Gongfu Cha Lab</span>
             <span>Шпаргалка</span>
           </div>
         </div>

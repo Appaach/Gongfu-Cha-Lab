@@ -1,8 +1,8 @@
 {
-  "id": "gongfu-tea-lab-app",
-  "short_name": "Gongfu Tea",
-  "name": "Gongfu Tea Lab",
-  "description": "Интерактивный симулятор расчета кинетики экстракции китайского чая методом проливов (Gongfu Tea).",
+  "id": "gongfu-cha-lab-app",
+  "short_name": "Gongfu Cha",
+  "name": "Gongfu Cha Lab",
+  "description": "Интерактивный симулятор расчета кинетики экстракции китайского чая методом проливов (Gongfu Cha).",
   "icons": [
     {
       "src": "/icon.svg",

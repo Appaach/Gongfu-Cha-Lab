@@ -23,6 +23,7 @@ import {
   POPULAR_SENSORY_GROUPS,
   cleanTeaChars 
 } from '../utils/teaSearch';
+import { useLongPress } from '../utils/useLongPress';
 
 interface SteepBubbleCardProps {
   idx: number;
@@ -39,6 +40,7 @@ interface SteepBubbleCardProps {
   waterVolume?: number;
   onSelect: (idx: number) => void;
   onDoubleClick: (idx: number) => void;
+  onLongPress: (idx: number) => void;
   onSaveTime: (idx: number, val: number | null) => void;
   onCancelEdit: () => void;
 }
@@ -59,6 +61,7 @@ const SteepBubbleCard = memo(function SteepBubbleCard({
   waterVolume = 100,
   onSelect,
   onDoubleClick,
+  onLongPress,
   onSaveTime,
   onCancelEdit,
 }: SteepBubbleCardProps) {
@@ -67,6 +70,14 @@ const SteepBubbleCard = memo(function SteepBubbleCard({
   const isLiuGen = brewingMethod === 'liu_gen';
   const isGrandpaCup = brewingMethod === 'grandpa_cup';
   const refillMl = Math.round(waterVolume * (isGrandpaCup ? 0.67 : (1 - rootFraction)));
+
+  const longPressProps = useLongPress({
+    onLongPress: () => {
+      onSelect(idx);
+      onLongPress(idx);
+    },
+    onClick: () => onSelect(idx),
+  });
 
   if (isEditing) {
     return (
@@ -132,14 +143,14 @@ const SteepBubbleCard = memo(function SteepBubbleCard({
   return (
     <button
       type="button"
-      onClick={() => onSelect(idx)}
+      {...longPressProps}
       onDoubleClick={(e) => {
         e.preventDefault();
         if (isManualModeActive) {
           onDoubleClick(idx);
         }
       }}
-      title={isManualModeActive ? "Двойной клик для ввода своего времени" : undefined}
+      title={isManualModeActive ? "Клик для выбора, двойной клик для ввода времени, удержание для таймера" : "Клик для выбора, удержание для таймера"}
       className={`group relative min-h-[92px] rounded-xl border p-2.5 flex flex-col justify-between text-left transition-all cursor-pointer select-none shadow-2xs ${
         isSelected
           ? 'ring-2 ring-amber-800 border-amber-800 bg-amber-50/90 shadow-xs'
@@ -306,6 +317,7 @@ import {
 } from 'lucide-react';
 import { TeaBlendStudio } from './TeaBlendStudio';
 import { TeaCheatSheetModal } from './TeaCheatSheetModal';
+import { SteepTimerModal } from './SteepTimerModal';
 
 export interface ExtractionSimulatorProps {
   initialSelectedTea?: TeaVariety | null;
@@ -642,7 +654,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     setRawSteepsStr(null);
 
     // If active goal was oil_tar but current tea does not support it, reset to balanced
-    if (optimizationGoal === 'oil_tar' && tea.type !== 'shou_puerh' && tea.type !== 'sheng_puerh' && tea.type !== 'heicha') {
+    if (optimizationGoal === 'oil_tar' && tea.type !== 'shou_puerh' && tea.type !== 'heicha') {
       setOptimizationGoal('balanced');
     }
 
@@ -906,6 +918,46 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     setCustomSteepTimes(new Array(steepsCount).fill(null));
     setCustomRinseTime(null);
   }, [steepsCount]);
+
+  // Steep Timer modal state and handlers (triggered on long press or timer button)
+  const [isTimerModalOpen, setIsTimerModalOpen] = useState<boolean>(false);
+  const [timerSteepIndex, setTimerSteepIndex] = useState<number>(0);
+
+  const handleOpenTimer = useCallback((idx: number) => {
+    setTimerSteepIndex(idx);
+    setSelectedSteepIndex(idx);
+    setIsTimerModalOpen(true);
+  }, []);
+
+  const rinseLongPressProps = useLongPress({
+    onLongPress: () => {
+      setSelectedSteepIndex(-1);
+      handleOpenTimer(-1);
+    },
+    onClick: () => setSelectedSteepIndex(-1),
+  });
+
+  const exposureLongPressProps = useLongPress({
+    onLongPress: () => {
+      setSelectedSteepIndex(selectedSteepIndex);
+      handleOpenTimer(selectedSteepIndex);
+    },
+    onClick: () => {
+      setSelectedSteepIndex(selectedSteepIndex);
+      handleOpenTimer(selectedSteepIndex);
+    },
+  });
+
+  const rinseExposureLongPressProps = useLongPress({
+    onLongPress: () => {
+      setSelectedSteepIndex(-1);
+      handleOpenTimer(-1);
+    },
+    onClick: () => {
+      setSelectedSteepIndex(-1);
+      handleOpenTimer(-1);
+    },
+  });
 
   // Run dynamic simulation based on Noyes-Whitney, Arrhenius & environmental factors
   const simulationResults = useMemo(() => {
@@ -3596,12 +3648,12 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                       <button
                         type="button"
                         id="steep-bubble-rinse-0"
-                        onClick={() => setSelectedSteepIndex(-1)}
+                        {...rinseLongPressProps}
                         onDoubleClick={(e) => {
                           e.preventDefault();
                           setEditingSteepIndex(-1);
                         }}
-                        title="Кликните для выбора, двойной клик для ввода времени"
+                        title="Клик для выбора, зажмите для таймера, двойной клик для ввода времени"
                         className={`group relative min-h-[92px] p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all select-none cursor-pointer shadow-2xs ${
                           selectedSteepIndex === -1
                             ? 'border-amber-800 bg-amber-50/90 text-stone-900 shadow-xs ring-2 ring-amber-800'
@@ -3689,6 +3741,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                         waterVolume={waterVolume}
                         onSelect={setSelectedSteepIndex}
                         onDoubleClick={(i) => setEditingSteepIndex(i)}
+                        onLongPress={handleOpenTimer}
                         onSaveTime={handleSetCustomSteepTime}
                         onCancelEdit={() => setEditingSteepIndex(null)}
                       />
@@ -3720,11 +3773,15 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                     <div>
                       <h5 className="text-lg font-bold text-stone-900 font-serif flex flex-wrap items-center gap-2">
                         <span>Пролив #0: Промыв листа («Вэнь Жун» / Пробуждение)</span>
-                        <span className={`text-xs px-2.5 py-0.5 rounded-md font-mono font-bold ${
-                          customRinseTime !== null
-                            ? 'bg-amber-100 text-amber-950 border border-amber-300'
-                            : 'bg-stone-100 text-stone-600'
-                        }`}>
+                        <span 
+                          {...rinseExposureLongPressProps}
+                          className={`text-xs px-2.5 py-0.5 rounded-md font-mono font-bold cursor-pointer select-none transition-all hover:ring-2 hover:ring-amber-400 ${
+                            customRinseTime !== null
+                              ? 'bg-amber-100 text-amber-950 border border-amber-300 hover:bg-amber-200'
+                              : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                          }`}
+                          title="Экспозиция промыва листа. Нажмите или удерживайте для запуска таймера"
+                        >
                           Экспозиция: {teaRinseInfo.seconds} секунд • {teaRinseInfo.tempC}°C
                           {customRinseTime !== null && ' (своё время)'}
                         </span>
@@ -3809,13 +3866,17 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                           ? (currentSteepData.steepNumber === 1 ? 'Настой #1 (1-й залив в чашку)' : `Долив #${currentSteepData.steepNumber} (свежая вода)`)
                           : `Пролив #${currentSteepData.steepNumber}`}
                       </span>
-                      <span className={`text-xs px-2.5 py-0.5 rounded-md font-mono font-bold ${
-                        currentSteepData.isCustomUserTime
-                          ? 'bg-amber-100 text-amber-950 border border-amber-300'
-                          : currentSteepData.isAdaptedReference
-                          ? 'bg-amber-50 text-amber-900 border border-amber-200'
-                          : 'bg-stone-100 text-stone-600'
-                      }`}>
+                      <span 
+                        {...exposureLongPressProps}
+                        className={`text-xs px-2.5 py-0.5 rounded-md font-mono font-bold cursor-pointer select-none transition-all hover:ring-2 hover:ring-amber-400 ${
+                          currentSteepData.isCustomUserTime
+                            ? 'bg-amber-100 text-amber-950 border border-amber-300 hover:bg-amber-200'
+                            : currentSteepData.isAdaptedReference
+                            ? 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100'
+                            : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                        }`}
+                        title="Экспозиция пролива. Нажмите или удерживайте для запуска таймера"
+                      >
                         Экспозиция: {currentSteepData.timeSec} секунд
                         {currentSteepData.isCustomUserTime && ' (своё время)'}
                         {currentSteepData.isAdaptedReference && ' (адаптировано)'}
@@ -4574,6 +4635,25 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
           onClose={() => setIsCheatSheetOpen(false)}
         />
       )}
+
+      {/* Interactive Tea Steep Timer Modal & Top Floating Countdown Bar */}
+      <SteepTimerModal
+        isOpen={isTimerModalOpen}
+        onClose={() => setIsTimerModalOpen(false)}
+        onOpenModal={() => setIsTimerModalOpen(true)}
+        targetSeconds={
+          timerSteepIndex === -1
+            ? (customRinseTime ?? teaRinseInfo.seconds)
+            : (simulationResults[timerSteepIndex]?.timeSec ?? computedAdaptiveDurations[timerSteepIndex] ?? 10)
+        }
+        steepNumber={timerSteepIndex === -1 ? -1 : timerSteepIndex + 1}
+        teaName={selectedTea.nameRu}
+        totalSteepsCount={steepsCount}
+        onSelectSteepIndex={(newIdx) => {
+          setTimerSteepIndex(newIdx);
+          setSelectedSteepIndex(newIdx);
+        }}
+      />
     </div>
   );
 };

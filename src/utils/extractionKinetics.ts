@@ -220,10 +220,10 @@ export function calculateAdaptiveSteepDurations(
   const hardnessTimeMultiplier = 1 / Math.max(0.6, hardnessPreset.extractionMultiplier);
 
   // 4. Optimization goal factor:
-  if (optimizationGoal === 'oil_tar') {
-    const progressiveOilSec = [25, 30, 40, 55, 70, 90, 110, 140, 180, 220, 260, 300];
+  if (optimizationGoal === 'oil_tar' && (tea.type === 'shou_puerh' || tea.type === 'heicha')) {
+    const progressiveOilSec = [18, 24, 32, 48, 68, 92, 120, 150, 185, 220, 260, 300];
     return baseDurations.map((_, idx) => {
-      const targetSec = progressiveOilSec[idx] ?? (90 + idx * 30);
+      const targetSec = progressiveOilSec[idx] ?? (150 + (idx - 7) * 35);
       return Math.max(10, Math.round(targetSec * tempTimeMultiplier * hardnessTimeMultiplier));
     });
   }
@@ -570,19 +570,22 @@ export function optimizeBrewingParametersMulti(
     ? Math.round((tea.defaultVolume / tea.defaultMass) * 10) / 10 
     : 15;
 
-  // Goal multiplier for ratio
-  let goalMultiplier = 1.0;
-  if (goal === 'umami_sweetness') goalMultiplier = 0.98;
-  else if (goal === 'body_density') goalMultiplier = 0.88;
-  else if (goal === 'aroma_peak') goalMultiplier = 1.06;
-  else if (goal === 'oil_tar') goalMultiplier = 0.6; // dense ratio ~ 1:9
+  // Goal multiplier for ratio (oil_tar is strictly for post-fermented dark tea)
+  const isDarkTea = tea.type === 'shou_puerh' || tea.type === 'heicha';
+  const effectiveGoal = (goal === 'oil_tar' && !isDarkTea) ? 'balanced' : goal;
 
-  let targetRatio = goal === 'oil_tar' ? 9.0 : Math.round(canonicalRatio * goalMultiplier * 10) / 10;
+  let goalMultiplier = 1.0;
+  if (effectiveGoal === 'umami_sweetness') goalMultiplier = 0.98;
+  else if (effectiveGoal === 'body_density') goalMultiplier = 0.88;
+  else if (effectiveGoal === 'aroma_peak') goalMultiplier = 1.06;
+  else if (effectiveGoal === 'oil_tar') goalMultiplier = 0.6; // dense ratio ~ 1:9
+
+  let targetRatio = effectiveGoal === 'oil_tar' ? 9.0 : Math.round(canonicalRatio * goalMultiplier * 10) / 10;
 
   // Dynamic longevity ratio calculation based on target steep count:
   // To stretch tea for 15+ steeps, leaf-to-water ratio must be denser (1:10 - 1:12)
   // To stretch tea for 6 steeps, ratio can be lighter (1:16 - 1:22)
-  if (fixS || goal === 'max_longevity') {
+  if (fixS || effectiveGoal === 'max_longevity') {
     if (optSteeps >= 18) {
       targetRatio = Math.min(targetRatio, 10.5);
     } else if (optSteeps >= 14) {
@@ -634,9 +637,9 @@ export function optimizeBrewingParametersMulti(
       densityTempAdj = +1;
     }
 
-    const rawTemp = goal === 'oil_tar' ? 100 : tea.optimalTemp + goalPreset.tempOffsetC + vesselTempCorrection + densityTempAdj;
+    const rawTemp = effectiveGoal === 'oil_tar' ? 100 : tea.optimalTemp + goalPreset.tempOffsetC + vesselTempCorrection + densityTempAdj;
     // Bound temperature within safe thermodynamic corridor for the tea cultivar
-    optTemp = goal === 'oil_tar' ? 100 : Math.max(tea.tempRange[0], Math.min(tea.tempRange[1], Math.round(rawTemp)));
+    optTemp = effectiveGoal === 'oil_tar' ? 100 : Math.max(tea.tempRange[0], Math.min(tea.tempRange[1], Math.round(rawTemp)));
   }
 
   // 3. Resolve Steeps Count if not fixed
@@ -1190,11 +1193,15 @@ export function simulateGongfuExtraction(
         ? requestedSteepsCount 
         : (brewingMethod === 'grandpa_cup' ? 4 : (tea.recommendedSteeps || 8)));
 
+  const isOilTar = optimizationGoal === 'oil_tar' && (tea.type === 'shou_puerh' || tea.type === 'heicha');
+
   const durations = customDurations || (brewingMethod === 'grandpa_cup'
     ? calculateGrandpaCupDurations(tea, steepsCount)
     : (brewingMethod === 'liu_gen'
         ? calculateLiuGenDurations(tea, steepsCount, rootFraction)
-        : calculateSteepDurations(tea, steepsCount)));
+        : (isOilTar
+            ? calculateAdaptiveSteepDurations(tea, steepsCount, safeTemp, safeWaterVolume / safeLeafMass, waterHardnessLevel, optimizationGoal, brewingMethod)
+            : calculateSteepDurations(tea, steepsCount))));
 
   // Environmental modifiers
   const hardnessInfo = WATER_HARDNESS_PRESETS.find(h => h.level === waterHardnessLevel) || WATER_HARDNESS_PRESETS[1];
@@ -1275,7 +1282,12 @@ export function simulateGongfuExtraction(
       }
       break;
     case 'shou_puerh':
-      if (tea.id.includes('shou_young')) {
+      if (isOilTar) {
+        theaninePool = 12 * safeLeafMass;
+        caffeinePool = 30 * safeLeafMass;
+        catechinsPool = 120 * safeLeafMass; // macromolecular theabrownins (TB) & polymeric pigments
+        polysaccharidesPool = 85 * safeLeafMass; // soluble tea polysaccharides (TPS)
+      } else if (tea.id.includes('shou_young')) {
         theaninePool = 8 * safeLeafMass;
         caffeinePool = 26 * safeLeafMass;
         catechinsPool = 40 * safeLeafMass;
@@ -1291,6 +1303,19 @@ export function simulateGongfuExtraction(
         caffeinePool = 25 * safeLeafMass;
         catechinsPool = 30 * safeLeafMass;
         polysaccharidesPool = 65 * safeLeafMass;
+      }
+      break;
+    case 'heicha':
+      if (isOilTar) {
+        theaninePool = 10 * safeLeafMass;
+        caffeinePool = 28 * safeLeafMass;
+        catechinsPool = 115 * safeLeafMass;
+        polysaccharidesPool = 88 * safeLeafMass;
+      } else {
+        theaninePool = 10 * safeLeafMass;
+        caffeinePool = 22 * safeLeafMass;
+        catechinsPool = 45 * safeLeafMass;
+        polysaccharidesPool = 72 * safeLeafMass;
       }
       break;
     case 'custom':
@@ -1450,14 +1475,15 @@ export function simulateGongfuExtraction(
     if (tea.leafMorphology === 'tight_ball') basePhiSurf = 0.24;
     else if (tea.leafMorphology === 'compressed_cake') basePhiSurf = 0.28;
     else if (tea.leafMorphology === 'needle') basePhiSurf = 0.20; // lotus effect of trichomes
+    else if (isOilTar) basePhiSurf = 0.25; // dense compressed cake, slow initial wetting
     else if (tea.type === 'shou_puerh') basePhiSurf = 0.62;
 
     const phiSurf = Math.min(0.85, Math.max(0.18, basePhiSurf * (surfaceFactor / 0.55)));
     const phiDeep = 1 - phiSurf;
 
     // Fast surface washing rate multiplier (kWash) and deep cellular diffusion multiplier (kDeep)
-    const kWashMult = 2.4;
-    const kDeepMult = 0.65;
+    const kWashMult = isOilTar ? 1.5 : 2.4;
+    const kDeepMult = isOilTar ? 0.4 : 0.65;
 
     // Two-stage extractor helper function
     const extractTwoStage = (pool: number, kBase: number, expTimeSec: number): number => {
@@ -1474,7 +1500,15 @@ export function simulateGongfuExtraction(
     let k_egcg: number;
     let k_polysaccharides: number;
 
-    if (brewingMethod === 'grandpa_cup') {
+    if (isOilTar) {
+      // High-molecular-weight theabrownins (TB) and polysaccharides (TPS) have Stokes-Einstein controlled diffusion
+      k_theanine = 0.038 * tempFactorTheanine * mineralMultiplier;
+      k_caffeine = 0.019 * tempFactorCaffeine * mineralMultiplier;
+      k_catechins = 0.0048 * tempFactorCatechins * mineralMultiplier; // Theabrownins & polymerized dark pigments
+      k_egc = 0.0055 * tempFactorEgc * mineralMultiplier;
+      k_egcg = 0.0038 * tempFactorEgcg * mineralMultiplier;
+      k_polysaccharides = 0.0038 * tempFactorPolysaccharides * mineralMultiplier; // TPS
+    } else if (brewingMethod === 'grandpa_cup') {
       // Non-isothermal continuous cooling in open cup
       const avgCycleTempC = T_ambient + (effectiveTempC - T_ambient) * (1 - Math.exp(-kCool * time)) / Math.max(0.0001, kCool * time);
       const T_cycle_K = avgCycleTempC + 273.15;
@@ -1580,7 +1614,11 @@ export function simulateGongfuExtraction(
     const cumulativeExtractionYieldPercent = Math.min(44, Math.round((cumulativeExtractedMassMg / initialDryMassMg) * 1000) / 10);
 
     // Normalize concentrations per 100ml liquor
-    const normFactor = 100 / safeWaterVolume;
+    const drainedLiquorVolume = isOilTar
+      ? (steep === 1 ? Math.max(35, safeWaterVolume - safeLeafMass * 1.8) : Math.max(40, safeWaterVolume - safeLeafMass * 0.2))
+      : safeWaterVolume;
+
+    const normFactor = 100 / drainedLiquorVolume;
     const cTheanine = totalLiquorTheanineMg * normFactor;
     const cCaffeine = totalLiquorCaffeineMg * normFactor;
     const cCatechins = totalLiquorCatechinsMg * normFactor * (1 - vesselInfo.tanninAdsorptionFactor);
@@ -1588,8 +1626,8 @@ export function simulateGongfuExtraction(
     const cEgcg = totalLiquorEgcgMg * normFactor * (1 - vesselInfo.tanninAdsorptionFactor);
     const cPolysaccharides = totalLiquorPolysaccharidesMg * normFactor;
 
-    // Total Dissolved Solids in ppm (mg/L): (mg in steep / waterVolumeMl) * 1000 with baseline mineral floor
-    const tdsPpm = Math.max(8, Math.round((steepTotalSolutesMg / safeWaterVolume) * 1000));
+    // Total Dissolved Solids in ppm (mg/L): (mg in steep / drainedLiquorVolume) * 1000 with baseline mineral floor
+    const tdsPpm = Math.max(8, Math.round((steepTotalSolutesMg / (drainedLiquorVolume / 1000))));
 
     // Vertical stratification for Grandpa Cup in open vessel
     let stratificationBottomTds: number | undefined;
@@ -1663,21 +1701,30 @@ export function simulateGongfuExtraction(
         keyNotes = 'Поздний долив: глубокие полисахариды TPS продолжают отдавать карамельную сладость в теплую водную среду.';
         scientificReferenceRu = 'Journal of Food Engineering: Непрерывное нахождение в теплой жидкости сохраняет поры листа открытыми.';
       }
-    } else if (optimizationGoal === 'oil_tar') {
-      finalBody = Math.min(10, Math.max(9.0, body * 1.45));
-      finalSweetness = Math.min(10, Math.max(8.5, sweetness * 1.3));
-      finalBitterness = Math.min(9.2, Math.max(7.2, bitterness * 1.25));
-      finalAstringency = Math.max(2.0, Math.min(4.2, astringency * 0.5));
-      
+    } else if (isOilTar) {
+      // Dynamic sensory profile of Oil (Ча Ю) reflecting real physical liquor chemistry:
+      finalBody = Math.min(10, Math.round((7.2 + (cPolysaccharides * 0.45 + cCatechins * 0.55) / 28) * 10) / 10);
+      finalSweetness = Math.min(10, Math.round((6.8 + (cPolysaccharides * 0.65) / 16) * 10) / 10);
+      finalBitterness = Math.max(2.5, Math.min(8.8, Math.round((2.5 + (cCaffeine * 0.55 + cCatechins * 0.45) / 22) * 10) / 10));
+      finalAstringency = Math.max(1.5, Math.min(3.2, Math.round((1.2 + cEgcg * 0.3) * 10) / 10));
+      finalUmami = Math.max(2.0, Math.min(5.5, Math.round((cTheanine / 4.5) * 10) / 10));
+      finalAroma = Math.max(6.0, Math.min(8.5, Math.round((volatilesIntensity / 12 + 4.5) * 10) / 10));
+
       if (steep === 1) {
-        keyNotes = 'Режим «Нефть» (Ча Ю): Оптически непрозрачный настой. Мощный выход макромолекулярных теабровининов (TB) и полисахаридов (TPS).';
-        scientificReferenceRu = 'Wang et al. (2022, Food Chemistry): Экстракция теабровининов (>380 мг/100 мл) и образование защитной гидроколлоидной матрицы.';
-      } else if (steep <= 4) {
-        keyNotes = 'Пик плотности и смолы: бархатная тёмная горечь какао без кислоты с взрывным обволакивающим каскадом «Хуэй Гань» в горле.';
-        scientificReferenceRu = 'Gong et al. (2021): Высокая концентрация TPS и галловой кислоты стимулирует слюноотделение и гастропротекцию.';
+        keyNotes = 'Режим «Нефть» (Ча Ю): Начальная гидратация листа. Быстрый переход поверхностных теабровинов (TB) в раствор. Плотный темно-коньячный настой.';
+        scientificReferenceRu = 'Wang et al. (2022, Food Chemistry): Экстракция растворимых фракций теабровинов и первичное смачивание прессованной матрицы.';
+      } else if (steep <= 3) {
+        keyNotes = 'Пик смолистости и плотности: Настой оптически непрозрачен («чайная нефть»). Массивный выход теабровинов и полисахаридов (TPS). Бархатное тело без кислоты.';
+        scientificReferenceRu = 'Gong et al. (2021): Высокая концентрация макромолекулярных комплексов TB-TPS (>380 мг/100 мл) формирует защитную гидроколлоидную матрицу.';
+      } else if (steep <= 5) {
+        keyNotes = 'Глубокая экстракция: Плавное снижение кофеиновой горечи, раскрытие внутриклеточных полисахаридов. Цвет темного рубина, нарастающая сладость.';
+        scientificReferenceRu = 'State Key Lab of Tea Science: Устойчивая элюция термостабильных полисахаридов (TPS > 180 мг/100 мл) с выраженным эффектом гастропротекции.';
+      } else if (steep <= 7) {
+        keyNotes = 'Каскад «Хуэй Гань»: Доминирование сладких полисахаридов (TPS) при минимальной горечи. Обволакивающая карамельно-древесная сладость в горле.';
+        scientificReferenceRu = 'Carbohydrate Polymers (2021): Диссоциация водорастворимых олигосахаридов активирует вкусовые рецепторы сладкого вкуса и слюноотделение.';
       } else {
-        keyNotes = 'Глубокая выварка полисахаридов: настой сохраняет маслянистость и глубокую карамельно-древесную сладость.';
-        scientificReferenceRu = 'State Key Lab of Tea Science: Устойчивая элюция термостабильных полисахаридов (TPS > 180 мг/100 мл).';
+        keyNotes = 'Поздняя глубинная выварка: Кристально чистое, шелковистое карамельно-минеральное послевкусие с высокой питкостью.';
+        scientificReferenceRu = 'ISO 9768 / CAAS: Десорбция остаточных водорастворимых солей и высокополимеризованных полисахаридов.';
       }
     } else if (steep === 1) {
       keyNotes = 'Высокая концентрация L-теанина и летучих монотерпенов. Начальная гидратация кутикулы листа.';

@@ -22,7 +22,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2.5 sm:py-3 gap-2.5 sm:gap-3">
           <div className="flex items-center justify-between">
             <span className="font-serif font-bold text-stone-900 tracking-tight text-sm sm:text-base lg:text-lg">
-              Gongfu Tea Lab
+              Gongfu Cha Lab
             </span>
           </div>
 

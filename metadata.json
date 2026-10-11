@@ -1,6 +1,6 @@
 {
-  "name": "Gongfu Tea Lab",
-  "description": "Научные исследования и интерактивный симулятор расчета кинетики экстракции вкусоароматических веществ китайского чая методом проливов (Gongfu Tea).",
+  "name": "Gongfu Cha Lab",
+  "description": "Научные исследования и интерактивный симулятор расчета кинетики экстракции вкусоароматических веществ китайского чая методом проливов (Gongfu Cha).",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

@@ -359,7 +359,7 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
         blob,
         textContent: jsonText,
         mimeType: 'application/json',
-        title: 'Экспорт журнала дегустаций Gongfu Tea'
+        title: 'Экспорт журнала дегустаций Gongfu Cha'
       });
       showNotification('Файл JSON сформирован! Выберите, куда сохранить файл.', 'success');
     } catch (err: any) {
@@ -391,7 +391,7 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
         blob,
         textContent: csvContent,
         mimeType: 'text/csv',
-        title: 'Экспорт таблицы дегустаций Gongfu Tea'
+        title: 'Экспорт таблицы дегустаций Gongfu Cha'
       });
       showNotification('Таблица CSV сформирована! Выберите, куда сохранить файл.', 'success');
     } catch (err: any) {
@@ -1400,7 +1400,7 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 border-b-2 border-stone-900 pb-3">
                   <div className="min-w-0">
                     <span className="text-[9px] sm:text-[10px] uppercase font-sans font-bold tracking-widest text-amber-900 block truncate">
-                      Gongfu Tea Extraction Laboratory • Tasting Record
+                      Gongfu Cha Extraction Laboratory • Tasting Record
                     </span>
                     <h2 className="text-lg sm:text-xl md:text-2xl font-bold mt-0.5 break-words">
                       {printingEntry.teaNameRu} {printingEntry.teaNameZh && `(${printingEntry.teaNameZh})`}
@@ -1549,7 +1549,7 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
                 {/* Footer of Sheet */}
                 <div className="pt-2 border-t border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[10px] text-stone-500 font-sans">
                   <span>Эффект: <strong>{printingEntry.effectNote}</strong></span>
-                  <span>Gongfu Tea Lab • ISO 9768 / CAAS Extraction Standard</span>
+                  <span>Gongfu Cha Lab • ISO 9768 / CAAS Extraction Standard</span>
                 </div>
               </div>
             </div>

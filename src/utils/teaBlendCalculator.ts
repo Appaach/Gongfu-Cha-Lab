@@ -137,7 +137,7 @@ export function calculateTeaBlend(
     tempRationaleRu = `Бережная экстракция (${optimalTempC}°C): в купаже доминируют нежные типсы. Температура подобрана для сохранения катехинов без термодеструкции L-теанина.`;
   } else if (maxTemp >= 95 && minTemp >= 90) {
     optimalTempC = Math.round(Math.max(95, weightedTemp));
-    tempRationaleRu = `Высокотемпературная экспозиция (${optimalTempC}°C): все компоненты купажа требуют высокой теплоёмкости для растворения полисахаридов, теабровининов и плотных восков листа.`;
+    tempRationaleRu = `Высокотемпературная экспозиция (${optimalTempC}°C): все компоненты купажа требуют высокой теплоёмкости для растворения полисахаридов, теабровинов и плотных восков листа.`;
   } else {
     optimalTempC = Math.round(weightedTemp);
     tempRationaleRu = `Гармоничная температура (${optimalTempC}°C): температурные оптимумы компонентов согласованы (диапазон ${minTemp}–${maxTemp}°C).`;

@@ -202,7 +202,7 @@ export async function exportJournalEntriesToPdf(entries: TastingJournalEntry[]):
   let html = `
     <div style="border-bottom: 2px solid #8c3809; padding-bottom: 12px; margin-bottom: 20px;">
       <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: #8c3809; font-weight: bold;">
-        Gongfu Tea Extraction Laboratory • Дневник дегустаций
+        Gongfu Cha Extraction Laboratory • Дневник дегустаций
       </div>
       <h1 style="font-size: 22px; font-weight: bold; margin: 4px 0; color: #1c1917;">
         Дегустационный журнал чаепитий
@@ -299,7 +299,7 @@ export async function exportJournalEntriesToPdf(entries: TastingJournalEntry[]):
   html += `
     </div>
     <div style="margin-top: 24px; text-align: center; font-size: 10px; color: #a8a29e; border-top: 1px solid #e7e5e4; padding-top: 12px;">
-      Gongfu Tea Lab • Расчет кинетики экстракции чая • CAAS / ISO 9768
+      Gongfu Cha Lab • Расчет кинетики экстракции чая • CAAS / ISO 9768
     </div>
   `;
 
@@ -307,8 +307,8 @@ export async function exportJournalEntriesToPdf(entries: TastingJournalEntry[]):
   document.body.appendChild(container);
 
   try {
-    const filename = `gongfu_tea_journal_${new Date().toISOString().split('T')[0]}`;
-    await exportElementToPdf(container, filename, { title: 'Журнал дегустаций Gongfu Tea' });
+    const filename = `gongfu_cha_journal_${new Date().toISOString().split('T')[0]}`;
+    await exportElementToPdf(container, filename, { title: 'Журнал дегустаций Gongfu Cha' });
   } finally {
     document.body.removeChild(container);
   }
