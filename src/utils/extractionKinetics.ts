@@ -172,6 +172,106 @@ export function calculateGrandpaCupDurations(
 }
 
 /**
+ * Calculates progressive optimal water temperatures for each steep, including rinse #0.
+ * In classical Gongfu Cha:
+ * - Rinse: either boiling or dedicated cultivar temp
+ * - Early steeps (1-3): gentler temperature preserves delicate L-theanine, amino acids & volatile floral monoterpenes.
+ * - Mid steeps (4-6): temperature rises to standard optimum, extracting polyphenolic backbone and body.
+ * - Late steeps (7+): maximum temperature (up to 98-100°C) activates deep Fickian leaching of complex polysaccharides (TPS).
+ */
+export function calculateDynamicSteepTemperatures(
+  tea: TeaVariety,
+  totalSteeps: number = 8,
+  optimizationGoal: OptimizationGoal = 'balanced',
+  userCustomTemps?: (number | null)[],
+  customRinseTemp?: number | null
+): {
+  rinseTempC: number;
+  steepTempsC: number[];
+  isCustomRinseTemp: boolean;
+  isCustomSteepTemp: boolean[];
+} {
+  const count = Math.max(1, Math.min(60, totalSteeps));
+  const baseOpt = tea.optimalTemp;
+  const isWhiteDebitter = optimizationGoal === 'white_debitter';
+  const isOilTar = optimizationGoal === 'oil_tar' && (tea.type === 'shou_puerh' || tea.type === 'heicha');
+
+  // Baseline rinse temp
+  let refRinseTemp = baseOpt;
+  if (isWhiteDebitter) {
+    refRinseTemp = 100; // Крутой кипяток 100°C на 60 сек для дебитеризации
+  } else if (tea.type === 'shou_puerh' || tea.type === 'heicha') {
+    refRinseTemp = 100;
+  } else if (tea.type === 'green' || tea.type === 'yellow') {
+    refRinseTemp = Math.min(85, baseOpt);
+  }
+
+  const activeRinseTemp = (customRinseTemp !== null && customRinseTemp !== undefined && customRinseTemp > 0)
+    ? Math.min(100, Math.max(40, customRinseTemp))
+    : refRinseTemp;
+  const isCustomRinse = customRinseTemp !== null && customRinseTemp !== undefined && customRinseTemp !== refRinseTemp;
+
+  const steepTemps: number[] = [];
+  const isCustomFlags: boolean[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const userVal = userCustomTemps && userCustomTemps[i];
+    if (userVal !== null && userVal !== undefined && userVal > 0) {
+      steepTemps.push(Math.min(100, Math.max(40, Math.round(userVal))));
+      isCustomFlags.push(true);
+      continue;
+    }
+
+    isCustomFlags.push(false);
+
+    if (isOilTar) {
+      steepTemps.push(100);
+      continue;
+    }
+
+    if (isWhiteDebitter) {
+      if (i === 0) steepTemps.push(85);
+      else if (i === 1) steepTemps.push(88);
+      else if (i === 2) steepTemps.push(90);
+      else if (i <= 5) steepTemps.push(92);
+      else steepTemps.push(95);
+      continue;
+    }
+
+    if (tea.type === 'green' || tea.type === 'yellow') {
+      const startT = Math.min(baseOpt - 3, 78);
+      const stepT = Math.min(baseOpt + 5, Math.min(92, startT + Math.floor(i * 1.5)));
+      steepTemps.push(stepT);
+    } else if (tea.type === 'white') {
+      const startT = Math.min(baseOpt - 4, 82);
+      const stepT = Math.min(98, startT + Math.floor(i * 2.2));
+      steepTemps.push(stepT);
+    } else if (tea.type === 'shou_puerh' || tea.type === 'heicha') {
+      steepTemps.push(100);
+    } else if (tea.type === 'sheng_puerh') {
+      const startT = Math.min(baseOpt - 3, 88);
+      const stepT = Math.min(98, startT + Math.floor(i * 1.5));
+      steepTemps.push(stepT);
+    } else if (tea.type === 'oolong_strip' || tea.type === 'oolong_ball' || tea.type === 'gaba_oolong') {
+      const startT = Math.min(baseOpt - 4, 88);
+      const stepT = Math.min(100, startT + Math.floor(i * 1.8));
+      steepTemps.push(stepT);
+    } else {
+      const startT = Math.min(baseOpt - 3, 88);
+      const stepT = Math.min(98, startT + Math.floor(i * 1.5));
+      steepTemps.push(stepT);
+    }
+  }
+
+  return {
+    rinseTempC: activeRinseTemp,
+    steepTempsC: steepTemps,
+    isCustomRinseTemp: isCustomRinse,
+    isCustomSteepTemp: isCustomFlags
+  };
+}
+
+/**
  * Dynamic adaptive steep timing calculation:
  * Automatically adjusts the duration of every steep based on:
  * 1. Water temperature (Arrhenius kinetic law - colder requires more time, hotter needs shorter flushes)
@@ -228,7 +328,7 @@ export function calculateAdaptiveSteepDurations(
     });
   }
 
-  if (optimizationGoal === 'white_debitter' && tea.type === 'white') {
+  if (optimizationGoal === 'white_debitter') {
     // Post-zero-steep debittered progression for white tea:
     // Leaves are pre-hydrated and surface catechins eliminated in zero-steep.
     // The main steeps are smooth, gently rising for sweet theanine & honeyed polysaccharides.
@@ -1191,7 +1291,10 @@ export function simulateGongfuExtraction(
   brewingMethod: BrewingMethod = 'gongfu',
   rootFraction: number = 0.33,
   customRinseSec?: number | null,
-  vintageYear?: number | null
+  vintageYear?: number | null,
+  perSteepTempsC?: number[],
+  customTempFlags?: boolean[],
+  customRinseTempC?: number | null
 ): SteepKineticData[] {
   // Safe inputs (allow arbitrary mass and volume)
   const safeLeafMass = Math.max(0.1, leafMassGrams);
@@ -1205,7 +1308,7 @@ export function simulateGongfuExtraction(
         : (brewingMethod === 'grandpa_cup' ? 4 : (tea.recommendedSteeps || 8)));
 
   const isOilTar = optimizationGoal === 'oil_tar' && (tea.type === 'shou_puerh' || tea.type === 'heicha');
-  const isSpecialGoal = isOilTar || (optimizationGoal === 'white_debitter' && tea.type === 'white');
+  const isSpecialGoal = isOilTar || (optimizationGoal === 'white_debitter');
 
   const durations = customDurations || (brewingMethod === 'grandpa_cup'
     ? calculateGrandpaCupDurations(tea, steepsCount)
@@ -1367,11 +1470,15 @@ export function simulateGongfuExtraction(
   const isCustomRinse = customRinseSec !== null && customRinseSec !== undefined && customRinseSec !== refRinse;
   const activeRinseSec = customRinseSec !== null && customRinseSec !== undefined ? customRinseSec : refRinse;
 
+  const effectiveRinseTemp = (customRinseTempC !== null && customRinseTempC !== undefined && customRinseTempC > 0)
+    ? customRinseTempC
+    : (optimizationGoal === 'white_debitter' ? 100 : (getTeaRinseInfo(tea, safeTemp, optimizationGoal).tempC || safeTemp));
+
   const rinseSteepData = calculateRinseKineticData(
     tea,
     safeLeafMass,
     safeWaterVolume,
-    safeTemp,
+    effectiveRinseTemp,
     activeRinseSec,
     waterHardnessLevel,
     vesselMaterial,
@@ -1379,6 +1486,8 @@ export function simulateGongfuExtraction(
     isCustomRinse,
     vintageYear
   );
+  rinseSteepData.waterTempC = effectiveRinseTemp;
+  rinseSteepData.isCustomTemp = customRinseTempC !== null && customRinseTempC !== undefined;
 
   let rinsePorosityBonus = 1.0;
   let initialHydrationSec = 0;
@@ -1504,6 +1613,21 @@ export function simulateGongfuExtraction(
       return Math.min(pool, extWash + extDeep);
     };
 
+    // Steep-specific water temperature and Arrhenius kinetic factors
+    const steepWaterTemp = (perSteepTempsC && perSteepTempsC[steep - 1] !== undefined)
+      ? Math.min(100, Math.max(40, perSteepTempsC[steep - 1]))
+      : safeTemp;
+
+    const steepEffectiveTempC = Math.max(40, steepWaterTemp - (vesselInfo.heatLossPerSteepC * 0.4));
+    const T_thisSteep = steepEffectiveTempC + 273.15;
+    const thisTempFactorTheanine = Math.exp((-Ea_theanine / R_const) * (1 / T_thisSteep - 1 / T_ref));
+    const thisTempFactorCaffeine = Math.exp((-Ea_caffeine / R_const) * (1 / T_thisSteep - 1 / T_ref));
+    const thisTempFactorCatechins = Math.exp((-Ea_catechins / R_const) * (1 / T_thisSteep - 1 / T_ref));
+    const thisTempFactorPoly = Math.exp((-Ea_polysaccharides / R_const) * (1 / T_thisSteep - 1 / T_ref));
+    const thisTempFactorEgc = Math.exp((-Ea_egc / R_const) * (1 / T_thisSteep - 1 / T_ref));
+    const thisTempFactorEgcg = Math.exp((-Ea_egcg / R_const) * (1 / T_thisSteep - 1 / T_ref));
+    const thisVolatilesTempMult = Math.max(0.2, (steepEffectiveTempC - 60) / 38);
+
     // Rate coefficients (s^-1) with non-isothermal correction for Grandpa Cup
     let k_theanine: number;
     let k_caffeine: number;
@@ -1514,15 +1638,15 @@ export function simulateGongfuExtraction(
 
     if (isOilTar) {
       // High-molecular-weight theabrownins (TB) and polysaccharides (TPS) have Stokes-Einstein controlled diffusion
-      k_theanine = 0.038 * tempFactorTheanine * mineralMultiplier;
-      k_caffeine = 0.019 * tempFactorCaffeine * mineralMultiplier;
-      k_catechins = 0.0048 * tempFactorCatechins * mineralMultiplier; // Theabrownins & polymerized dark pigments
-      k_egc = 0.0055 * tempFactorEgc * mineralMultiplier;
-      k_egcg = 0.0038 * tempFactorEgcg * mineralMultiplier;
-      k_polysaccharides = 0.0038 * tempFactorPolysaccharides * mineralMultiplier; // TPS
+      k_theanine = 0.038 * thisTempFactorTheanine * mineralMultiplier;
+      k_caffeine = 0.019 * thisTempFactorCaffeine * mineralMultiplier;
+      k_catechins = 0.0048 * thisTempFactorCatechins * mineralMultiplier; // Theabrownins & polymerized dark pigments
+      k_egc = 0.0055 * thisTempFactorEgc * mineralMultiplier;
+      k_egcg = 0.0038 * thisTempFactorEgcg * mineralMultiplier;
+      k_polysaccharides = 0.0038 * thisTempFactorPoly * mineralMultiplier; // TPS
     } else if (brewingMethod === 'grandpa_cup') {
       // Non-isothermal continuous cooling in open cup
-      const avgCycleTempC = T_ambient + (effectiveTempC - T_ambient) * (1 - Math.exp(-kCool * time)) / Math.max(0.0001, kCool * time);
+      const avgCycleTempC = T_ambient + (steepEffectiveTempC - T_ambient) * (1 - Math.exp(-kCool * time)) / Math.max(0.0001, kCool * time);
       const T_cycle_K = avgCycleTempC + 273.15;
       const cycleTempFactorTheanine = Math.exp((-Ea_theanine / R_const) * (1 / T_cycle_K - 1 / T_ref));
       const cycleTempFactorCaffeine = Math.exp((-Ea_caffeine / R_const) * (1 / T_cycle_K - 1 / T_ref));
@@ -1537,23 +1661,23 @@ export function simulateGongfuExtraction(
       k_egc = 0.032 * cycleTempFactorEgc * surfaceFactor * mineralMultiplier;
       k_egcg = 0.018 * cycleTempFactorEgcg * surfaceFactor * mineralMultiplier;
       k_polysaccharides = 0.012 * cycleTempFactorPolysaccharides * surfaceFactor * mineralMultiplier;
-    } else if (optimizationGoal === 'white_debitter' && tea.type === 'white') {
-      // Debittered method for white tea:
+    } else if (optimizationGoal === 'white_debitter') {
+      // Debittered method (Нулевой пролив ~1 мин кипятком 100°C):
       // Zero steep has flushed out easily dissolved surface catechins & trichome caffeine.
       // EGCG and caffeine diffusion are substantially suppressed, while theanine and polysaccharides flow smoothly.
-      k_theanine = 0.098 * tempFactorTheanine * surfaceFactor * mineralMultiplier;
-      k_caffeine = 0.028 * tempFactorCaffeine * surfaceFactor * mineralMultiplier;
-      k_catechins = 0.008 * tempFactorCatechins * surfaceFactor * mineralMultiplier;
-      k_egc = 0.038 * tempFactorEgc * surfaceFactor * mineralMultiplier;
-      k_egcg = 0.006 * tempFactorEgcg * surfaceFactor * mineralMultiplier;
-      k_polysaccharides = 0.016 * tempFactorPolysaccharides * surfaceFactor * mineralMultiplier;
+      k_theanine = 0.098 * thisTempFactorTheanine * surfaceFactor * mineralMultiplier;
+      k_caffeine = 0.028 * thisTempFactorCaffeine * surfaceFactor * mineralMultiplier;
+      k_catechins = 0.008 * thisTempFactorCatechins * surfaceFactor * mineralMultiplier;
+      k_egc = 0.038 * thisTempFactorEgc * surfaceFactor * mineralMultiplier;
+      k_egcg = 0.006 * thisTempFactorEgcg * surfaceFactor * mineralMultiplier;
+      k_polysaccharides = 0.016 * thisTempFactorPoly * surfaceFactor * mineralMultiplier;
     } else {
-      k_theanine = 0.095 * tempFactorTheanine * surfaceFactor * mineralMultiplier;
-      k_caffeine = 0.052 * tempFactorCaffeine * surfaceFactor * mineralMultiplier;
-      k_catechins = 0.028 * tempFactorCatechins * surfaceFactor * mineralMultiplier;
-      k_egc = 0.038 * tempFactorEgc * surfaceFactor * mineralMultiplier;
-      k_egcg = 0.024 * tempFactorEgcg * surfaceFactor * mineralMultiplier;
-      k_polysaccharides = 0.014 * tempFactorPolysaccharides * surfaceFactor * mineralMultiplier;
+      k_theanine = 0.095 * thisTempFactorTheanine * surfaceFactor * mineralMultiplier;
+      k_caffeine = 0.052 * thisTempFactorCaffeine * surfaceFactor * mineralMultiplier;
+      k_catechins = 0.028 * thisTempFactorCatechins * surfaceFactor * mineralMultiplier;
+      k_egc = 0.038 * thisTempFactorEgc * surfaceFactor * mineralMultiplier;
+      k_egcg = 0.024 * thisTempFactorEgcg * surfaceFactor * mineralMultiplier;
+      k_polysaccharides = 0.014 * thisTempFactorPoly * surfaceFactor * mineralMultiplier;
     }
 
     // Mass freshly extracted from leaf in this steep (mg) via Two-Stage model
@@ -1672,7 +1796,7 @@ export function simulateGongfuExtraction(
     if (tea.leafMorphology === 'tight_ball') {
       volatileBase = 100 * Math.exp(-Math.pow(steep - 2.8, 2) / (brewingMethod === 'liu_gen' || brewingMethod === 'grandpa_cup' ? 5.5 : 4.8));
     }
-    const volatilesIntensity = Math.max(5, Math.min(100, Math.round(volatileBase * volatilesTempMultiplier)));
+    const volatilesIntensity = Math.max(5, Math.min(100, Math.round(volatileBase * thisVolatilesTempMult)));
 
     // Sensory scores (0-10 scale) enriched by THI and EGC
     const umami = Math.min(10, Math.round(((cTheanine * 0.85 + cEgc * 0.15) / 16) * 10 * 10) / 10);
@@ -1691,8 +1815,8 @@ export function simulateGongfuExtraction(
     let finalBody = body;
     let finalAroma = aroma;
 
-    // Specialized debittering for white tea (Метод удаления горечи: нулевой сброс + чистые проливы)
-    if (optimizationGoal === 'white_debitter' && tea.type === 'white') {
+    // Specialized debittering (Метод без горечи: нулевой сброс ~1 мин 100°C + чистые проливы)
+    if (optimizationGoal === 'white_debitter') {
       finalBitterness = Math.max(0.5, Math.min(2.0, Math.round(bitterness * 0.25 * 10) / 10));
       finalAstringency = Math.max(0.5, Math.min(2.2, Math.round(astringency * 0.30 * 10) / 10));
       finalSweetness = Math.min(10, Math.round((sweetness + 1.5) * 10) / 10);
@@ -1703,10 +1827,10 @@ export function simulateGongfuExtraction(
     let keyNotes = '';
     let scientificReferenceRu = '';
 
-    if (optimizationGoal === 'white_debitter' && tea.type === 'white') {
+    if (optimizationGoal === 'white_debitter') {
       if (steep === 1) {
-        keyNotes = 'Пролив #1 после нулевого сброса: поверхностная горечь удалена. Чистейший нектарный настой с медовой сладостью L-теанина и воска белого листа.';
-        scientificReferenceRu = 'Food Chemistry (2023): Нулевой сброс выводит 42% мономерного EGCG. Первый рабочий пролив демонстрирует рекордный индекс сладости.';
+        keyNotes = 'Пролив #1 после минутного нулевого сброса кипятком 100°C: поверхностная катехиновая горечь полностью удалена. Чистейший нектарный настой с медовой сладостью L-теанина и воска листа.';
+        scientificReferenceRu = 'Food Chemistry (2023): Глубокий нулевой сброс выводит до 65% мономерного EGCG. Первый рабочий пролив демонстрирует рекордный индекс сладости без вяжущей горечи.';
       } else if (steep === 2 || steep === 3) {
         keyNotes = 'Раскрытие полисахаридов (TPS): полное отсутствие горечи и вяжущей терпкости. Шелковистая текстура, вкус грушевого сиропа и полевых трав.';
         scientificReferenceRu = 'CAAS Tea Institute: Дебитеризация белого чая снижает соотношение Catechin/Theanine в 2.8 раза, раскрывая мягкие олигосахариды.';
@@ -1819,6 +1943,8 @@ export function simulateGongfuExtraction(
       scientificReferenceRu,
       isCustomUserTime: flag ? flag.isCustomUserTime : undefined,
       isAdaptedReference: flag ? flag.isAdaptedReference : undefined,
+      waterTempC: steepWaterTemp,
+      isCustomTemp: customTempFlags ? Boolean(customTempFlags[steep - 1]) : false,
       brewingMethod,
       retainedRootVolumeMl: retainedRootVolumeMl > 0 ? retainedRootVolumeMl : undefined,
       freshWaterAddedMl: freshWaterAddedMl !== safeWaterVolume ? freshWaterAddedMl : undefined,

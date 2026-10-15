@@ -31,6 +31,9 @@ export interface TeaCheatSheetModalProps {
   vesselUsed?: string;
   waterHardness?: WaterHardnessLevel;
   vintageYear?: number;
+  useDynamicTemperatures?: boolean;
+  steepTemperatures?: number[];
+  rinseTemperature?: number;
   onClose: () => void;
 }
 
@@ -80,6 +83,9 @@ export const TeaCheatSheetModal: React.FC<TeaCheatSheetModalProps> = ({
   vesselUsed,
   waterHardness = 'optimal',
   vintageYear,
+  useDynamicTemperatures = false,
+  steepTemperatures,
+  rinseTemperature,
   onClose
 }) => {
   const [copied, setCopied] = useState(false);
@@ -139,7 +145,7 @@ export const TeaCheatSheetModal: React.FC<TeaCheatSheetModalProps> = ({
   const handleCopyText = async () => {
     const transcriptionLine = tea.transcriptionRu ? `• Торговое / транскрибированное имя: ${tea.transcriptionRu}\n` : '';
     const rinseLine = isRinseEnabled 
-      ? `• Пролив #0 (Промывка / Прогрев): ${rinseSeconds} сек (Слить не пробуя!)\n` 
+      ? `• Пролив #0 (Промывка / Прогрев): ${rinseSeconds} сек${useDynamicTemperatures && rinseTemperature ? ` (${rinseTemperature}°C)` : ''} (Слить не пробуя!)\n` 
       : '• Пролив #0: Без промывки (прямой первый пролив)\n';
     const rinseNoteLine = tea.rinseNoteRu ? `• Особенность промывки: ${tea.rinseNoteRu}\n` : '';
     const shapeLine = tea.leafMorphology ? `• Форма листа: ${morphologyLabels[tea.leafMorphology] || tea.leafMorphology}\n` : '';
@@ -149,19 +155,23 @@ export const TeaCheatSheetModal: React.FC<TeaCheatSheetModalProps> = ({
       ? `\n🧪 СОСТАВ КУПАЖА:\n` + tea.blendComponents.map(c => `• ${c.teaNameRu}: ${Math.round(c.ratioFraction * 100)}% (${c.baseWeightG}г)${c.vintageYear ? ` [${c.vintageYear}г.]` : ''}`).join('\n') + '\n'
       : '';
 
+    const tempText = useDynamicTemperatures
+      ? `• Температура: Динамическая t°C для каждого пролива`
+      : `• Температура: ${waterTemp}°C`;
+
     const text = `🍵 ШПАРГАЛКА: ${tea.nameRu} ${tea.nameZh ? `(${tea.nameZh})` : ''}
 ${transcriptionLine}• Категория: ${tea.typeNameRu} • ${tea.origin}
 • Ферментация: ${tea.oxidationLevel}${shapeLine ? ` • ${shapeLine.replace('• ', '')}` : ''}${vintageLine ? ` • ${vintageLine.replace('• ', '')}` : ''}${blendSection}
 ПАРАМЕТРЫ ЗАВАРИВАНИЯ:
 • Метод: ${activeMethodName}
-• Температура: ${waterTemp}°C
+${tempText}
 • Навеска / Объём: ${teaMass}г на ${waterVolume}мл (1:${ratio})
 • Посуда: ${activeVesselName}
 • Вода: ${activeWaterName}
 ${rinseLine}${rinseNoteLine}• Проливов: ${steepsCount}
 
 ⏱️ ВРЕМЯ ПРОЛИВОВ:
-${steepSchedule.map((sec, idx) => `#${idx + 1}: ${sec}с`).join(', ')}
+${steepSchedule.map((sec, idx) => `#${idx + 1}: ${sec}с${useDynamicTemperatures && steepTemperatures && steepTemperatures[idx] ? ` (${steepTemperatures[idx]}°C)` : ''}`).join(', ')}
 
 ✨ Вкусы: ${(tea.keySensoryNotes || []).join(', ')}`;
 
@@ -309,15 +319,15 @@ ${steepSchedule.map((sec, idx) => `#${idx + 1}: ${sec}с`).join(', ')}
 
           {/* Blend Components Breakdown if Available */}
           {tea.blendComponents && tea.blendComponents.length > 0 && (
-            <div className="p-2.5 rounded-xl bg-purple-50/70 border border-purple-200 text-xs space-y-1.5">
-              <span className="font-bold text-purple-950 flex items-center gap-1.5 text-[11px]">
-                <Sparkles className="w-3.5 h-3.5 text-purple-700" />
+            <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-200 text-xs space-y-1.5">
+              <span className="font-bold text-stone-900 flex items-center gap-1.5 text-[11px]">
+                <Sparkles className="w-3.5 h-3.5 text-amber-700" />
                 <span>Состав купажа:</span>
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {tea.blendComponents.map((comp, idx) => (
-                  <div key={idx} className="bg-white px-2 py-0.5 rounded-md border border-purple-200 shadow-2xs text-[11px]">
-                    <strong className="text-purple-950">{comp.teaNameRu}</strong>: <span className="font-mono font-bold text-amber-900">{Math.round(comp.ratioFraction * 100)}%</span> ({comp.baseWeightG}г)
+                  <div key={idx} className="bg-white px-2 py-0.5 rounded-md border border-stone-200 shadow-2xs text-[11px]">
+                    <strong className="text-stone-900">{comp.teaNameRu}</strong>: <span className="font-mono font-bold text-amber-900">{Math.round(comp.ratioFraction * 100)}%</span> ({comp.baseWeightG}г)
                     {comp.vintageYear && <span className="text-stone-500 font-mono text-[10px]"> [{comp.vintageYear}г.]</span>}
                   </div>
                 ))}
@@ -327,16 +337,20 @@ ${steepSchedule.map((sec, idx) => `#${idx + 1}: ${sec}с`).join(', ')}
 
           {/* Key Brewing Parameters Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200">
-              <div className="flex items-center justify-center gap-1 text-[11px] font-bold text-amber-900">
+            <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-200">
+              <div className="flex items-center justify-center gap-1 text-[11px] font-bold text-stone-700">
                 <Flame className="w-3.5 h-3.5 text-amber-700" />
                 <span>Температура</span>
               </div>
-              <div className="text-lg sm:text-xl font-mono font-black text-amber-950 mt-0.5">
-                {waterTemp}°C
+              <div className="text-lg sm:text-xl font-mono font-black text-stone-950 mt-0.5">
+                {useDynamicTemperatures ? 'Динам. t°' : `${waterTemp}°C`}
               </div>
               <div className="text-[10px] text-stone-500 font-mono">
-                {tea.tempRange ? `диапазон ${tea.tempRange[0]}–${tea.tempRange[1]}°C` : 'оптимум'}
+                {useDynamicTemperatures
+                  ? 'авто для проливов'
+                  : tea.tempRange
+                  ? `диапазон ${tea.tempRange[0]}–${tea.tempRange[1]}°C`
+                  : 'оптимум'}
               </div>
             </div>
 
@@ -353,12 +367,12 @@ ${steepSchedule.map((sec, idx) => `#${idx + 1}: ${sec}с`).join(', ')}
               </div>
             </div>
 
-            <div className="p-2.5 rounded-xl bg-sky-50/70 border border-sky-200">
-              <div className="flex items-center justify-center gap-1 text-[11px] font-bold text-sky-900">
-                <Droplet className="w-3.5 h-3.5 text-sky-700" />
+            <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-200">
+              <div className="flex items-center justify-center gap-1 text-[11px] font-bold text-stone-700">
+                <Droplet className="w-3.5 h-3.5 text-stone-600" />
                 <span>Объём воды</span>
               </div>
-              <div className="text-lg sm:text-xl font-mono font-black text-sky-950 mt-0.5">
+              <div className="text-lg sm:text-xl font-mono font-black text-stone-950 mt-0.5">
                 {waterVolume} мл
               </div>
               <div className="text-[10px] text-stone-500 font-mono">
@@ -366,12 +380,12 @@ ${steepSchedule.map((sec, idx) => `#${idx + 1}: ${sec}с`).join(', ')}
               </div>
             </div>
 
-            <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
-              <div className="flex items-center justify-center gap-1 text-[11px] font-bold text-emerald-900">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
+            <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-200">
+              <div className="flex items-center justify-center gap-1 text-[11px] font-bold text-stone-700">
+                <Sparkles className="w-3.5 h-3.5 text-amber-700" />
                 <span>Гидромодуль</span>
               </div>
-              <div className="text-lg sm:text-xl font-mono font-black text-emerald-950 mt-0.5">
+              <div className="text-lg sm:text-xl font-mono font-black text-stone-950 mt-0.5">
                 1:{ratio}
               </div>
               <div className="text-[10px] text-stone-500 font-mono">
@@ -434,14 +448,19 @@ ${steepSchedule.map((sec, idx) => `#${idx + 1}: ${sec}с`).join(', ')}
 
             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
               {isRinseEnabled && (
-                <div className="p-2 rounded-xl border border-amber-300 bg-amber-50/90 text-center space-y-0.5 shadow-2xs">
-                  <div className="text-[10px] font-bold text-amber-800 font-mono">
+                <div className="p-2 rounded-xl border border-stone-200 bg-stone-50 text-center space-y-0.5 shadow-2xs">
+                  <div className="text-[10px] font-bold text-stone-500 font-mono">
                     Пролив #0
                   </div>
-                  <div className="text-lg sm:text-xl font-mono font-black text-amber-950">
-                    {rinseSeconds} <span className="text-xs font-bold text-amber-800/80">сек</span>
+                  <div className="text-lg sm:text-xl font-mono font-black text-stone-900">
+                    {rinseSeconds} <span className="text-xs font-bold text-stone-500">сек</span>
                   </div>
-                  <div className="text-[9px] font-bold text-amber-900">
+                  {useDynamicTemperatures && rinseTemperature && (
+                    <div className="text-[11px] font-mono font-bold text-stone-600">
+                      {rinseTemperature}°C
+                    </div>
+                  )}
+                  <div className="text-[9px] font-bold text-stone-400">
                     Слить
                   </div>
                 </div>
@@ -457,6 +476,11 @@ ${steepSchedule.map((sec, idx) => `#${idx + 1}: ${sec}с`).join(', ')}
                   <div className="text-lg sm:text-xl font-mono font-black text-amber-900">
                     {sec} <span className="text-xs font-bold text-amber-700/80">сек</span>
                   </div>
+                  {useDynamicTemperatures && steepTemperatures && steepTemperatures[idx] && (
+                    <div className="text-[11px] font-mono font-bold text-stone-700">
+                      {steepTemperatures[idx]}°C
+                    </div>
+                  )}
                   <div className="text-[9px] text-stone-400">
                     {idx === 0 ? 'Быстрый пролив' : idx === 1 ? 'Пик аромата' : idx === 2 ? 'Баланс тела' : idx >= 3 && idx <= 5 ? 'Глубокий настой' : 'Хуэйгань'}
                   </div>
@@ -466,13 +490,13 @@ ${steepSchedule.map((sec, idx) => `#${idx + 1}: ${sec}с`).join(', ')}
           </div>
 
           {/* Flavor Notes (Pure tastes only) */}
-          <div className="p-3 rounded-xl bg-amber-50/50 border border-amber-200 space-y-1.5 text-xs">
-            <span className="font-bold text-amber-950 block">Вкусы чая:</span>
+          <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 space-y-1.5 text-xs">
+            <span className="font-bold text-stone-900 block">Вкусы чая:</span>
             <div className="flex flex-wrap gap-1.5">
               {(tea.keySensoryNotes || []).map((note, nIdx) => (
                 <span
                   key={nIdx}
-                  className="bg-white border border-amber-200 text-amber-950 text-xs px-2.5 py-0.5 rounded-md font-medium shadow-2xs"
+                  className="bg-white border border-stone-200 text-stone-800 text-xs px-2.5 py-0.5 rounded-md font-medium shadow-2xs"
                 >
                   {note}
                 </span>
@@ -490,3 +514,4 @@ ${steepSchedule.map((sec, idx) => `#${idx + 1}: ${sec}с`).join(', ')}
     </div>
   );
 };
+

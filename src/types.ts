@@ -218,6 +218,8 @@ export interface SteepKineticData {
   scientificReferenceRu: string;
   isCustomUserTime?: boolean; // Duration was entered manually by the user
   isAdaptedReference?: boolean; // Duration was dynamically adapted by algorithm based on user's actual past steeps
+  waterTempC?: number; // Actual water temperature used for this steep (°C)
+  isCustomTemp?: boolean; // Temperature was manually set by the user for this steep
   brewingMethod?: BrewingMethod;
   retainedRootVolumeMl?: number; // Volume of root liquor left from previous steep
   freshWaterAddedMl?: number; // Volume of fresh water poured
@@ -345,9 +347,11 @@ export interface TastingJournalEntry {
   customRinseTime?: number | null;
   waterTempC: number;
   teaMassG: number;
-  waterVolumeMl: number;
-  steepsCount: number;
+  waterVolumeMl?: number;
+  steepsCount?: number;
   steepScheduleSec?: number[]; // Актуальные секунды каждого пролива из симулятора
+  useDynamicTemperatures?: boolean;
+  steepTemperaturesC?: number[]; // Температуры каждого пролива при динамическом режиме
   isBlend?: boolean;
   blendComponents?: string[];
   sensoryNotes: string[];
@@ -374,6 +378,8 @@ export interface InitialTastingSessionData {
   waterVolumeMl?: number;
   steepsCount?: number;
   steepScheduleSec?: number[];
+  useDynamicTemperatures?: boolean;
+  steepTemperaturesC?: number[];
   vesselUsed?: string;
   effectNote?: string;
   userNotes?: string;
@@ -394,8 +400,20 @@ export interface InitialBrewParams {
   waterVolumeMl?: number;
   steepsCount?: number;
   steepScheduleSec?: number[];
+  useDynamicTemperatures?: boolean;
+  steepTemperaturesC?: number[];
   vesselUsed?: string;
   rootFraction?: number;
+}
+
+export interface AppSettings {
+  advancedMode: boolean;              // Master "Расширенный режим" для чайных энтузиастов и мастеров
+  showBrewingMethod: boolean;         // 1. "Выбор метода заваривания" (default false)
+  showGoalAndMethod: boolean;         // 2. "Метод пролива и цель вкуса" (default false)
+  useDynamicTemperatures: boolean;    // 3. "Динамическая температура воды" (default false)
+  showChemicalComposition: boolean;   // 4. "Фракционный состав пиалы" (default false)
+  showExtractionChart: boolean;       // 5. "График динамики экстракции" (default false)
+  hideBrewingMethodSelector?: boolean; // legacy alias
 }
 
 

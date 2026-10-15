@@ -5,7 +5,9 @@
 
 import { useState, useEffect, lazy, Suspense } from 'react';
 import { Header, ActiveTab } from './components/Header';
-import { TeaVariety, InitialTastingSessionData, InitialBrewParams } from './types';
+import { TeaVariety, InitialTastingSessionData, InitialBrewParams, AppSettings } from './types';
+import { loadAppSettings, saveAppSettings } from './utils/appSettings';
+import { SettingsModal } from './components/SettingsModal';
 import { Beaker, ArrowUp } from 'lucide-react';
 
 const ExtractionSimulator = lazy(() => import('./components/ExtractionSimulator').then(m => ({ default: m.ExtractionSimulator })));
@@ -23,6 +25,13 @@ const ComponentLoader = () => (
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('simulator');
   const [showScrollTop, setShowScrollTop] = useState<boolean>(false);
+  const [settings, setSettings] = useState<AppSettings>(loadAppSettings);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+
+  const handleUpdateSettings = (newSettings: AppSettings) => {
+    setSettings(newSettings);
+    saveAppSettings(newSettings);
+  };
 
   useEffect(() => {
     const handleScroll = () => {
@@ -81,7 +90,11 @@ export default function App() {
   return (
     <div className="min-h-screen bg-stone-100/70 text-stone-900 flex flex-col font-sans selection:bg-amber-200 selection:text-amber-950">
       {/* Top Header & Navigation - Sticky and always accessible */}
-      <Header activeTab={activeTab} setActiveTab={setActiveTab} />
+      <Header 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        onOpenSettings={() => setIsSettingsOpen(true)}
+      />
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
@@ -92,6 +105,8 @@ export default function App() {
               initialBrewParams={selectedBrewParamsForSimulator}
               onOpenComparison={handleOpenComparison}
               onOpenJournal={handleOpenJournal}
+              settings={settings}
+              onOpenSettings={() => setIsSettingsOpen(true)}
             />
           </div>
           <div className={activeTab === 'compare' ? 'block' : 'hidden'}>
@@ -113,20 +128,25 @@ export default function App() {
       </main>
 
       {/* Scientific Footer */}
-      <footer className="border-t border-stone-200 bg-stone-50 py-8 text-stone-500 text-xs mt-12 print:hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center">
-            <span className="font-serif font-bold text-stone-800">
-              Gongfu Cha Lab
-            </span>
-            <span className="hidden sm:inline-block ml-2 text-stone-400">
-              • Расчет кинетики экстракции чая
-            </span>
+      <footer className="border-t border-stone-200 bg-stone-50 py-8 text-stone-500 text-xs mt-12 print:hidden w-full text-center">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col items-center justify-center text-center gap-3">
+          <div className="flex flex-col items-center justify-center text-center">
+            <div className="flex items-center justify-center text-center">
+              <span className="font-serif font-bold text-stone-800 text-sm sm:text-base">
+                Gongfu Cha Lab
+              </span>
+              <span className="hidden sm:inline-block ml-2 text-stone-400">
+                • Расчет кинетики экстракции чая
+              </span>
+            </div>
+            <div className="text-[10px] font-mono text-stone-400 mt-0.5 text-center">
+              v0.42
+            </div>
           </div>
 
-          <div className="text-center md:text-right text-stone-400">
+          <p className="text-center text-stone-400 max-w-2xl leading-relaxed mx-auto text-xs">
             Данные и расчёты основаны на исследованиях: <span className="text-stone-600">Food Chemistry, JAFC, LWT, CAAS (2019–2024)</span> и стандартах <span className="text-stone-600">GB/T 23776 / ISO 9768</span>
-          </div>
+          </p>
         </div>
       </footer>
 
@@ -142,6 +162,14 @@ export default function App() {
           <ArrowUp className="w-5 h-5 group-hover:animate-pulse" />
         </button>
       )}
+
+      {/* Global Settings Modal */}
+      <SettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)}
+        settings={settings}
+        onUpdateSettings={handleUpdateSettings}
+      />
     </div>
   );
 }

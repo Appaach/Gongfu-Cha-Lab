@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, memo, useRef, useDeferredValue } from 'react';
+import { Thermometer } from 'lucide-react';
 import { 
   TEA_VARIETIES, 
   GENERIC_TEA_ARCHETYPES, 
@@ -15,8 +16,10 @@ import {
   simulateGongfuExtraction, 
   optimizeBrewingParametersMulti,
   calculateAdaptiveCustomBrewing,
-  calculateRinseKineticData
+  calculateRinseKineticData,
+  calculateDynamicSteepTemperatures
 } from '../utils/extractionKinetics';
+import { loadAppSettings } from '../utils/appSettings';
 import { 
   matchTeaSearch, 
   matchTeaBySensory, 
@@ -38,6 +41,10 @@ interface SteepBubbleCardProps {
   brewingMethod?: BrewingMethod;
   rootFraction?: number;
   waterVolume?: number;
+  useDynamicTemperatures?: boolean;
+  steepTempC?: number;
+  isCustomTemp?: boolean;
+  onSaveTemp?: (idx: number, val: number | null) => void;
   onSelect: (idx: number) => void;
   onDoubleClick: (idx: number) => void;
   onLongPress: (idx: number) => void;
@@ -59,6 +66,10 @@ const SteepBubbleCard = memo(function SteepBubbleCard({
   brewingMethod = 'gongfu',
   rootFraction = 0.33,
   waterVolume = 100,
+  useDynamicTemperatures = false,
+  steepTempC,
+  isCustomTemp = false,
+  onSaveTemp,
   onSelect,
   onDoubleClick,
   onLongPress,
@@ -216,16 +227,51 @@ const SteepBubbleCard = memo(function SteepBubbleCard({
         ) : null}
       </div>
 
-      {/* Center: Exposure time */}
-      <div className="my-1 flex items-center justify-center space-x-1 w-full">
-        <span className={`text-base sm:text-lg font-mono font-extrabold tracking-tight ${
-          isSelected ? 'text-amber-950 font-black' : isCustom ? 'text-amber-950' : isAdapted ? 'text-amber-900' : 'text-stone-800'
-        }`}>
-          {effectiveSec}
-        </span>
-        <span className="text-xs sm:text-sm font-mono font-bold text-amber-900/70">
-          с
-        </span>
+      {/* Center: Exposure time & optional dynamic temperature */}
+      <div className="my-1 flex flex-col items-center justify-center w-full">
+        <div className="flex items-center justify-center space-x-1">
+          <span className={`text-base sm:text-lg font-mono font-extrabold tracking-tight ${
+            isSelected ? 'text-amber-950 font-black' : isCustom ? 'text-amber-950' : isAdapted ? 'text-amber-900' : 'text-stone-800'
+          }`}>
+            {effectiveSec}
+          </span>
+          <span className="text-xs sm:text-sm font-mono font-bold text-amber-900/70">
+            с
+          </span>
+        </div>
+
+        {useDynamicTemperatures && (
+          <div className="flex items-center justify-center gap-1 mt-0.5">
+            <span className={`text-[10px] font-mono leading-tight flex items-center gap-0.5 ${
+              isCustomTemp
+                ? 'text-rose-700 font-bold'
+                : 'text-stone-600 font-medium'
+            }`}>
+              <Thermometer className="w-2.5 h-2.5 text-rose-600 shrink-0" />
+              <span>{steepTempC ?? 95}°C</span>
+            </span>
+            {isCustomTemp && onSaveTemp && (
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSaveTemp(idx, null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.stopPropagation();
+                    onSaveTemp(idx, null);
+                  }
+                }}
+                className="p-0.5 rounded hover:bg-rose-200 text-rose-900 transition-colors cursor-pointer"
+                title="Сбросить t°C к авто-профилю"
+              >
+                <RotateCcw className="w-2.5 h-2.5" />
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Bottom: Benchmark comparison if custom/adapted without duplicate labels */}
@@ -277,6 +323,7 @@ import {
   BrewingMethod,
   InitialTastingSessionData,
   InitialBrewParams,
+  AppSettings,
   canTeaAge,
   cleanTeaTitleForDisplay
 } from '../types';
@@ -313,6 +360,8 @@ import {
   FileText,
   Bookmark,
   Calendar,
+  BookOpen,
+  Activity,
   Scale as ScaleIcon
 } from 'lucide-react';
 import { TeaBlendStudio } from './TeaBlendStudio';
@@ -324,14 +373,19 @@ export interface ExtractionSimulatorProps {
   initialBrewParams?: InitialBrewParams | null;
   onOpenComparison?: (tea: TeaVariety) => void;
   onOpenJournal?: (sessionData: InitialTastingSessionData | TeaVariety) => void;
+  settings?: AppSettings;
+  onOpenSettings?: () => void;
 }
 
 export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
   initialSelectedTea,
   initialBrewParams,
   onOpenComparison,
-  onOpenJournal
+  onOpenJournal,
+  settings,
+  onOpenSettings
 }) => {
+  const appSettings = settings || loadAppSettings();
   const initialTea = initialBrewParams?.tea || initialSelectedTea;
   // Tea Category Tab: 'generic' (archetypes) first, 'specific' (popular teas) second, 'flavor' (search by flavor notes) third
   const [activeCategoryTab, setActiveCategoryTab] = useState<TeaCategoryGroup>(
@@ -860,6 +914,43 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
   const [editingSteepIndex, setEditingSteepIndex] = useState<number | null>(null);
   const [customSteepTimes, setCustomSteepTimes] = useState<(number | null)[]>([]);
 
+  // Custom Steeps Dynamic Water Temperature ("Своя температура") State
+  const [customSteepTemps, setCustomSteepTemps] = useState<(number | null)[]>([]);
+  const [customRinseTemp, setCustomRinseTemp] = useState<number | null>(null);
+
+  // Dynamic temperature schedule computed across all steeps & rinse
+  const dynamicTemperatures = useMemo(() => {
+    return calculateDynamicSteepTemperatures(
+      selectedTea,
+      steepsCount,
+      optimizationGoal,
+      customSteepTemps,
+      customRinseTemp
+    );
+  }, [selectedTea, steepsCount, optimizationGoal, customSteepTemps, customRinseTemp]);
+
+  const handleSetCustomSteepTemp = useCallback((steepIndex: number, tempC: number | null) => {
+    setCustomSteepTemps((prev) => {
+      const next = [...prev];
+      while (next.length < steepsCount) {
+        next.push(null);
+      }
+      next[steepIndex] = (tempC !== null && !isNaN(tempC)) ? Math.min(100, Math.max(40, Math.round(tempC))) : null;
+      return next;
+    });
+  }, [steepsCount]);
+
+  const handleResetAllCustomTemps = useCallback(() => {
+    setCustomSteepTemps(new Array(steepsCount).fill(null));
+    setCustomRinseTemp(null);
+  }, [steepsCount]);
+
+  const customTempsCount = useMemo(() => {
+    let cnt = customSteepTemps.filter((t) => t !== null && t !== undefined).length;
+    if (customRinseTemp !== null) cnt++;
+    return cnt;
+  }, [customSteepTemps, customRinseTemp]);
+
   // Adaptive Recalculation Engine for User-defined Steeps
   const adaptiveCustomBrewing = useMemo(() => {
     return calculateAdaptiveCustomBrewing(
@@ -962,8 +1053,24 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     },
   });
 
+  const effectiveRinseTemp = useMemo(() => {
+    if (appSettings.useDynamicTemperatures) {
+      return dynamicTemperatures.rinseTempC;
+    }
+    if (customRinseTemp !== null) return customRinseTemp;
+    if (optimizationGoal === 'white_debitter') return 100;
+    return selectedTea.type === 'shou_puerh' || selectedTea.type === 'heicha' ? 100 : waterTemp;
+  }, [appSettings.useDynamicTemperatures, dynamicTemperatures, customRinseTemp, optimizationGoal, selectedTea, waterTemp]);
+
   // Run dynamic simulation based on Noyes-Whitney, Arrhenius & environmental factors
   const simulationResults = useMemo(() => {
+    const perSteepTemps = appSettings.useDynamicTemperatures
+      ? dynamicTemperatures.steepTempsC
+      : Array(steepsCount).fill(waterTemp);
+    const customTempFlags = appSettings.useDynamicTemperatures
+      ? dynamicTemperatures.isCustomSteepTemp
+      : Array(steepsCount).fill(false);
+
     return simulateGongfuExtraction(
       selectedTea, 
       leafMass, 
@@ -978,7 +1085,10 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
       brewingMethod,
       rootFraction,
       customRinseTime,
-      selectedVintageYear
+      selectedVintageYear,
+      perSteepTemps,
+      customTempFlags,
+      effectiveRinseTemp
     );
   }, [
     selectedTea, 
@@ -994,21 +1104,28 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     brewingMethod,
     rootFraction,
     customRinseTime,
-    selectedVintageYear
+    selectedVintageYear,
+    appSettings.useDynamicTemperatures,
+    dynamicTemperatures,
+    effectiveRinseTemp
   ]);
 
   // Scientific rinse parameters based on leaf morphology and cultivar
   const baseTeaRinseInfo = useMemo(() => {
-    return getTeaRinseInfo(selectedTea, waterTemp);
-  }, [selectedTea, waterTemp]);
+    return getTeaRinseInfo(selectedTea, effectiveRinseTemp, optimizationGoal);
+  }, [selectedTea, effectiveRinseTemp, optimizationGoal]);
 
   const teaRinseInfo = useMemo(() => {
     return {
       ...baseTeaRinseInfo,
       seconds: customRinseTime !== null ? customRinseTime : baseTeaRinseInfo.seconds,
-      isCustomUserTime: customRinseTime !== null
+      tempC: effectiveRinseTemp,
+      isCustomUserTime: customRinseTime !== null,
+      isCustomTemp: appSettings.useDynamicTemperatures
+        ? dynamicTemperatures.isCustomRinseTemp
+        : customRinseTemp !== null
     };
-  }, [baseTeaRinseInfo, customRinseTime]);
+  }, [baseTeaRinseInfo, customRinseTime, effectiveRinseTemp, appSettings.useDynamicTemperatures, dynamicTemperatures, customRinseTemp]);
 
   const isRinseEnabled = teaRinseInfo.required;
 
@@ -1018,12 +1135,12 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
       selectedTea,
       leafMass,
       waterVolume,
-      waterTemp,
+      effectiveRinseTemp,
       teaRinseInfo.seconds,
       waterHardness,
       vesselMaterial,
       optimizationGoal,
-      customRinseTime !== null,
+      customRinseTime !== null || (appSettings.useDynamicTemperatures && dynamicTemperatures.isCustomRinseTemp),
       selectedVintageYear
     );
   }, [
@@ -1031,12 +1148,13 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     selectedTea,
     leafMass,
     waterVolume,
-    waterTemp,
+    effectiveRinseTemp,
     teaRinseInfo.seconds,
     waterHardness,
     vesselMaterial,
     optimizationGoal,
     customRinseTime,
+    appSettings.useDynamicTemperatures,
     selectedVintageYear
   ]);
 
@@ -1109,61 +1227,138 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     return `rgba(${r}, ${g}, ${b}, ${(factor * baseA).toFixed(2)})`;
   };
 
-  // Simple, human-friendly leaf morphology guide for tea lovers
+  // Descriptive taste sensations for regular users (simple mode)
+  const getSteepTasteSensations = (tea: TeaVariety, steepNum: number, isRinse: boolean): string => {
+    if (isRinse || steepNum <= 0) {
+      return 'Промыв и пробуждение листа: горячая вода смывает чайную пыль, лист прогревается и начинает отдавать первый чистый аромат.';
+    }
+    const notes = tea.keySensoryNotes && tea.keySensoryNotes.length > 0 
+      ? tea.keySensoryNotes 
+      : ['свежие травы', 'цветы', 'медовая сладость'];
+
+    const notesStr = notes.join(', ');
+
+    // Type-specific sensations
+    if (tea.type === 'sheng_puerh') {
+      if (steepNum === 1) return `Первый настой: чистый и звонкий вкус луговых трав и цветов, легкая сладость и свежесть.`;
+      if (steepNum <= 3) return `Пик букета: сочный вкус с сухофруктовыми оттенками (${notesStr}), яркое слюноотделение («Шэн Цзинь») и мощное сладкое эхо («Хуэй Гань») в горле.`;
+      if (steepNum <= 6) return `Глубокий объем: настой маслянистый, благородная древесно-медовая терпкость мягко тает в сладкое освежающее тепло.`;
+      return `Поздние проливы: кристальная родниковая сладость с сухофруктовым шлейфом и долгим умиротворяющим послевкусием.`;
+    }
+
+    if (tea.type === 'shou_puerh' || tea.type === 'heicha') {
+      if (steepNum === 1) return `Первый настой: густой темный настой, мягкий древесно-ореховый аромат и бархатное тепло без резкости.`;
+      if (steepNum <= 3) return `Пик плотности: обволакивающий шелковистый настой с нотами горького шоколада, осеннего леса и сухофруктов (${notesStr}).`;
+      if (steepNum <= 6) return `Сладкая карамельная фаза: глубокое мягкое тело, согревающее тепло и долгое сладковато-древесное послевкусие.`;
+      return `Поздние проливы: прозрачный рубиновый настой с чистой сладковатой нотой сухофруктов и легким древесным холодком.`;
+    }
+
+    if (tea.type === 'oolong_strip') {
+      if (steepNum === 1) return `Первый настой: взрывной пряно-цветочный аромат с крышечки, легкий минеральный каркас и сладкое начало.`;
+      if (steepNum <= 3) return `Пик сочности и «утесной мелодии»: густой настой с нотами орхидеи, жареного ореха и ягод (${notesStr}), мгновенно рождающий сладость в горле.`;
+      if (steepNum <= 6) return `Минеральный шлейф: благородный огонь уступает место чистой нектарной сладости и глубокому цветочному дыханию.`;
+      return `Поздние проливы: тонкая родниковая сладость с прозрачным ароматом белых цветов и освежающим послевкусием.`;
+    }
+
+    if (tea.type === 'oolong_ball' || tea.type === 'gaba_oolong') {
+      if (steepNum === 1) return `Первый настой: нежный сливочно-цветочный аромат, шелковистая текстура и деликатная сладость.`;
+      if (steepNum <= 3) return `Полное раскрытие сферы: насыщенный букет сирени, гардении и персика (${notesStr}), сочный округлый вкус и свежее послевкусие.`;
+      if (steepNum <= 6) return `Медово-фруктовое плато: настой искристый, маслянистый, с долгим шлейфом весенних цветов и тающей сладостью.`;
+      return `Поздние проливы: кристальная родниковая свежесть, тонкий отзвук цветов и легкое охлаждающее послевкусие.`;
+    }
+
+    if (tea.type === 'green' || tea.type === 'yellow') {
+      if (steepNum === 1) return `Первый настой: нежнейшая сладость свежего листа, деликатный аромат жареного каштана и весенней зелени (${notes.slice(0, 2).join(', ')}).`;
+      if (steepNum <= 3) return `Пик свежести: яркий, сочный вкус с приятной бархатной нотой умами, сладковатый шлейф без горечи.`;
+      if (steepNum <= 5) return `Мягкая фаза: чистый, освежающий травянисто-ореховый профиль, легкое сладкое послевкусие в горле.`;
+      return `Поздние проливы: прозрачная минерально-родниковая сладость с тонким ароматом сухого сена.`;
+    }
+
+    if (tea.type === 'white') {
+      if (steepNum === 1) return `Первый настой: тончайший аромат луговых трав и цветочной пыльцы, нектарная прозрачная сладость.`;
+      if (steepNum <= 3) return `Пик медового букета: бархатный настой с нотами сушеной дыни, березового сока и белых цветов (${notesStr}).`;
+      if (steepNum <= 6) return `Сладкая глубина: настой становится еще слаще, раскрывая грушевый компот и целебные травы.`;
+      return `Поздние проливы: нежнейшая медовая вода с долгим освежающим холодком на нёбе.`;
+    }
+
+    if (tea.type === 'red' || tea.type === 'gaba_red') {
+      if (steepNum === 1) return `Первый настой: согревающий аромат ржаного хлеба и ягод, мягкая сладость и бархатное тепло.`;
+      if (steepNum <= 3) return `Пик насыщенности: плотный янтарный настой с нотами сухофруктов, меда и какао (${notesStr}), долгое сладкое послевкусие.`;
+      if (steepNum <= 6) return `Медово-фруктовое плато: мягкий фруктово-карамельный вкус без терпкости, уютный согревающий шлейф.`;
+      return `Поздние проливы: легкая ягодно-родниковая сладость с тонким древесным оттенком.`;
+    }
+
+    // Default generic sensations
+    if (steepNum === 1) {
+      return `Первый настой: мягкий, чистый и освежающий вкус. Деликатные ноты (${notes.slice(0, 2).join(', ')}), легкая сладость без горечи и нежная текстура.`;
+    }
+    if (steepNum <= 3) {
+      return `Пик сочности и яркости букета: настой становится шелковистым и насыщенным. Раскрываются сортовые ноты (${notesStr}), округлая сладость и бархатное тепло.`;
+    }
+    if (steepNum <= 5) {
+      return 'Сбалансированное глубокое тело: мягкая благородная терпкость плавно сменяется нарастающей возвращающейся сладостью («Хуэй Гань») в горле.';
+    }
+    if (steepNum <= 7) {
+      return 'Медовое плато: настой чистый, прозрачный и питкий. Доминирует мягкая родниковая сладость с легкими сухофруктовыми и цветочными оттенками.';
+    }
+    return 'Финальные проливы: нежная минеральная сладость, легкий шлейф аромата и долгое, освежающее умиротворяющее послевкусие.';
+  };
+
+  // Concise, human-friendly leaf morphology guide for tea lovers
   const getLeafMorphologyInfo = (morphology: string) => {
     switch (morphology) {
       case 'tight_ball':
         return {
           title: 'Сферическая скрутка (шарики)',
           sub: 'Те Гуань Инь, Дун Дин, Тайваньские улуны',
-          simpleDesc: 'Листья туго скручены в плотные жемчужины. В первых 1–2 проливах вода лишь смачивает поверхность, поэтому чай кажется лёгким. К 3–4 проливу шарик полностью раскрывается и отдаёт максимальный, самый насыщенный вкус.',
-          userTip: 'Не бойтесь, если 1-й пролив мягкий — настоящий пик вкуса раскроется на 3-м проливе.'
+          simpleDesc: 'Плотный лист. Раскрывается к 3–4 проливу.',
+          userTip: 'Пик вкуса к 3–4 проливу.'
         };
       case 'twisted_strip':
         return {
-          title: 'Продольная скрутка (жгутики и полосы)',
+          title: 'Продольная скрутка (жгутики)',
           sub: 'Да Хун Пао, Утесные улуны, Дань Цуны, Дянь Хун',
-          simpleDesc: 'Длинные скрученные листья с открытой структурой. Вода сразу омывает всю поверхность листа, поэтому густой аромат и яркий вкус выходят моментально с первых секунд заваривания.',
-          userTip: 'Вкус выходит мгновенно — делайте первые проливы быстрыми (8–10 сек).'
+          simpleDesc: 'Открытая форма. Быстрая отдача вкуса.',
+          userTip: 'Первые проливы быстрые (8–10 с).'
         };
       case 'bud_needle':
       case 'needle':
         return {
-          title: 'Цельные почки и типсы (иглы)',
-          sub: 'Бай Хао Инь Чжэнь (Серебряные иглы), Цзинь Цзюнь Мэй',
-          simpleDesc: 'Нежнейшие весенние почки, покрытые густым серебристым пушком. Этот пушок защищает почку и не даёт ей отдавать горечь, поэтому настой остаётся бархатистым, сладким и свежим очень долго.',
-          userTip: 'Даёт сладкий, мягкий настой без терпкости, выдерживает много деликатных проливов.'
+          title: 'Почки и типсы (иглы)',
+          sub: 'Бай Хао Инь Чжэнь, Цзинь Цзюнь Мэй',
+          simpleDesc: 'Нежные почки. Сладкий настой без горечи.',
+          userTip: 'Мягкий настой, высокая стойкость.'
         };
       case 'flat_pressed':
       case 'flat':
         return {
-          title: 'Плоский приплюснутый лист',
-          sub: 'Си Ху Лун Цзин (Колодец Дракона), Тайпин Хоукуй',
-          simpleDesc: 'Листья обжарены в горячем котле до гладкой плоской формы. Из-за минимальной толщины листа сладкие аминокислоты (умами) переходят в чашку практически сразу.',
-          userTip: 'Идеален для быстрых проливов прохладной водой (75–80°C).'
+          title: 'Плоский лист',
+          sub: 'Си Ху Лун Цзин, Тайпин Хоукуй',
+          simpleDesc: 'Тонкий лист. Моментальный выход теанина.',
+          userTip: 'Быстрые проливы при 75–80°C.'
         };
       case 'pressed_cake':
       case 'compressed_cake':
         return {
-          title: 'Прессованный лист (блин, кирпич, точа)',
+          title: 'Прессованный лист (блин/точа)',
           sub: 'Шэн Пуэр, Шу Пуэр, выдержанный белый чай',
-          simpleDesc: 'Чай спрессован под давлением. Первые 1–2 пролива нужны, чтобы прессованный кусочек напитался влагой и бережно расслоился на отдельные листочки.',
-          userTip: 'Первый быстрый пролив («промывка») раскрывает прессовку перед основным чаепитием.'
+          simpleDesc: 'Плотная форма. Требует распаривания.',
+          userTip: 'Нужен быстрый нулевой промыв.'
         };
       case 'broken_leaf':
         return {
-          title: 'Мелкий или ломаный лист',
+          title: 'Мелкий / ломаный лист',
           sub: 'Мелколистовые чаи, ганпаудер',
-          simpleDesc: 'Клеточная структура листа нарушена, поэтому кофеин и терпкие танины выходят в 2–3 раза быстрее обычного.',
-          userTip: 'Сливайте настой мгновенно (5–8 секунд), чтобы не перетерпчить настой.'
+          simpleDesc: 'Нарушенная структура. Быстрая экстракция.',
+          userTip: 'Мгновенный слив (5–8 с).'
         };
       case 'large_open':
       default:
         return {
-          title: 'Крупный цельный свободный лист',
+          title: 'Крупный цельный лист',
           sub: 'Шоу Мэй, Белый чай, крупные красные чаи',
-          simpleDesc: 'Объёмные цельные листья сохранили естественную форму. Они отдают полезные вещества ровно, постепенно и стабильно от чашки к чашке.',
-          userTip: 'Надёжный, ровный вкус на протяжении 8–10 проливов.'
+          simpleDesc: 'Свободный лист. Плавная отдача веществ.',
+          userTip: 'Баланс вкуса на 8–10 проливов.'
         };
     }
   };
@@ -2259,21 +2454,27 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
             </div>
           )}
 
-          {/* Selected Tea Main Description */}
 
-          <p className="text-sm text-stone-600 leading-relaxed break-words">
-            {selectedTea.scientificDescription}
-          </p>
+          {/* Selected Tea History */}
+          <div className="text-xs sm:text-sm text-stone-700 bg-stone-50/70 p-3 rounded-xl border border-stone-200/80 space-y-1 leading-relaxed">
+            <div className="flex items-center gap-1.5 font-bold text-amber-950 text-xs">
+              <BookOpen className="w-3.5 h-3.5 text-amber-800 shrink-0" />
+              <span>История сорта:</span>
+            </div>
+            <p className="text-stone-700 break-words">
+              {selectedTea.scientificDescription}
+            </p>
+          </div>
 
           {selectedTea.keySensoryNotes && selectedTea.keySensoryNotes.length > 0 && (
-            <div className="text-xs text-amber-950 bg-amber-50/80 p-3 rounded-xl border border-amber-200/90 space-y-1.5">
-              <span className="font-bold text-amber-900 block flex items-center gap-1.5">
+            <div className="text-xs text-stone-800 bg-stone-50/90 p-3 rounded-xl border border-stone-200 space-y-1.5">
+              <span className="font-bold text-stone-800 block flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-700" />
                 <span>Вкусовые ноты и ароматический букет:</span>
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {selectedTea.keySensoryNotes.map((note, nIdx) => (
-                  <span key={nIdx} className="bg-white px-2.5 py-1 rounded-md border border-amber-300 text-amber-950 font-medium text-xs shadow-2xs">
+                  <span key={nIdx} className="bg-white px-2.5 py-1 rounded-md border border-stone-200 text-stone-800 font-medium text-xs shadow-2xs">
                     {note}
                   </span>
                 ))}
@@ -2296,10 +2497,10 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
             <button
               type="button"
               onClick={() => setIsCheatSheetOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 font-semibold text-xs transition-all shadow-2xs cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-stone-300 hover:border-amber-700 bg-white hover:bg-stone-50 text-stone-700 hover:text-amber-950 font-semibold text-xs transition-all shadow-2xs cursor-pointer"
               title="Открыть готовую шпаргалку проливов для сохранения в PDF или копирования"
             >
-              <FileText className="w-3.5 h-3.5 text-amber-800" />
+              <FileText className="w-3.5 h-3.5 text-amber-700" />
               <span>Шпаргалка</span>
             </button>
 
@@ -2309,6 +2510,13 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                 onClick={() => {
                   const vesselName = VESSEL_MATERIALS.find(v => v.id === vesselMaterial)?.nameRu || selectedTea.recommendedVesselRu?.split('(')[0]?.trim() || `Гайвань ${waterVolume} мл`;
                   const eff = getTeaEffect(selectedTea);
+                  const isDyn = Boolean(appSettings.useDynamicTemperatures);
+                  const steepTemps = isDyn ? dynamicTemperatures.steepTempsC : undefined;
+                  const steepScheduleText = effectiveDurations.map((s, idx) => {
+                    const t = isDyn && steepTemps && steepTemps[idx] ? ` (${steepTemps[idx]}°C)` : '';
+                    return `${s}с${t}`;
+                  }).join(', ');
+
                   onOpenJournal({
                     tea: selectedTea,
                     vintageYear: selectedVintageYear,
@@ -2322,11 +2530,13 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                     waterVolumeMl: waterVolume,
                     steepsCount: steepsCount,
                     steepScheduleSec: effectiveDurations,
+                    useDynamicTemperatures: isDyn,
+                    steepTemperaturesC: steepTemps,
                     vesselUsed: vesselName,
                     effectNote: eff.nameRu,
                     userNotes: selectedTea.categoryGroup === 'blend'
-                      ? `Авторский купаж (${selectedTea.nameRu}): ${waterTemp}°C, ${leafMass}г / ${waterVolume}мл. Проливы: ${effectiveDurations.map(s => `${s}с`).join(', ')}.`
-                      : `Проведено заваривание (${waterTemp}°C, ${leafMass}г на ${waterVolume}мл). Проливы: ${effectiveDurations.map(s => `${s}с`).join(', ')}.`,
+                      ? `Авторский купаж (${selectedTea.nameRu}): ${isDyn ? 'динамическая t°C' : `${waterTemp}°C`}, ${leafMass}г / ${waterVolume}мл. Проливы: ${steepScheduleText}.`
+                      : `Проведено заваривание (${isDyn ? 'динамическая t°C' : `${waterTemp}°C`}, ${leafMass}г на ${waterVolume}мл). Проливы: ${steepScheduleText}.`,
                     tags: selectedTea.categoryGroup === 'blend' ? ['Авторский купаж', 'Гунфу Ча', 'Симулятор'] : ['Гунфу Ча', 'Симулятор']
                   });
                 }}
@@ -2373,8 +2583,8 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
             <p className="text-stone-600 leading-relaxed text-[11px] break-words">
               {morphologyInfo.simpleDesc}
             </p>
-            <div className="text-[11px] text-amber-900 bg-amber-50 p-2 rounded-lg border border-amber-200 font-medium break-words min-w-0">
-              <strong>Совет мастера:</strong> {morphologyInfo.userTip}
+            <div className="text-[11px] text-stone-700 bg-stone-100/90 p-2.5 rounded-lg border border-stone-200 font-medium break-words min-w-0">
+              <strong className="text-stone-900">Совет мастера:</strong> {morphologyInfo.userTip}
             </div>
           </div>
         </div>
@@ -2414,247 +2624,251 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
           </div>
 
           {/* Brewing Method Selector (Gongfu Cha vs Liu Gen Pao / Оставление корня) */}
-          <div className="space-y-2.5 p-3.5 bg-stone-50 rounded-xl border border-stone-200">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-stone-800 flex items-center space-x-1.5">
-                <Flame className="w-3.5 h-3.5 text-amber-700" />
-                <span>Метод заваривания:</span>
-              </span>
-              <span className="text-[10px] font-mono text-stone-500">
-                {brewingMethod === 'liu_gen'
-                  ? 'Лю Гэнь (留根法)'
-                  : brewingMethod === 'grandpa_cup'
-                  ? 'Ленивый метод (杯泡法)'
-                  : 'Гунфу Ча (功夫茶)'}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-3 gap-1.5 p-1 bg-white rounded-lg border border-stone-200">
-              <button
-                type="button"
-                id="brewing-method-gongfu"
-                onClick={() => setBrewingMethod('gongfu')}
-                className={`py-1.5 px-1.5 rounded-md text-xs font-semibold transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
-                  brewingMethod === 'gongfu'
-                    ? 'bg-amber-800 text-white shadow-2xs'
-                    : 'text-stone-600 hover:bg-stone-100'
-                }`}
-              >
-                <span>Гунфу Ча</span>
-                <span className={`text-[9px] font-normal ${brewingMethod === 'gongfu' ? 'text-amber-100' : 'text-stone-400'}`}>
-                  100% слив
+          {appSettings.showBrewingMethod && (
+            <div className="space-y-2.5 p-3.5 bg-stone-50 rounded-xl border border-stone-200">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-stone-800 flex items-center space-x-1.5">
+                  <Flame className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Метод заваривания:</span>
                 </span>
-              </button>
-
-              <button
-                type="button"
-                id="brewing-method-liu-gen"
-                onClick={() => setBrewingMethod('liu_gen')}
-                className={`py-1.5 px-1.5 rounded-md text-xs font-semibold transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
-                  brewingMethod === 'liu_gen'
-                    ? 'bg-amber-800 text-white shadow-2xs'
-                    : 'text-stone-600 hover:bg-stone-100'
-                }`}
-              >
-                <span>Оставление корня</span>
-                <span className={`text-[9px] font-normal ${brewingMethod === 'liu_gen' ? 'text-amber-100' : 'text-stone-400'}`}>
-                  Лю Гэнь (буфер)
+                <span className="text-[10px] font-mono text-stone-500">
+                  {brewingMethod === 'liu_gen'
+                    ? 'Лю Гэнь (留根法)'
+                    : brewingMethod === 'grandpa_cup'
+                    ? 'Ленивый метод (杯泡法)'
+                    : 'Гунфу Ча (功夫茶)'}
                 </span>
-              </button>
-
-              <button
-                type="button"
-                id="brewing-method-grandpa-cup"
-                onClick={() => {
-                  setBrewingMethod('grandpa_cup');
-                  if (!fixVolume && waterVolume < 200) {
-                    setFixedVolumeVal(250);
-                  }
-                  if (!fixMass && leafMass > 5) {
-                    setFixedMassVal(3.8);
-                  }
-                  if (!fixSteeps) {
-                    setFixedSteepsVal(4);
-                  }
-                }}
-                className={`py-1.5 px-1.5 rounded-md text-xs font-semibold transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
-                  brewingMethod === 'grandpa_cup'
-                    ? 'bg-amber-800 text-white shadow-2xs'
-                    : 'text-stone-600 hover:bg-stone-100'
-                }`}
-              >
-                <span>«Ленивый» метод</span>
-                <span className={`text-[9px] font-normal ${brewingMethod === 'grandpa_cup' ? 'text-amber-100' : 'text-stone-400'}`}>
-                  Бэй Пао Фа (杯泡法)
-                </span>
-              </button>
-            </div>
-
-            {/* Selection of leftover fraction in the vessel for Grandpa Cup and Liu Gen */}
-            {(brewingMethod === 'liu_gen' || brewingMethod === 'grandpa_cup') && (
-              <div className="pt-2 border-t border-stone-200/70 space-y-2.5 animate-in fade-in duration-200">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-stone-700 font-semibold">Доля остатка в сосуде:</span>
-                  <span className="font-mono font-bold text-amber-900">
-                    {Math.round(rootFraction * 100)}% ({Math.round(waterVolume * rootFraction)} мл)
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-1 text-[11px]">
-                  {[
-                    { label: '1/4 (25%)', val: 0.25, tip: 'Лёгкий' },
-                    { label: '1/3 (33%)', val: 0.333, tip: 'Канон' },
-                    { label: '1/2 (50%)', val: 0.5, tip: 'Плотный' }
-                  ].map((preset) => (
-                    <button
-                      key={preset.val}
-                      type="button"
-                      onClick={() => setRootFraction(preset.val)}
-                      className={`py-1.5 px-1.5 rounded-lg border font-mono text-center transition-all cursor-pointer ${
-                        Math.abs(rootFraction - preset.val) < 0.05
-                          ? 'bg-amber-100 text-amber-950 border-amber-300 font-bold shadow-2xs'
-                          : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-100'
-                      }`}
-                    >
-                      <div>{preset.label}</div>
-                      <div className="text-[9px] text-stone-400 font-sans">{preset.tip}</div>
-                    </button>
-                  ))}
-                </div>
-
-                {/* Real-time liquid volume breakdown */}
-                <div className="bg-amber-50/70 rounded-lg p-2 border border-amber-200/80 text-[11px] text-amber-950 space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-stone-600">Остаток в сосуде:</span>
-                    <span className="font-mono font-bold text-amber-900">{Math.round(waterVolume * rootFraction)} мл</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-stone-600">Долив горячей воды:</span>
-                    <span className="font-mono font-bold text-stone-900">+{Math.round(waterVolume * (1 - rootFraction))} мл</span>
-                  </div>
-                </div>
               </div>
-            )}
-          </div>
 
-          {/* Target Profile / Goal Preset Selector: Expandable Dropdown */}
-          <div className="space-y-2 p-3 bg-stone-50 rounded-xl border border-stone-200">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-stone-800 flex items-center space-x-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-700" />
-                <span>Метод пролива и цель вкуса:</span>
-              </span>
-            </div>
+              <div className="grid grid-cols-3 gap-1.5 p-1 bg-white rounded-lg border border-stone-200">
+                <button
+                  type="button"
+                  id="brewing-method-gongfu"
+                  onClick={() => setBrewingMethod('gongfu')}
+                  className={`py-1.5 px-1.5 rounded-md text-xs font-semibold transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                    brewingMethod === 'gongfu'
+                      ? 'bg-amber-800 text-white shadow-2xs'
+                      : 'text-stone-600 hover:bg-stone-100'
+                  }`}
+                >
+                  <span>Гунфу Ча</span>
+                  <span className={`text-[9px] font-normal ${brewingMethod === 'gongfu' ? 'text-amber-100' : 'text-stone-400'}`}>
+                    100% слив
+                  </span>
+                </button>
 
-            {/* Dropdown Trigger Box */}
-            <div className="relative">
-              {(() => {
-                const currentPreset = OPTIMIZATION_PRESETS.find(p => p.id === optimizationGoal) || OPTIMIZATION_PRESETS[0];
-                return (
-                  <button
-                    type="button"
-                    id="optimization-goal-dropdown-btn"
-                    onClick={() => setIsGoalDropdownOpen(!isGoalDropdownOpen)}
-                    className="w-full p-2.5 bg-white rounded-lg border-2 border-stone-200 hover:border-amber-700/60 focus:outline-hidden focus:ring-2 focus:ring-amber-800/30 text-left transition-all flex items-center justify-between shadow-2xs gap-2"
-                  >
-                    <div className="flex items-center space-x-2 min-w-0">
-                      <div className="w-7 h-7 rounded bg-amber-100/70 text-amber-900 flex items-center justify-center shrink-0">
-                        <Sparkles className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-stone-900 truncate">
-                          {currentPreset.nameRu}
-                        </div>
-                        <div className="text-[10px] text-stone-500 truncate mt-0.5">
-                          {currentPreset.tempOffsetC !== 0 
-                            ? `Температурный сдвиг: ${currentPreset.tempOffsetC > 0 ? '+' : ''}${currentPreset.tempOffsetC}°C` 
-                            : 'Оптимальный температурный профиль'}
-                        </div>
-                      </div>
-                    </div>
+                <button
+                  type="button"
+                  id="brewing-method-liu-gen"
+                  onClick={() => setBrewingMethod('liu_gen')}
+                  className={`py-1.5 px-1.5 rounded-md text-xs font-semibold transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                    brewingMethod === 'liu_gen'
+                      ? 'bg-amber-800 text-white shadow-2xs'
+                      : 'text-stone-600 hover:bg-stone-100'
+                  }`}
+                >
+                  <span>Оставление корня</span>
+                  <span className={`text-[9px] font-normal ${brewingMethod === 'liu_gen' ? 'text-amber-100' : 'text-stone-400'}`}>
+                    Лю Гэнь (буфер)
+                  </span>
+                </button>
 
-                    <div className="flex items-center space-x-1 shrink-0 text-stone-400">
-                      <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isGoalDropdownOpen ? 'rotate-180 text-amber-800' : ''}`} />
-                    </div>
-                  </button>
-                );
-              })()}
+                <button
+                  type="button"
+                  id="brewing-method-grandpa-cup"
+                  onClick={() => {
+                    setBrewingMethod('grandpa_cup');
+                    if (!fixVolume && waterVolume < 200) {
+                      setFixedVolumeVal(250);
+                    }
+                    if (!fixMass && leafMass > 5) {
+                      setFixedMassVal(3.8);
+                    }
+                    if (!fixSteeps) {
+                      setFixedSteepsVal(4);
+                    }
+                  }}
+                  className={`py-1.5 px-1.5 rounded-md text-xs font-semibold transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                    brewingMethod === 'grandpa_cup'
+                      ? 'bg-amber-800 text-white shadow-2xs'
+                      : 'text-stone-600 hover:bg-stone-100'
+                  }`}
+                >
+                  <span>«Ленивый» метод</span>
+                  <span className={`text-[9px] font-normal ${brewingMethod === 'grandpa_cup' ? 'text-amber-100' : 'text-stone-400'}`}>
+                    Бэй Пао Фа (杯泡法)
+                  </span>
+                </button>
+              </div>
 
-              {/* Expandable Dropdown Menu List */}
-              {isGoalDropdownOpen && (
-                <div className="mt-1.5 bg-white rounded-xl border border-stone-200 shadow-xl p-1.5 space-y-1 z-30 animate-in fade-in slide-in-from-top-1 duration-150 max-h-80 overflow-y-auto">
-                  <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider px-2 py-0.5">
-                    Выберите стиль экстракции:
+              {/* Selection of leftover fraction in the vessel for Grandpa Cup and Liu Gen */}
+              {(brewingMethod === 'liu_gen' || brewingMethod === 'grandpa_cup') && (
+                <div className="pt-2 border-t border-stone-200/70 space-y-2.5 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-stone-700 font-semibold">Доля остатка в сосуде:</span>
+                    <span className="font-mono font-bold text-amber-900">
+                      {Math.round(rootFraction * 100)}% ({Math.round(waterVolume * rootFraction)} мл)
+                    </span>
                   </div>
 
-                  {OPTIMIZATION_PRESETS.slice().sort((a, b) => {
-                    const aEligible = !a.allowedTeaTypes || a.allowedTeaTypes.includes(selectedTea.type);
-                    const bEligible = !b.allowedTeaTypes || b.allowedTeaTypes.includes(selectedTea.type);
-                    if (aEligible && !bEligible) return -1;
-                    if (!aEligible && bEligible) return 1;
-                    return 0;
-                  }).map((preset) => {
-                    const isSelected = optimizationGoal === preset.id;
-                    const isEligible = !preset.allowedTeaTypes || preset.allowedTeaTypes.includes(selectedTea.type);
-
-                    return (
+                  <div className="grid grid-cols-3 gap-1 text-[11px]">
+                    {[
+                      { label: '1/4 (25%)', val: 0.25, tip: 'Лёгкий' },
+                      { label: '1/3 (33%)', val: 0.333, tip: 'Канон' },
+                      { label: '1/2 (50%)', val: 0.5, tip: 'Плотный' }
+                    ].map((preset) => (
                       <button
-                        key={preset.id}
+                        key={preset.val}
                         type="button"
-                        disabled={!isEligible}
-                        onClick={() => {
-                          if (isEligible) {
-                            setOptimizationGoal(preset.id as OptimizationGoal);
-                            setIsGoalDropdownOpen(false);
-                          }
-                        }}
-                        className={`w-full p-2 rounded-lg text-left text-xs transition-all flex items-start justify-between gap-2 ${
-                          !isEligible
-                            ? 'opacity-40 cursor-not-allowed bg-stone-50 text-stone-400'
-                            : isSelected
-                            ? 'bg-amber-50 border border-amber-300 text-amber-950 font-medium shadow-2xs'
-                            : 'hover:bg-stone-50 text-stone-700 border border-transparent'
+                        onClick={() => setRootFraction(preset.val)}
+                        className={`py-1.5 px-1.5 rounded-lg border font-mono text-center transition-all cursor-pointer ${
+                          Math.abs(rootFraction - preset.val) < 0.05
+                            ? 'bg-amber-100 text-amber-950 border-amber-300 font-bold shadow-2xs'
+                            : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-100'
                         }`}
                       >
-                        <div className="space-y-1 min-w-0">
-                          <div className="flex items-center space-x-2">
-                            <span className="font-semibold text-xs text-stone-900 break-words">
-                              {preset.nameRu}
-                            </span>
-                            {isSelected && (
-                              <Check className="w-3.5 h-3.5 text-amber-800 shrink-0" />
-                            )}
-                          </div>
-                          <p className="text-[10px] text-stone-500 leading-relaxed">
-                            {preset.descriptionRu}
-                            {!isEligible && (
-                              <span className="block text-amber-800 font-semibold mt-0.5">
-                                {preset.id === 'white_debitter'
-                                  ? '(Доступно только для Белых чаев)'
-                                  : '(Доступно только для Шу Пуэров и Хэй Ча)'}
-                              </span>
-                            )}
-                          </p>
-                        </div>
-
-                        {preset.tempOffsetC !== 0 && (
-                          <div className="flex flex-col items-end gap-1 shrink-0 text-[10px] font-mono">
-                            <span className={`px-1.5 py-0.5 rounded text-[10px] ${preset.tempOffsetC > 0 ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'}`}>
-                              {preset.tempOffsetC > 0 ? `+${preset.tempOffsetC}` : preset.tempOffsetC}°C
-                            </span>
-                          </div>
-                        )}
+                        <div>{preset.label}</div>
+                        <div className="text-[9px] text-stone-400 font-sans">{preset.tip}</div>
                       </button>
-                    );
-                  })}
+                    ))}
+                  </div>
+
+                  {/* Real-time liquid volume breakdown */}
+                  <div className="bg-amber-50/70 rounded-lg p-2 border border-amber-200/80 text-[11px] text-amber-950 space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-stone-600">Остаток в сосуде:</span>
+                      <span className="font-mono font-bold text-amber-900">{Math.round(waterVolume * rootFraction)} мл</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-stone-600">Долив горячей воды:</span>
+                      <span className="font-mono font-bold text-stone-900">+{Math.round(waterVolume * (1 - rootFraction))} мл</span>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
+          )}
 
-            <p className="text-[10px] text-stone-500 leading-tight pt-0.5">
-              {OPTIMIZATION_PRESETS.find(p => p.id === optimizationGoal)?.descriptionRu}
-            </p>
-          </div>
+          {/* Target Profile / Goal Preset Selector: Expandable Dropdown */}
+          {appSettings.showGoalAndMethod && (
+            <div className="space-y-2 p-3 bg-stone-50 rounded-xl border border-stone-200">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-stone-800 flex items-center space-x-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Метод пролива и цель вкуса:</span>
+                </span>
+              </div>
+
+              {/* Dropdown Trigger Box */}
+              <div className="relative">
+                {(() => {
+                  const currentPreset = OPTIMIZATION_PRESETS.find(p => p.id === optimizationGoal) || OPTIMIZATION_PRESETS[0];
+                  return (
+                    <button
+                      type="button"
+                      id="optimization-goal-dropdown-btn"
+                      onClick={() => setIsGoalDropdownOpen(!isGoalDropdownOpen)}
+                      className="w-full p-2.5 bg-white rounded-lg border-2 border-stone-200 hover:border-amber-700/60 focus:outline-hidden focus:ring-2 focus:ring-amber-800/30 text-left transition-all flex items-center justify-between shadow-2xs gap-2"
+                    >
+                      <div className="flex items-center space-x-2 min-w-0">
+                        <div className="w-7 h-7 rounded bg-amber-100/70 text-amber-900 flex items-center justify-center shrink-0">
+                          <Sparkles className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-stone-900 truncate">
+                            {currentPreset.nameRu}
+                          </div>
+                          <div className="text-[10px] text-stone-500 truncate mt-0.5">
+                            {currentPreset.tempOffsetC !== 0 
+                              ? `Температурный сдвиг: ${currentPreset.tempOffsetC > 0 ? '+' : ''}${currentPreset.tempOffsetC}°C` 
+                              : 'Оптимальный температурный профиль'}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-1 shrink-0 text-stone-400">
+                        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isGoalDropdownOpen ? 'rotate-180 text-amber-800' : ''}`} />
+                      </div>
+                    </button>
+                  );
+                })()}
+
+                {/* Expandable Dropdown Menu List */}
+                {isGoalDropdownOpen && (
+                  <div className="mt-1.5 bg-white rounded-xl border border-stone-200 shadow-xl p-1.5 space-y-1 z-30 animate-in fade-in slide-in-from-top-1 duration-150 max-h-80 overflow-y-auto">
+                    <div className="text-[10px] font-bold text-stone-400 uppercase tracking-wider px-2 py-0.5">
+                      Выберите стиль экстракции:
+                    </div>
+
+                    {OPTIMIZATION_PRESETS.slice().sort((a, b) => {
+                      const aEligible = !a.allowedTeaTypes || a.allowedTeaTypes.includes(selectedTea.type);
+                      const bEligible = !b.allowedTeaTypes || b.allowedTeaTypes.includes(selectedTea.type);
+                      if (aEligible && !bEligible) return -1;
+                      if (!aEligible && bEligible) return 1;
+                      return 0;
+                    }).map((preset) => {
+                      const isSelected = optimizationGoal === preset.id;
+                      const isEligible = !preset.allowedTeaTypes || preset.allowedTeaTypes.includes(selectedTea.type);
+
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          disabled={!isEligible}
+                          onClick={() => {
+                            if (isEligible) {
+                              setOptimizationGoal(preset.id as OptimizationGoal);
+                              setIsGoalDropdownOpen(false);
+                            }
+                          }}
+                          className={`w-full p-2 rounded-lg text-left text-xs transition-all flex items-start justify-between gap-2 ${
+                            !isEligible
+                              ? 'opacity-40 cursor-not-allowed bg-stone-50 text-stone-400'
+                              : isSelected
+                              ? 'bg-amber-50 border border-amber-300 text-amber-950 font-medium shadow-2xs'
+                              : 'hover:bg-stone-50 text-stone-700 border border-transparent'
+                          }`}
+                        >
+                          <div className="space-y-1 min-w-0">
+                            <div className="flex items-center space-x-2">
+                              <span className="font-semibold text-xs text-stone-900 break-words">
+                                {preset.nameRu}
+                              </span>
+                              {isSelected && (
+                                <Check className="w-3.5 h-3.5 text-amber-800 shrink-0" />
+                              )}
+                            </div>
+                            <p className="text-[10px] text-stone-500 leading-relaxed">
+                              {preset.descriptionRu}
+                              {!isEligible && (
+                                <span className="block text-amber-800 font-semibold mt-0.5">
+                                  {preset.id === 'white_debitter'
+                                    ? '(Доступно для Белых чаёв и Шэнов)'
+                                    : '(Доступно только для Шу Пуэров и Хэй Ча)'}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+
+                          {preset.tempOffsetC !== 0 && (
+                            <div className="flex flex-col items-end gap-1 shrink-0 text-[10px] font-mono">
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] ${preset.tempOffsetC > 0 ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'}`}>
+                                {preset.tempOffsetC > 0 ? `+${preset.tempOffsetC}` : preset.tempOffsetC}°C
+                              </span>
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <p className="text-[10px] text-stone-500 leading-tight pt-0.5">
+                {OPTIMIZATION_PRESETS.find(p => p.id === optimizationGoal)?.descriptionRu}
+              </p>
+            </div>
+          )}
 
           {/* 4 Interactive Parameters with Lock / Free switches */}
           <div className="space-y-3.5">
@@ -2912,161 +3126,192 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
               )}
             </div>
 
-            {/* Гидромодуль: Соотношение чая и воды */}
-            <div className="p-3 bg-stone-50/90 rounded-xl border border-stone-200 space-y-2 shadow-2xs">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-1.5 min-w-0">
-                  <Scale className="w-3.5 h-3.5 text-amber-800 shrink-0" />
-                  <span className="text-xs font-bold text-stone-800 truncate">
-                    Гидромодуль
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <span className="font-mono font-bold text-xs bg-white text-stone-900 px-2.5 py-0.5 rounded-lg border border-stone-200 shadow-2xs">
-                    1 : {ratio}
-                  </span>
-                </div>
-              </div>
-
-              {/* Текущее соотношение */}
-              <div className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-lg border border-stone-200 text-xs">
-                <span className="text-stone-600 font-medium">Текущее соотношение:</span>
-                <span className="font-bold text-stone-900 font-mono">
-                  {leafMass} г на {waterVolume} мл
-                </span>
-              </div>
-            </div>
-
-            {/* 3. Water Temperature */}
-            <div className={`p-3 rounded-xl border transition-all ${
-              fixTemp ? 'bg-amber-50/50 border-amber-300 ring-1 ring-amber-400/20' : 'bg-stone-50/70 border-stone-200'
-            }`}>
-              <div className="flex items-center justify-between mb-2">
-                <label htmlFor="water-temp-input" className="text-xs font-bold text-stone-800 flex items-center space-x-1.5">
-                  <Flame className="w-3.5 h-3.5 text-red-600" />
-                  <span>Температура воды (°C)</span>
-                </label>
-                <button
-                  type="button"
-                  id="toggle-fix-temp-btn"
-                  onClick={() => {
-                    setRawTempStr(null);
-                    if (!fixTemp) setFixedTempVal(waterTemp);
-                    setFixTemp(!fixTemp);
-                  }}
-                  className={`px-2 py-0.5 rounded text-[11px] font-semibold flex items-center space-x-1 transition-all ${
-                    fixTemp 
-                      ? 'bg-amber-700 text-white shadow-xs' 
-                      : 'bg-stone-200 text-stone-700 hover:bg-stone-300'
-                  }`}
-                  title={fixTemp ? 'Зафиксирована: задана вручную' : 'Оптимум: рекомендована для данного сорта'}
-                >
-                  {fixTemp ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3 text-stone-500" />}
-                  <span>{fixTemp ? 'Зафиксирована' : 'Оптимум сорта'}</span>
-                </button>
-              </div>
-
-              <div className="space-y-2">
+            {/* Гидромодуль: Соотношение чая и воды — отображается только в расширенном режиме */}
+            {appSettings.advancedMode && (
+              <div className="p-3 bg-stone-50/90 rounded-xl border border-stone-200 space-y-2 shadow-2xs">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-1.5">
-                    <input
-                      id="water-temp-input"
-                      type="number"
-                      step="1"
-                      min="50"
-                      max="100"
-                      placeholder={String(selectedTea.optimalTemp)}
-                      value={rawTempStr !== null ? rawTempStr : waterTemp}
-                      onChange={(e) => {
-                        setRawTempStr(e.target.value);
-                        const val = parseFloat(e.target.value);
-                        if (!isNaN(val) && val > 0) {
-                          setFixTemp(true);
-                          setFixedTempVal(val);
-                        }
-                      }}
-                      onBlur={() => {
-                        if (rawTempStr === null) return;
-                        const trimmed = rawTempStr.trim();
-                        if (trimmed === '' || isNaN(parseFloat(trimmed)) || parseFloat(trimmed) <= 0) {
-                          // User cleared input -> reset to optimal recommended temperature
-                          setFixedTempVal(selectedTea.optimalTemp);
-                          setFixTemp(true);
-                        } else {
-                          const clamped = Math.max(50, Math.min(100, Math.round(parseFloat(trimmed))));
-                          setFixedTempVal(clamped);
-                          setFixTemp(true);
-                        }
-                        setRawTempStr(null);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          (e.target as HTMLInputElement).blur();
-                        }
-                      }}
-                      className={`w-20 h-8 text-center font-mono font-bold text-base rounded border ${
-                        fixTemp
-                          ? 'bg-white text-stone-900 border-amber-400 ring-1 ring-amber-300'
-                          : 'bg-stone-100 text-stone-700 border-stone-300'
-                      }`}
-                    />
-                    <span className="text-xs font-semibold text-stone-600">°C</span>
+                  <div className="flex items-center space-x-1.5 min-w-0">
+                    <Scale className="w-3.5 h-3.5 text-amber-800 shrink-0" />
+                    <span className="text-xs font-bold text-stone-800 truncate">
+                      Гидромодуль
+                    </span>
                   </div>
-                  <span className="text-[11px] text-stone-500">
-                    Оптимум сорта: <strong className="text-stone-700">{selectedTea.optimalTemp}°C</strong>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="font-mono font-bold text-xs bg-white text-stone-900 px-2.5 py-0.5 rounded-lg border border-stone-200 shadow-2xs">
+                      1 : {ratio}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Текущее соотношение */}
+                <div className="flex items-center justify-between bg-white px-2.5 py-1.5 rounded-lg border border-stone-200 text-xs">
+                  <span className="text-stone-600 font-medium">Текущее соотношение:</span>
+                  <span className="font-bold text-stone-900 font-mono">
+                    {leafMass} г на {waterVolume} мл
                   </span>
                 </div>
+              </div>
+            )}
 
-                <input
-                  id="water-temp-slider"
-                  type="range"
-                  min="65"
-                  max="100"
-                  step="1"
-                  value={waterTemp}
-                  onChange={(e) => {
-                    setRawTempStr(null);
-                    setFixTemp(true);
-                    setFixedTempVal(Number(e.target.value));
-                  }}
-                  className="w-full h-1.5 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-red-600"
-                />
-
-                <div className="flex flex-wrap gap-1 text-[10px]">
-                  {[75, 80, 85, 90, 95, 100].map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => {
-                        setRawTempStr(null);
-                        setFixTemp(true);
-                        setFixedTempVal(t);
-                      }}
-                      className={`px-1.5 py-0.5 rounded font-mono border ${
-                        waterTemp === t && fixTemp
-                          ? 'bg-amber-800 text-white border-amber-800 font-bold'
-                          : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-100'
-                      }`}
-                    >
-                      {t}°C
-                    </button>
-                  ))}
+            {/* 3. Water Temperature: Dynamic Mode or Static Slider */}
+            {appSettings.useDynamicTemperatures ? (
+              <div className="p-3 rounded-xl border border-stone-200 bg-stone-50/70 space-y-2 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-1.5 font-bold text-xs text-stone-800">
+                    <Thermometer className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Динамическая температура</span>
+                  </div>
+                  {customTempsCount > 0 && (
+                    <span className="text-[10px] font-mono font-bold text-amber-900 bg-stone-200 px-2 py-0.5 rounded-full border border-stone-300">
+                      Своя t° ({customTempsCount})
+                    </span>
+                  )}
                 </div>
-
-                {waterTemp < selectedTea.tempRange[0] && (
-                  <div className="text-xs text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200 flex items-start space-x-1.5">
-                    <Info className="w-4 h-4 shrink-0 mt-0.5 text-amber-700" />
-                    <span>Температура ниже оптимума. Тайминг проливов автоматически продлён.</span>
-                  </div>
-                )}
-                {waterTemp > selectedTea.tempRange[1] && (
-                  <div className="text-xs text-rose-800 bg-rose-50 p-2 rounded-lg border border-rose-200 flex items-start space-x-1.5">
-                    <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-                    <span>Выше оптимума! Ускорен выход вяжущих танинов EGCG.</span>
-                  </div>
+                <p className="text-[11px] text-stone-600 leading-relaxed">
+                  Температура автоматически выставляется для каждого отдельного пролива.
+                </p>
+                {customTempsCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleResetAllCustomTemps}
+                    className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-stone-700 hover:text-stone-900 bg-white hover:bg-stone-50 border border-stone-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                  >
+                    <RotateCcw className="w-3 h-3 text-amber-700" />
+                    <span>Сбросить t°C к авто-профилю</span>
+                  </button>
                 )}
               </div>
-            </div>
+            ) : (
+              <div className={`p-3 rounded-xl border transition-all ${
+                fixTemp ? 'bg-amber-50/50 border-amber-300 ring-1 ring-amber-400/20' : 'bg-stone-50/70 border-stone-200'
+              }`}>
+                <div className="flex items-center justify-between mb-2">
+                  <label htmlFor="water-temp-input" className="text-xs font-bold text-stone-800 flex items-center space-x-1.5">
+                    <Flame className="w-3.5 h-3.5 text-red-600" />
+                    <span>Температура воды (°C)</span>
+                  </label>
+                  <button
+                    type="button"
+                    id="toggle-fix-temp-btn"
+                    onClick={() => {
+                      setRawTempStr(null);
+                      if (!fixTemp) setFixedTempVal(waterTemp);
+                      setFixTemp(!fixTemp);
+                    }}
+                    className={`px-2 py-0.5 rounded text-[11px] font-semibold flex items-center space-x-1 transition-all ${
+                      fixTemp 
+                        ? 'bg-amber-700 text-white shadow-xs' 
+                        : 'bg-stone-200 text-stone-700 hover:bg-stone-300'
+                    }`}
+                    title={fixTemp ? 'Зафиксирована: задана вручную' : 'Оптимум: рекомендована для данного сорта'}
+                  >
+                    {fixTemp ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3 text-stone-500" />}
+                    <span>{fixTemp ? 'Зафиксирована' : 'Оптимум сорта'}</span>
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-1.5">
+                      <input
+                        id="water-temp-input"
+                        type="number"
+                        step="1"
+                        min="50"
+                        max="100"
+                        placeholder={String(selectedTea.optimalTemp)}
+                        value={rawTempStr !== null ? rawTempStr : waterTemp}
+                        onChange={(e) => {
+                          setRawTempStr(e.target.value);
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val) && val > 0) {
+                            setFixTemp(true);
+                            setFixedTempVal(val);
+                          }
+                        }}
+                        onBlur={() => {
+                          if (rawTempStr === null) return;
+                          const trimmed = rawTempStr.trim();
+                          if (trimmed === '' || isNaN(parseFloat(trimmed)) || parseFloat(trimmed) <= 0) {
+                            // User cleared input -> reset to optimal recommended temperature
+                            setFixedTempVal(selectedTea.optimalTemp);
+                            setFixTemp(true);
+                          } else {
+                            const clamped = Math.max(50, Math.min(100, Math.round(parseFloat(trimmed))));
+                            setFixedTempVal(clamped);
+                            setFixTemp(true);
+                          }
+                          setRawTempStr(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            (e.target as HTMLInputElement).blur();
+                          }
+                        }}
+                        className={`w-20 h-8 text-center font-mono font-bold text-base rounded border ${
+                          fixTemp
+                            ? 'bg-white text-stone-900 border-amber-400 ring-1 ring-amber-300'
+                            : 'bg-stone-100 text-stone-700 border-stone-300'
+                        }`}
+                      />
+                      <span className="text-xs font-semibold text-stone-600">°C</span>
+                    </div>
+                    <span className="text-[11px] text-stone-500">
+                      Оптимум сорта: <strong className="text-stone-700">{selectedTea.optimalTemp}°C</strong>
+                    </span>
+                  </div>
+
+                  <input
+                    id="water-temp-slider"
+                    type="range"
+                    min="65"
+                    max="100"
+                    step="1"
+                    value={waterTemp}
+                    onChange={(e) => {
+                      setRawTempStr(null);
+                      setFixTemp(true);
+                      setFixedTempVal(Number(e.target.value));
+                    }}
+                    className="w-full h-1.5 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-red-600"
+                  />
+
+                  <div className="flex flex-wrap gap-1 text-[10px]">
+                    {[75, 80, 85, 90, 95, 100].map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => {
+                          setRawTempStr(null);
+                          setFixTemp(true);
+                          setFixedTempVal(t);
+                        }}
+                        className={`px-1.5 py-0.5 rounded font-mono border ${
+                          waterTemp === t && fixTemp
+                            ? 'bg-amber-800 text-white border-amber-800 font-bold'
+                            : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-100'
+                        }`}
+                      >
+                        {t}°C
+                      </button>
+                    ))}
+                  </div>
+
+                  {waterTemp < selectedTea.tempRange[0] && (
+                    <div className="text-xs text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200 flex items-start space-x-1.5">
+                      <Info className="w-4 h-4 shrink-0 mt-0.5 text-amber-700" />
+                      <span>Температура ниже оптимума. Тайминг проливов автоматически продлён.</span>
+                    </div>
+                  )}
+                  {waterTemp > selectedTea.tempRange[1] && (
+                    <div className="text-xs text-rose-800 bg-rose-50 p-2 rounded-lg border border-rose-200 flex items-start space-x-1.5">
+                      <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+                      <span>Выше оптимума! Ускорен выход вяжущих танинов EGCG.</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* 4. Steep Count */}
             <div className={`p-3 rounded-xl border transition-all ${
@@ -3198,7 +3443,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
           <div className="space-y-3 pt-2 border-t border-stone-100">
             <h5 className="text-xs font-bold text-stone-800 uppercase tracking-wider flex items-center space-x-1">
               <Waves className="w-3.5 h-3.5 text-blue-600" />
-              <span>Минерализация воды (TDS)</span>
+              <span>Минерализация воды</span>
             </h5>
             <div className="grid grid-cols-3 gap-1.5">
               {WATER_HARDNESS_PRESETS.map((preset) => (
@@ -3213,13 +3458,23 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                   }`}
                 >
                   <div className="text-[11px] leading-tight truncate">{preset.nameRu.split('(')[0]}</div>
-                  <div className="text-[10px] text-stone-400 font-mono mt-0.5">{preset.tdsPpmRange}</div>
+                  {appSettings.advancedMode && (
+                    <div className="text-[10px] text-stone-400 font-mono mt-0.5">{preset.tdsPpmRange}</div>
+                  )}
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-stone-500 italic">
-              {WATER_HARDNESS_PRESETS.find(h => h.level === waterHardness)?.scientificImpactRu}
-            </p>
+            {appSettings.advancedMode ? (
+              <p className="text-[11px] text-stone-500 italic">
+                {WATER_HARDNESS_PRESETS.find(h => h.level === waterHardness)?.scientificImpactRu}
+              </p>
+            ) : (
+              <p className="text-[11px] text-stone-500">
+                {waterHardness === 'soft' && 'Мягкая вода — настой чистый, легкий и сладкий.'}
+                {waterHardness === 'optimal' && 'Оптимальная вода — гармоничный баланс вкуса и аромата.'}
+                {waterHardness === 'hard' && 'Жесткая вода — может приглушать аромат и сладость.'}
+              </p>
+            )}
           </div>
 
           {/* Vessel Material: Expandable Dropdown Selector */}
@@ -3227,7 +3482,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
             <div className="flex items-center justify-between">
               <h5 className="text-xs font-bold text-stone-800 uppercase tracking-wider flex items-center space-x-1">
                 <Coffee className="w-3.5 h-3.5 text-amber-700" />
-                <span>Материал посуды (Теплофизика)</span>
+                <span>Материал посуды</span>
               </h5>
             </div>
 
@@ -3332,8 +3587,17 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
             </div>
 
             <div className="p-2.5 bg-stone-50 rounded-xl border border-stone-200 text-[11px] text-stone-600 break-words">
-              <span className="font-semibold text-stone-800">Теплофизический эффект: </span>
-              {VESSEL_MATERIALS.find(v => v.id === vesselMaterial)?.scientificImpactRu}
+              {appSettings.advancedMode ? (
+                <>
+                  <span className="font-semibold text-stone-800">Теплофизический эффект: </span>
+                  {VESSEL_MATERIALS.find(v => v.id === vesselMaterial)?.scientificImpactRu}
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold text-stone-800">Рекомендация: </span>
+                  {VESSEL_MATERIALS.find(v => v.id === vesselMaterial)?.bestForRu}
+                </>
+              )}
             </div>
           </div>
 
@@ -3486,21 +3750,23 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
             )}
           </div>
 
-          {/* Cumulative Totals according to ISO 9768 */}
-          <div className="pt-2 border-t border-stone-100 text-xs space-y-2 text-stone-600">
-            <div className="flex justify-between">
-              <span>Суммарный выход экстракта (ISO 9768):</span>
-              <span className="font-mono font-bold text-amber-900">{lastSteepYield}% от сухой массы</span>
+          {/* Cumulative Totals according to ISO 9768 (Advanced Mode) */}
+          {appSettings.advancedMode && (
+            <div className="pt-2 border-t border-stone-100 text-xs space-y-2 text-stone-600">
+              <div className="flex justify-between">
+                <span>Суммарный выход экстракта (ISO 9768):</span>
+                <span className="font-mono font-bold text-amber-900">{lastSteepYield}% от сухой массы</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Суммарно извлечено кофеина:</span>
+                <span className="font-mono font-bold text-stone-900">{totalCaffeineExtracted} мг</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Суммарно извлечено L-теанина:</span>
+                <span className="font-mono font-bold text-emerald-800">{totalTheanineExtracted} мг</span>
+              </div>
             </div>
-            <div className="flex justify-between">
-              <span>Суммарно извлечено кофеина:</span>
-              <span className="font-mono font-bold text-stone-900">{totalCaffeineExtracted} мг</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Суммарно извлечено L-теанина:</span>
-              <span className="font-mono font-bold text-emerald-800">{totalTheanineExtracted} мг</span>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Right Column: 1. UNIFIED STEEPS + CUP DEEP DIVE WINDOW -> 2. KINETIC CURVES AT VERY BOTTOM */}
@@ -3721,6 +3987,39 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                           </span>
                         </div>
 
+                        {appSettings.useDynamicTemperatures && (
+                          <div className="flex items-center justify-center gap-1 mt-0.5">
+                            <span className={`text-[10px] font-mono leading-tight flex items-center gap-0.5 ${
+                              customRinseTemp !== null
+                                ? 'text-rose-700 font-bold'
+                                : 'text-stone-600 font-medium'
+                            }`}>
+                              <Thermometer className="w-2.5 h-2.5 text-rose-600 shrink-0" />
+                              <span>{effectiveRinseTemp}°C</span>
+                            </span>
+                            {customRinseTemp !== null && (
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCustomRinseTemp(null);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.stopPropagation();
+                                    setCustomRinseTemp(null);
+                                  }
+                                }}
+                                className="p-0.5 rounded hover:bg-rose-200 text-rose-900 transition-colors cursor-pointer"
+                                title="Сбросить t°C промыва к авто-профилю"
+                              >
+                                <RotateCcw className="w-2.5 h-2.5" />
+                              </span>
+                            )}
+                          </div>
+                        )}
+
                         {customRinseTime !== null ? (
                           <div className={`pt-0.5 border-t text-center leading-none text-[9.5px] truncate font-medium ${
                             selectedSteepIndex === -1 ? 'border-amber-200 text-amber-900' : 'border-stone-200 text-stone-400'
@@ -3754,6 +4053,10 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                         brewingMethod={brewingMethod}
                         rootFraction={rootFraction}
                         waterVolume={waterVolume}
+                        useDynamicTemperatures={appSettings.useDynamicTemperatures}
+                        steepTempC={d.waterTempC}
+                        isCustomTemp={Boolean(d.isCustomTemp)}
+                        onSaveTemp={handleSetCustomSteepTemp}
                         onSelect={setSelectedSteepIndex}
                         onDoubleClick={(i) => setEditingSteepIndex(i)}
                         onLongPress={handleOpenTimer}
@@ -3816,35 +4119,37 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                         </span>
                       </h5>
 
-                      <p className="text-xs text-stone-600 mt-1.5 max-w-lg">
-                        {teaRinseInfo.actionRu}
-                      </p>
-
-                      {/* Quick Rinse Time Presets & Inline Edit */}
-                      <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-xs">
-                        <span className="text-stone-500 font-medium text-[11px]">Задать время промывки:</span>
-                        {[0, 3, 5, 10, 15, 30, 60].map((tSec) => (
-                          <button
-                            key={tSec}
-                            type="button"
-                            onClick={() => setCustomRinseTime(tSec === baseTeaRinseInfo.seconds ? null : tSec)}
-                            className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold transition-all cursor-pointer border ${
-                              (customRinseTime === tSec || (customRinseTime === null && tSec === baseTeaRinseInfo.seconds))
-                                ? 'bg-amber-800 text-white border-amber-900 shadow-2xs'
-                                : 'bg-white hover:bg-stone-100 text-stone-700 border-stone-200'
-                            }`}
-                          >
-                            {tSec === 0 ? 'Без промыва (0с)' : `${tSec}с`}
-                          </button>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={() => setEditingSteepIndex(-1)}
-                          className="px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 transition-colors cursor-pointer"
-                        >
-                          Ввести число
-                        </button>
-                      </div>
+                      {appSettings.advancedMode ? (
+                        <div className="space-y-2 mt-2 max-w-2xl">
+                          <p className="text-xs text-stone-700 leading-relaxed font-medium">
+                            {teaRinseInfo.scientificReasonRu}
+                          </p>
+                          <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 text-xs text-stone-700 space-y-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                              <div>
+                                <span className="text-stone-500 block">Гидромодуль:</span>
+                                <span className="font-mono font-bold text-stone-900">
+                                  1:{Math.round(waterVolume / leafMass)} ({leafMass} г листа / {waterVolume} мл • {(leafMass / (waterVolume / 1000)).toFixed(1)} г/л)
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-stone-500 block">Минерализация воды:</span>
+                                <span className="font-mono font-bold text-stone-900">
+                                  {WATER_HARDNESS_PRESETS.find(h => h.level === waterHardness)?.tdsPpmRange || '70–130 ppm'} в воде ({WATER_HARDNESS_PRESETS.find(h => h.level === waterHardness)?.nameRu})
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-[11px] text-stone-600 bg-white/80 p-2 rounded-lg border border-stone-200/60 leading-relaxed">
+                              <span className="font-semibold text-stone-800">Буфер воды: </span>
+                              {WATER_HARDNESS_PRESETS.find(h => h.level === waterHardness)?.scientificImpactRu}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-stone-600 mt-1.5 max-w-lg">
+                          {teaRinseInfo.actionRu}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -3919,9 +4224,68 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                       )}
                     </h5>
 
-                    <p className="text-xs text-stone-600 mt-1.5 max-w-lg">
-                      {currentSteepData.keyNotes}
-                    </p>
+                    {appSettings.advancedMode ? (
+                      <div className="space-y-2 mt-2 max-w-2xl">
+                        {/* Physical-chemical kinetic description */}
+                        <p className="text-xs text-stone-700 leading-relaxed font-medium">
+                          {currentSteepData.keyNotes}
+                        </p>
+
+                        {/* Physical & Chemical Parameters Panel */}
+                        <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 text-xs text-stone-700 space-y-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                            <div>
+                              <span className="text-stone-500 block">Гидромодуль:</span>
+                              <span className="font-mono font-bold text-stone-900">
+                                1:{Math.round(waterVolume / leafMass)} ({leafMass} г листа / {waterVolume} мл • {(leafMass / (waterVolume / 1000)).toFixed(1)} г/л)
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-stone-500 block">Минерализация воды:</span>
+                              <span className="font-mono font-bold text-stone-900">
+                                {WATER_HARDNESS_PRESETS.find(h => h.level === waterHardness)?.tdsPpmRange || '70–130 ppm'} в воде ({WATER_HARDNESS_PRESETS.find(h => h.level === waterHardness)?.nameRu})
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="text-[11px] text-stone-600 bg-white/80 p-2 rounded-lg border border-stone-200/60 leading-relaxed">
+                            <span className="font-semibold text-stone-800">Буфер воды: </span>
+                            {WATER_HARDNESS_PRESETS.find(h => h.level === waterHardness)?.scientificImpactRu}
+                          </div>
+
+                          <div className="pt-2 border-t border-stone-200/60 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                            <div>
+                              <span className="text-stone-500 block">Суммарный выход экстракта (ISO 9768):</span>
+                              <span className="font-mono font-bold text-amber-900">{lastSteepYield}% от сухой массы</span>
+                            </div>
+                            <div>
+                              <span className="text-stone-500 block">Суммарно извлечено кофеина:</span>
+                              <span className="font-mono font-bold text-stone-900">{totalCaffeineExtracted} мг</span>
+                            </div>
+                            <div>
+                              <span className="text-stone-500 block">Суммарно извлечено L-теанина:</span>
+                              <span className="font-mono font-bold text-emerald-800">{totalTheanineExtracted} мг</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5 mt-2 max-w-xl">
+                        <p className="text-xs text-stone-700 leading-relaxed">
+                          {getSteepTasteSensations(selectedTea, currentSteepData.steepNumber, isRinseSelected)}
+                        </p>
+                        {selectedTea.keySensoryNotes && selectedTea.keySensoryNotes.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                            <span className="text-[11px] text-stone-400">Вкусовые ноты:</span>
+                            {selectedTea.keySensoryNotes.slice(0, 3).map((note, idx) => (
+                              <span key={idx} className="text-[11px] px-2 py-0.5 rounded-md bg-stone-100 text-stone-800 border border-stone-200 font-medium">
+                                {note}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -3933,37 +4297,6 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                 </div>
               </div>
             )}
-
-              {/* Scientific Metrics Badge Row */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-stone-50/80 p-3.5 rounded-xl border border-stone-200">
-                <div>
-                  <div className="text-[11px] text-stone-500">TDS (Сухой остаток)</div>
-                  <div className="text-base font-bold font-mono text-stone-900 mt-0.5">
-                    {currentSteepData.tdsPpm} <span className="text-xs font-normal text-stone-500">ppm (мг/л)</span>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-[11px] text-stone-500">Выход экстракта (ISO 9768)</div>
-                  <div className="text-base font-bold font-mono text-amber-800 mt-0.5">
-                    {currentSteepData.cumulativeExtractionYieldPercent}% <span className="text-xs font-normal text-stone-500">листа</span>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-[11px] text-stone-500">Индекс баланса (Теанин / Танины)</div>
-                  <div className="text-base font-bold font-mono text-emerald-800 mt-0.5">
-                    {currentSteepData.theanineToCatechinsRatio} <span className="text-xs font-normal text-stone-500">{currentSteepData.theanineToCatechinsRatio > 0.25 ? '(Умами+)' : '(Танины+)'}</span>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-[11px] text-stone-500">Время экспозиции</div>
-                  <div className="text-xl sm:text-2xl font-black font-mono text-amber-900 mt-0.5">
-                    {currentSteepData.timeSec} <span className="text-xs font-bold text-stone-500">сек</span>
-                  </div>
-                </div>
-              </div>
 
               {/* Liu Gen Specific Thermodynamic & Concentration Matrix */}
               {brewingMethod === 'liu_gen' && (
@@ -3986,60 +4319,128 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
               )}
 
               {/* Chemical Concentrations in this steep */}
-              <div>
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                  <div className="text-xs font-semibold text-stone-700 uppercase tracking-wider">
-                    Фракционированный химический состав пиалы (мг / 100 мл):
-                  </div>
-                  {currentSteepData.tasteHarmonyIndex !== undefined && (
-                    <div className="flex items-center gap-1.5 text-[11px] px-2.5 py-0.5 rounded-full bg-stone-100 border border-stone-200">
-                      <span className="text-stone-500 font-medium">Индекс гармонии вкуса (THI):</span>
-                      <span className={`font-mono font-bold ${
-                        currentSteepData.tasteHarmonyIndex >= 0.8
-                          ? 'text-emerald-700'
-                          : currentSteepData.tasteHarmonyIndex >= 0.5
-                          ? 'text-amber-700'
-                          : 'text-rose-700'
-                      }`}>
-                        {currentSteepData.tasteHarmonyIndex}
-                      </span>
-                      <span className="text-[10px] text-stone-400">
-                        {currentSteepData.tasteHarmonyIndex >= 0.8 ? '(умами/сладость)' : currentSteepData.tasteHarmonyIndex >= 0.5 ? '(баланс)' : '(терпкость)'}
-                      </span>
+              {appSettings.showChemicalComposition && (
+                <>
+                  <div className="space-y-3.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-xs font-semibold text-stone-700 uppercase tracking-wider">
+                        Фракционный состав пиалы:
+                      </div>
+                      {currentSteepData.tasteHarmonyIndex !== undefined && (
+                        <div className="flex items-center gap-1.5 text-[11px] px-2.5 py-0.5 rounded-full bg-stone-100 border border-stone-200">
+                          <span className="text-stone-500 font-medium">Индекс гармонии вкуса (THI):</span>
+                          <span className={`font-mono font-bold ${
+                            currentSteepData.tasteHarmonyIndex >= 0.8
+                              ? 'text-emerald-700'
+                              : currentSteepData.tasteHarmonyIndex >= 0.5
+                              ? 'text-amber-700'
+                              : 'text-rose-700'
+                          }`}>
+                            {currentSteepData.tasteHarmonyIndex}
+                          </span>
+                          <span className="text-[10px] text-stone-400">
+                            {currentSteepData.tasteHarmonyIndex >= 0.8 ? '(умами/сладость)' : currentSteepData.tasteHarmonyIndex >= 0.5 ? '(баланс)' : '(терпкость)'}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl">
-                    <div className="text-[11px] text-emerald-800 font-medium">L-Теанин</div>
-                    <div className="text-lg font-bold font-mono text-emerald-950 mt-0.5">
-                      {currentSteepData.theanineConcentration} <span className="text-xs font-normal">мг</span>
-                    </div>
-                  </div>
+                    {/* Scientific Metrics Badge Row (TDS, Dry residue, Extraction yield, Exposure, Temp) */}
+                    <div className={`grid grid-cols-2 sm:grid-cols-4 ${appSettings.useDynamicTemperatures ? 'lg:grid-cols-5' : ''} gap-3 bg-stone-50/80 p-3.5 rounded-xl border border-stone-200`}>
+                      <div>
+                        <div className="text-[11px] text-stone-500">TDS (Сухой остаток)</div>
+                        <div className="text-base font-bold font-mono text-stone-900 mt-0.5">
+                          {currentSteepData.tdsPpm} <span className="text-xs font-normal text-stone-500">ppm (мг/л)</span>
+                        </div>
+                      </div>
 
-                  <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-xl">
-                    <div className="text-[11px] text-blue-800 font-medium">Кофеин</div>
-                    <div className="text-lg font-bold font-mono text-blue-950 mt-0.5">
-                      {currentSteepData.caffeineConcentration} <span className="text-xs font-normal">мг</span>
-                    </div>
-                  </div>
+                      <div>
+                        <div className="text-[11px] text-stone-500">Выход экстракта (ISO 9768)</div>
+                        <div className="text-base font-bold font-mono text-amber-800 mt-0.5">
+                          {currentSteepData.cumulativeExtractionYieldPercent}% <span className="text-xs font-normal text-stone-500">листа</span>
+                        </div>
+                      </div>
 
-                  <div className="p-3 bg-rose-50/60 border border-rose-200 rounded-xl">
-                    <div className="text-[11px] text-rose-800 font-medium">Катехины</div>
-                    <div className="text-lg font-bold font-mono text-rose-950 mt-0.5">
-                      {currentSteepData.catechinsConcentration} <span className="text-xs font-normal">мг</span>
-                    </div>
-                  </div>
+                      <div>
+                        <div className="text-[11px] text-stone-500">Индекс баланса (Теанин / Танины)</div>
+                        <div className="text-base font-bold font-mono text-emerald-800 mt-0.5">
+                          {currentSteepData.theanineToCatechinsRatio} <span className="text-xs font-normal text-stone-500">{currentSteepData.theanineToCatechinsRatio > 0.25 ? '(Умами+)' : '(Танины+)'}</span>
+                        </div>
+                      </div>
 
-                  <div className="p-3 bg-purple-50/60 border border-purple-200 rounded-xl">
-                    <div className="text-[11px] text-purple-800 font-medium">Полисахариды</div>
-                    <div className="text-lg font-bold font-mono text-purple-950 mt-0.5">
-                      {currentSteepData.polysaccharidesConcentration} <span className="text-xs font-normal">мг</span>
+                      <div>
+                        <div className="text-[11px] text-stone-500">Время экспозиции</div>
+                        <div className="text-xl sm:text-2xl font-black font-mono text-amber-900 mt-0.5">
+                          {currentSteepData.timeSec} <span className="text-xs font-bold text-stone-500">сек</span>
+                        </div>
+                      </div>
+
+                      {appSettings.useDynamicTemperatures && (
+                        <div>
+                          <div className="text-[11px] text-stone-500">Температура воды</div>
+                          <div className="text-base font-bold font-mono text-rose-900 mt-0.5 flex items-center gap-1">
+                            <Thermometer className="w-3.5 h-3.5 text-rose-600" />
+                            <span>{currentSteepData.waterTempC}°C</span>
+                            <span className="text-[10px] font-normal text-stone-500">
+                              {currentSteepData.isCustomTemp ? '(своя)' : '(авто)'}
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
+
+                    <div className="space-y-1.5">
+                      <div className="text-[11px] font-medium text-stone-500">
+                        Концентрация экстрагированных веществ (мг / 100 мл):
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="p-3 bg-emerald-50/60 border border-emerald-200 rounded-xl">
+                          <div className="text-[11px] text-emerald-800 font-medium">L-Теанин</div>
+                          <div className="text-lg font-bold font-mono text-emerald-950 mt-0.5">
+                            {currentSteepData.theanineConcentration} <span className="text-xs font-normal">мг</span>
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-xl">
+                          <div className="text-[11px] text-blue-800 font-medium">Кофеин</div>
+                          <div className="text-lg font-bold font-mono text-blue-950 mt-0.5">
+                            {currentSteepData.caffeineConcentration} <span className="text-xs font-normal">мг</span>
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-rose-50/60 border border-rose-200 rounded-xl">
+                          <div className="text-[11px] text-rose-800 font-medium">Катехины</div>
+                          <div className="text-lg font-bold font-mono text-rose-950 mt-0.5">
+                            {currentSteepData.catechinsConcentration} <span className="text-xs font-normal">мг</span>
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-purple-50/60 border border-purple-200 rounded-xl">
+                          <div className="text-[11px] text-purple-800 font-medium">Полисахариды</div>
+                          <div className="text-lg font-bold font-mono text-purple-950 mt-0.5">
+                            {currentSteepData.polysaccharidesConcentration} <span className="text-xs font-normal">мг</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {appSettings.advancedMode && (
+                      <div className="p-3 bg-stone-50 rounded-xl border border-stone-200/80 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-stone-700">
+                        <div>
+                          <span className="text-stone-500 block text-[11px]">Суммарный выход экстракта (ISO 9768):</span>
+                          <span className="font-mono font-bold text-amber-900">{lastSteepYield}% от сухой массы</span>
+                        </div>
+                        <div>
+                          <span className="text-stone-500 block text-[11px]">Суммарно извлечено кофеина:</span>
+                          <span className="font-mono font-bold text-stone-900">{totalCaffeineExtracted} мг</span>
+                        </div>
+                        <div>
+                          <span className="text-stone-500 block text-[11px]">Суммарно извлечено L-теанина:</span>
+                          <span className="font-mono font-bold text-emerald-800">{totalTheanineExtracted} мг</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              </div>
 
               {/* Sensory Balance Bars */}
               <div className="space-y-3 pt-2 min-w-0">
@@ -4132,11 +4533,191 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                   </div>
                 </div>
               </div>
+            </>
+          )}
+
+          {/* Расширенный режим: Титестерский профиль пиалы & Кинетика диффузии */}
+          {appSettings.advancedMode && (
+            <div className="mt-4 pt-4 border-t border-stone-200 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-bold text-stone-900 font-serif">
+                    Титестерский профиль пиалы & Кинетика диффузии
+                  </h4>
+                </div>
+                <span className="text-[11px] font-mono text-stone-500">
+                  Пролив #{currentSteepData.steepNumber}
+                </span>
+              </div>
+
+              {/* 1. Четыре ключевых маркера чайного настоя */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                {/* Плотность Cha Tang */}
+                <div className="p-3 rounded-xl bg-amber-50/60 border border-amber-200/80 space-y-1">
+                  <div className="text-[10px] uppercase font-bold text-amber-900 flex items-center justify-between">
+                    <span>Плотность («Ча Тан» / 稠度)</span>
+                    <span className="font-mono text-amber-700">{currentSteepData.sensoryScores.body}/10</span>
+                  </div>
+                  <div className="text-xs font-semibold text-stone-900">
+                    {currentSteepData.sensoryScores.body >= 7.5
+                      ? 'Маслянистый обволакивающий бульон'
+                      : currentSteepData.sensoryScores.body >= 5.0
+                      ? 'Шелковистое округлое тело'
+                      : 'Легкий прозрачный настой'}
+                  </div>
+                  <p className="text-[11px] text-stone-600 leading-tight">
+                    {currentSteepData.sensoryScores.body >= 7.5
+                      ? 'Высокая концентрация водорастворимых полисахаридов (TPS) и пектинов.'
+                      : currentSteepData.sensoryScores.body >= 5.0
+                      ? 'Гармоничный баланс сухих веществ и чайного сока.'
+                      : 'Акцент на верхний летучий эфирный шлейф.'}
+                  </p>
+                </div>
+
+                {/* Хуэй Гань */}
+                <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200/80 space-y-1">
+                  <div className="text-[10px] uppercase font-bold text-emerald-900 flex items-center justify-between">
+                    <span>Хуэй Гань (回甘)</span>
+                    <span className="font-mono text-emerald-700">{currentSteepData.sensoryScores.sweetness}/10</span>
+                  </div>
+                  <div className="text-xs font-semibold text-stone-900">
+                    {currentSteepData.sensoryScores.sweetness >= 7.0
+                      ? 'Взрывная сладость в гортани'
+                      : currentSteepData.sensoryScores.sweetness >= 4.5
+                      ? 'Устойчивое медовое эхо'
+                      : 'Деликатный сладковатый финал'}
+                  </div>
+                  <p className="text-[11px] text-stone-600 leading-tight">
+                    {currentSteepData.sensoryScores.sweetness >= 7.0
+                      ? 'Мгновенная трансформация терпкости в глубокую возвращающуюся сладость.'
+                      : 'Мягкий сладкий отклик на корне языка после глотка.'}
+                  </p>
+                </div>
+
+                {/* Шэн Цзинь */}
+                <div className="p-3 rounded-xl bg-sky-50/60 border border-sky-200/80 space-y-1">
+                  <div className="text-[10px] uppercase font-bold text-sky-900 flex items-center justify-between">
+                    <span>Шэн Цзинь (生津)</span>
+                    <span className="font-mono text-sky-700">
+                      {Math.round((currentSteepData.sensoryScores.umami * 0.6 + currentSteepData.sensoryScores.astringency * 0.4) * 10) / 10}/10
+                    </span>
+                  </div>
+                  <div className="text-xs font-semibold text-stone-900">
+                    {(currentSteepData.sensoryScores.umami * 0.6 + currentSteepData.sensoryScores.astringency * 0.4) >= 6.5
+                      ? 'Обильное сочное слюноотделение'
+                      : 'Приятная мягкая влажность'}
+                  </div>
+                  <p className="text-[11px] text-stone-600 leading-tight">
+                    Активизация слюнных желез под языком под действием органических кислот чайного листа.
+                  </p>
+                </div>
+
+                {/* Ча Ци */}
+                <div className="p-3 rounded-xl bg-purple-50/60 border border-purple-200/80 space-y-1">
+                  <div className="text-[10px] uppercase font-bold text-purple-900 flex items-center justify-between">
+                    <span>Ча Ци (茶气 / Энергия)</span>
+                    <span className="font-mono text-purple-700">
+                      {selectedTea.type.includes('puerh') || selectedTea.type.includes('dark') || selectedTea.type.includes('oolong_strip') ? 'Ян (+)' : 'Инь (~) '}
+                    </span>
+                  </div>
+                  <div className="text-xs font-semibold text-stone-900">
+                    {selectedTea.type === 'sheng_puerh'
+                      ? 'Мощный восходящий ци-импульс'
+                      : selectedTea.type === 'gaba_oolong' || selectedTea.type === 'gaba_red'
+                      ? 'Глубокое центрирующее спокойствие'
+                      : selectedTea.type === 'shou_puerh' || selectedTea.type === 'heicha'
+                      ? 'Согревающее заземляющее тепло'
+                      : selectedTea.type === 'oolong_strip' || selectedTea.type === 'oolong_ball'
+                      ? 'Окрыляющая цветочная ясность'
+                      : 'Медитативная чистота восприятия'}
+                  </div>
+                  <p className="text-[11px] text-stone-600 leading-tight">
+                    Комплексное психофизическое воздействие L-теанина, алкалоидов и летучих терпенов.
+                  </p>
+                </div>
+              </div>
+
+              {/* 2. Кинетическая фаза экстракции листа & Взаимодействие с посудой */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                {/* Фаза диффузии */}
+                <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-stone-900 flex items-center gap-1.5">
+                      <Activity className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Кинетическая фаза листа:</span>
+                    </span>
+                    <span className="font-mono font-bold text-amber-800">
+                      {currentSteepData.steepNumber <= 2
+                        ? 'Фаза I (Десорбция)'
+                        : currentSteepData.steepNumber <= 6
+                        ? 'Фаза II (Диффузия)'
+                        : 'Фаза III (Матрикс)'}
+                    </span>
+                  </div>
+                  <p className="text-stone-600 text-[11px] leading-relaxed">
+                    {currentSteepData.steepNumber <= 2
+                      ? 'Лист разворачивается и преодолевает кутикулярный барьер. Происходит преимущественный смыв свободного L-теанина и летучих терпенов.'
+                      : currentSteepData.steepNumber <= 6
+                      ? 'Клеточные мембраны полностью гидратированы. Пиковая скорость выхода кофеина и катехинов EGCG.'
+                      : 'Истощение свободных полифенолов. Медленная диффузия комплексных водорастворимых полисахаридов (TPS) и лигнина.'}
+                  </p>
+                  <div className="text-[11px] font-mono text-stone-500 pt-1 border-t border-stone-200/60 flex justify-between">
+                    <span>Скорость отдачи веществ:</span>
+                    <span className="font-semibold text-stone-800">
+                      ~{((currentSteepData.tdsPpm * waterVolume / 1000) / Math.max(1, currentSteepData.timeSec)).toFixed(1)} мг/с
+                    </span>
+                  </div>
+                </div>
+
+                {/* Взаимодействие с материалом посуды */}
+                <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-stone-900 flex items-center gap-1.5">
+                      <ScaleIcon className="w-3.5 h-3.5 text-stone-700" />
+                      <span>Материал посуды:</span>
+                    </span>
+                    <span className="font-mono font-semibold text-stone-700">
+                      {VESSEL_MATERIALS.find(v => v.id === vesselMaterial)?.nameRu.split('(')[0].trim() || 'Фарфор'}
+                    </span>
+                  </div>
+                  <p className="text-stone-600 text-[11px] leading-relaxed">
+                    {VESSEL_MATERIALS.find(v => v.id === vesselMaterial)?.scientificImpactRu || 'Нейтральная непористая поверхность.'}
+                  </p>
+                  <div className="text-[11px] font-mono text-stone-500 pt-1 border-t border-stone-200/60 flex justify-between">
+                    <span>Адсорбция танинов стенками:</span>
+                    <span className="font-semibold text-stone-800">
+                      {Math.round((VESSEL_MATERIALS.find(v => v.id === vesselMaterial)?.tanninAdsorptionFactor || 0) * 100)}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Титестерская рекомендация по коррекции следующего пролива */}
+              <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200 text-xs flex items-start gap-2.5">
+                <Lightbulb className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                <div className="space-y-0.5 min-w-0">
+                  <div className="font-bold text-amber-950">
+                    Совет титестера по следующему проливу:
+                  </div>
+                  <p className="text-amber-900 text-[11px] leading-relaxed">
+                    {currentSteepData.catechinsConcentration > 40
+                      ? 'Катехины достигли высокого уровня. Чтобы избежать чрезмерной горечи, сократите экспозицию следующего пролива на 2–3 секунды или снизьте температуру залива на 2°C.'
+                      : currentSteepData.theanineConcentration > 25
+                      ? 'Настой находится в идеальной зоне умами и сладости. Рекомендуется сохранить текущую экспозицию или добавить 2–3 секунды для углубления тела Cha Tang.'
+                      : currentSteepData.steepNumber >= 6
+                      ? 'Полифенолы стабилизировались. Для извлечения остаточных сладких полисахаридов можно смело увеличивать экспозицию на 10–15 секунд.'
+                      : 'Баланс веществ стабилен. Продолжайте ступенчатый протокол проливов с шагом +3..5 сек.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
             </div>
           </div>
 
           {/* 2. KINETIC CURVES VISUALIZATION & ACTION RECOMMENDATIONS */}
-          {brewingMethod === 'grandpa_cup' && lazyCupPaths ? (
+          {appSettings.showExtractionChart && (
+            brewingMethod === 'grandpa_cup' && lazyCupPaths ? (
             <div className="bg-white border border-stone-200 rounded-2xl p-5 sm:p-6 shadow-xs space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-stone-100 pb-3">
                 <div>
@@ -4625,7 +5206,8 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                 * Кликните по точке любого пролива на графике или по кнопке пролива выше, чтобы увидеть детальный профиль чашки.
               </p>
             </div>
-          )}
+          )
+        )}
         </div>
       </div>
         </>
@@ -4647,6 +5229,9 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
           vesselUsed={selectedTea.recommendedVesselRu}
           waterHardness={waterHardness}
           vintageYear={selectedVintageYear}
+          useDynamicTemperatures={appSettings.useDynamicTemperatures}
+          rinseTemperature={effectiveRinseTemp}
+          steepTemperatures={dynamicTemperatures.steepTempsC}
           onClose={() => setIsCheatSheetOpen(false)}
         />
       )}

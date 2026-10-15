@@ -147,6 +147,13 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
   const [customRinseTime, setCustomRinseTime] = useState<number | null | undefined>(initialSessionData?.customRinseTime);
   const [rootFraction, setRootFraction] = useState<number | undefined>(initialSessionData?.rootFraction);
 
+  const [useDynamicTemperatures, setUseDynamicTemperatures] = useState<boolean>(
+    Boolean(initialSessionData?.useDynamicTemperatures)
+  );
+  const [steepTemperaturesC, setSteepTemperaturesC] = useState<number[]>(
+    initialSessionData?.steepTemperaturesC || []
+  );
+
   // Sync if new initialSessionData passed
   useEffect(() => {
     if (initialSessionData) {
@@ -161,6 +168,8 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
       setWaterVolumeMl(initialSessionData.waterVolumeMl || t.defaultVolume || 100);
       setSteepsCount(initialSessionData.steepsCount || t.recommendedSteeps || 7);
       setSteepScheduleSec(initialSessionData.steepScheduleSec || []);
+      setUseDynamicTemperatures(Boolean(initialSessionData.useDynamicTemperatures));
+      setSteepTemperaturesC(initialSessionData.steepTemperaturesC || []);
       setVesselUsed(initialSessionData.vesselUsed || t.recommendedVesselRu?.split('(')[0]?.trim() || 'Фарфоровая гайвань 120 мл');
       setVintageYear(initialSessionData.vintageYear || t.vintageYear);
       setBrewingMethod(initialSessionData.brewingMethod || 'gongfu');
@@ -262,9 +271,11 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
     setRootFraction(entry.rootFraction);
     setWaterTempC(entry.waterTempC);
     setTeaMassG(entry.teaMassG);
-    setWaterVolumeMl(entry.waterVolumeMl);
-    setSteepsCount(entry.steepsCount);
+    setWaterVolumeMl(entry.waterVolumeMl ?? 100);
+    setSteepsCount(entry.steepsCount ?? 6);
     setSteepScheduleSec(entry.steepScheduleSec || []);
+    setUseDynamicTemperatures(Boolean(entry.useDynamicTemperatures));
+    setSteepTemperaturesC(entry.steepTemperaturesC || []);
     setSweetnessScore(entry.sweetnessScore);
     setAstringencyScore(entry.astringencyScore);
     setBodyScore(entry.bodyScore);
@@ -298,6 +309,8 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
       waterVolumeMl,
       steepsCount,
       steepScheduleSec: steepScheduleSec.length > 0 ? steepScheduleSec : undefined,
+      useDynamicTemperatures,
+      steepTemperaturesC: steepTemperaturesC.length > 0 ? steepTemperaturesC : undefined,
       isBlend,
       blendComponents: isBlend ? selectedTea.generalExamplesRu : undefined,
       sensoryNotes: selectedTea.keySensoryNotes || [],
@@ -795,7 +808,7 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
                   {/* Quick params badges */}
                   <div className="flex flex-wrap gap-1.5 text-[10px] font-mono">
                     <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-900 border border-amber-200 font-bold">
-                      {entry.waterTempC}°C
+                      {entry.useDynamicTemperatures ? 'Динам. t°' : `${entry.waterTempC}°C`}
                     </span>
                     <span className="px-2 py-0.5 rounded bg-stone-100 text-stone-700 font-medium">
                       {entry.teaMassG}г / {entry.waterVolumeMl}мл
@@ -822,6 +835,9 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
                             className="px-2 py-0.5 rounded bg-white border border-stone-200 text-stone-800 text-[11px]"
                           >
                             #{sIdx + 1}: <strong className="text-amber-900 font-black text-xs">{sec}с</strong>
+                            {entry.useDynamicTemperatures && entry.steepTemperaturesC && entry.steepTemperaturesC[sIdx] && (
+                              <span className="text-[10px] text-amber-900 font-mono font-bold ml-1">• {entry.steepTemperaturesC[sIdx]}°C</span>
+                            )}
                           </span>
                         ))}
                       </div>
@@ -905,8 +921,8 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
                           optimalTemp: entry.waterTempC,
                           tempRange: [entry.waterTempC - 5, entry.waterTempC + 5],
                           defaultMass: entry.teaMassG,
-                          defaultVolume: entry.waterVolumeMl,
-                          recommendedSteeps: entry.steepsCount,
+                          defaultVolume: entry.waterVolumeMl ?? 100,
+                          recommendedSteeps: entry.steepsCount ?? 6,
                           oxidationLevel: 'Кастомный уровень',
                           leafMorphology: 'twisted_strip',
                           scientificDescription: entry.userNotes || 'Сорт сохранён из личного дневника дегустаций.',
@@ -928,6 +944,8 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
                           waterVolumeMl: entry.waterVolumeMl,
                           steepsCount: entry.steepsCount,
                           steepScheduleSec: entry.steepScheduleSec && entry.steepScheduleSec.length > 0 ? entry.steepScheduleSec : undefined,
+                          useDynamicTemperatures: entry.useDynamicTemperatures,
+                          steepTemperaturesC: entry.steepTemperaturesC,
                           vesselUsed: entry.vesselUsed,
                           rootFraction: entry.rootFraction
                         };
@@ -1009,20 +1027,23 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
 
             {/* Active Steep Schedule transferred from Simulator */}
             {steepScheduleSec.length > 0 && (
-              <div className="p-3 bg-amber-100/50 rounded-xl border border-amber-300/80 space-y-1.5">
+              <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-1.5 text-xs font-bold text-amber-950">
+                  <div className="flex items-center space-x-1.5 text-xs font-bold text-stone-900">
                     <Sliders className="w-3.5 h-3.5 text-amber-800" />
                     <span>Параметры и секунды проливов:</span>
                   </div>
-                  <span className="text-[10px] bg-amber-800 text-white px-2 py-0.5 rounded-full font-mono font-bold">
+                  <span className="text-[10px] bg-stone-200 text-stone-800 px-2 py-0.5 rounded-full font-mono font-bold">
                     {steepScheduleSec.length} проливов
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-1 font-mono text-xs">
                   {steepScheduleSec.map((sec, idx) => (
-                    <span key={idx} className="bg-white px-2.5 py-1 rounded-md border border-amber-300 text-stone-700">
-                      #{idx + 1}: <strong className="text-amber-950 font-black text-sm">{sec}с</strong>
+                    <span key={idx} className="bg-white px-2.5 py-1 rounded-md border border-stone-200 text-stone-700">
+                      #{idx + 1}: <strong className="text-stone-900 font-black text-sm">{sec}с</strong>
+                      {useDynamicTemperatures && steepTemperaturesC && steepTemperaturesC[idx] && (
+                        <span className="text-xs text-stone-600 font-mono font-bold ml-1">• {steepTemperaturesC[idx]}°C</span>
+                      )}
                     </span>
                   ))}
                 </div>
@@ -1492,7 +1513,14 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
                         {cardSteeps.map((sec, idx) => (
                           <div key={idx} className="p-1 sm:p-1.5 rounded border border-stone-300 bg-white shadow-2xs">
                             <div className="text-[9px] text-stone-400">#{idx + 1}</div>
-                            <div className="font-bold text-amber-950 text-xs sm:text-sm">{sec}с</div>
+                            <div className="font-bold text-stone-950 text-xs sm:text-sm">
+                              {sec}с
+                              {printingEntry.useDynamicTemperatures && printingEntry.steepTemperaturesC && printingEntry.steepTemperaturesC[idx] && (
+                                <span className="block text-[9px] font-mono font-normal text-stone-500 mt-0.5">
+                                  {printingEntry.steepTemperaturesC[idx]}°C
+                                </span>
+                              )}
+                            </div>
                           </div>
                         ))}
                       </div>

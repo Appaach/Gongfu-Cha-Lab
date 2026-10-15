@@ -6,8 +6,6 @@ import {
   Volume2,
   VolumeX,
   X,
-  Plus,
-  Minus,
   ChevronLeft,
   ChevronRight,
   BellRing,
@@ -196,18 +194,6 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
   const formattedTime = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
   const steepTitle = steepNumber === -1 ? 'Промыв листа #0' : `Пролив #${steepNumber}`;
-
-  const handleAdjustTime = (delta: number) => {
-    const newTotal = Math.max(1, totalTime + delta);
-    setTotalTime(newTotal);
-    setPreciseSecondsLeft((prev) => {
-      const next = Math.max(0, prev + delta);
-      initialRemainingRef.current = next;
-      startTimeRef.current = performance.now();
-      return next;
-    });
-    setIsFinished(false);
-  };
 
   const handleReset = () => {
     setIsRunning(false);
@@ -459,7 +445,7 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
                   fill="transparent"
                   className={`transition-none ${
                     isFinished 
-                      ? 'text-emerald-500 animate-pulse' 
+                      ? 'text-emerald-500' 
                       : isRunning 
                       ? 'text-amber-700' 
                       : 'text-amber-600/80'
@@ -470,7 +456,7 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
               {/* Center Digital Display */}
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
                 {isFinished ? (
-                  <div className="flex flex-col items-center animate-bounce">
+                  <div className="flex flex-col items-center">
                     <BellRing className="w-8 h-8 text-emerald-600 mb-1" />
                     <span className="text-2xl font-bold font-serif text-emerald-700">
                       СЛИВ!
@@ -495,35 +481,16 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
               </div>
             </div>
 
-            {/* Quick adjustment buttons (-5s, Reset, +5s) */}
-            <div className="flex items-center gap-2 mt-2 mb-4">
-              <button
-                type="button"
-                onClick={() => handleAdjustTime(-5)}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 border border-stone-200 text-xs font-mono font-bold text-stone-700 transition-all cursor-pointer active:scale-95"
-                title="Уменьшить время на 5 секунд"
-              >
-                <Minus className="w-3.5 h-3.5" />
-                <span>5с</span>
-              </button>
-
+            {/* Reset button */}
+            <div className="flex items-center justify-center mt-2 mb-4">
               <button
                 type="button"
                 onClick={handleReset}
-                className="p-2 rounded-xl bg-stone-100 hover:bg-stone-200 border border-stone-200 text-stone-700 transition-all cursor-pointer active:scale-95"
-                title="Сбросить таймер"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 border border-stone-200 text-xs font-mono font-bold text-stone-700 transition-all cursor-pointer active:scale-95"
+                title="Сбросить таймер к началу"
               >
-                <RotateCcw className="w-4 h-4" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleAdjustTime(5)}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 border border-stone-200 text-xs font-mono font-bold text-stone-700 transition-all cursor-pointer active:scale-95"
-                title="Увеличить время на 5 секунд"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>5с</span>
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Сброс</span>
               </button>
             </div>
 
