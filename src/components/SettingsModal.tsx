@@ -70,15 +70,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
 
-        {/* Master Advanced Mode Card (Light theme, no PRO labels) */}
+        {/* Master Advanced Mode Card (Детализация параметров) */}
         <div className="p-3.5 rounded-2xl border border-stone-200 bg-stone-50/50 hover:bg-stone-50 transition-colors flex items-start justify-between gap-4 mb-3.5">
           <div className="space-y-1">
             <div className="flex items-center gap-1.5 font-bold text-sm text-stone-900">
               <Sparkles className="w-4 h-4 text-amber-700" />
-              <span>Расширенный режим</span>
+              <span>Детализация параметров</span>
             </div>
             <p className="text-xs text-stone-500 leading-relaxed">
-              Физико-химические параметры: кинетические фазы диффузии листа, суммарный выход экстракта (ISO 9768), кофеин и L-теанин, гидромодуль и свойства воды.
+              Отображает гидромодуль, минерализацию воды (ppm), теплопотери посуды и суммарную экстракцию (ISO 9768).
             </p>
           </div>
           <button
@@ -108,7 +108,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span>Выбор метода заваривания</span>
               </div>
               <p className="text-xs text-stone-500 leading-relaxed">
-                Гунфу Ча, Оставление корня (Лю Гэнь), «Ленивый» метод в стакане.
+                Переключение между Гунфу Ча, методом «Лю Гэнь» и настаиванием в стакане.
               </p>
             </div>
             <button
@@ -128,15 +128,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </button>
           </div>
 
-          {/* 2. Метод пролива и цель вкуса */}
+          {/* 2. Метод пролива */}
           <div className="p-3.5 rounded-2xl border border-stone-200 bg-stone-50/50 hover:bg-stone-50 transition-colors flex items-start justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 font-bold text-sm text-stone-900">
                 <Sparkles className="w-4 h-4 text-amber-700" />
-                <span>Метод пролива и цель вкуса</span>
+                <span>Метод пролива</span>
               </div>
               <p className="text-xs text-stone-500 leading-relaxed">
-                Целевой вкусовой профиль (Баланс, Умами, Метод без горечи и др.).
+                Выбор акцента заваривания: баланс, яркий аромат, умами или смягчение горечи.
               </p>
             </div>
             <button
@@ -164,7 +164,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span>Динамическая температура воды</span>
               </div>
               <p className="text-xs text-stone-500 leading-relaxed">
-                Автоматический расчёт и настройка температуры для каждого отдельного пролива.
+                Индивидуальная температура для каждого пролива вместо постоянной.
               </p>
             </div>
             <button
@@ -192,7 +192,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span>Фракционный состав пиалы</span>
               </div>
               <p className="text-xs text-stone-500 leading-relaxed">
-                TDS, выход экстракта и биохимический состав (теанин, кофеин, катехины).
+                Концентрация катехинов, кофеина, L-теанина и шкала баланса вкуса в окне пролива.
               </p>
             </div>
             <button
@@ -220,7 +220,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span>График динамики экстракции</span>
               </div>
               <p className="text-xs text-stone-500 leading-relaxed">
-                Кинетические кривые диффузии и концентраций по всем проливам.
+                Интерактивные кривые выхода веществ и плотности настоя по всем проливам.
               </p>
             </div>
             <button

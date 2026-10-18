@@ -1,4 +1,5 @@
 import { AppSettings } from '../types';
+import { STORAGE_KEYS } from '../config/storageKeys';
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   advancedMode: false,
@@ -9,15 +10,12 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   showExtractionChart: false,
 };
 
-const STORAGE_KEY = 'gongfu_cha_lab_app_settings_v2';
-const LEGACY_STORAGE_KEY = 'gongfu_cha_lab_app_settings_v1';
-
 export function loadAppSettings(): AppSettings {
   if (typeof window === 'undefined') {
     return { ...DEFAULT_APP_SETTINGS };
   }
   try {
-    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEYS.SETTINGS) || localStorage.getItem(STORAGE_KEYS.SETTINGS_LEGACY_V1);
     if (!raw) return { ...DEFAULT_APP_SETTINGS };
     const parsed = JSON.parse(raw);
 
@@ -48,7 +46,7 @@ export function loadAppSettings(): AppSettings {
 export function saveAppSettings(settings: AppSettings): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
   } catch (err) {
     console.error('Failed to save app settings to localStorage:', err);
   }

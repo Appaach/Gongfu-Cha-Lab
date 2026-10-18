@@ -1,0 +1,25 @@
+/**
+ * Standard configuration boundaries and constants for tea brewing kinetics and UI controls.
+ */
+export const BREWING_LIMITS = {
+  MIN_TEMP_C: 40,
+  MAX_TEMP_C: 100,
+  MIN_STEEP_SEC: 1,
+  MAX_STEEP_SEC: 600,
+  MIN_LEAF_MASS_G: 1,
+  MAX_LEAF_MASS_G: 25,
+  MIN_WATER_VOLUME_ML: 30,
+  MAX_WATER_VOLUME_ML: 500,
+  MIN_STEEPS_COUNT: 1,
+  MAX_STEEPS_COUNT: 20,
+} as const;
+
+export const BREWING_DEFAULTS = {
+  POPULAR_TEAS_CHUNK_SIZE: 10,
+  DEFAULT_ROOT_FRACTION: 0.33,
+  DEFAULT_GRANDPA_REFILL_RATIO: 0.67,
+  AMBIENT_ROOM_TEMP_C: 22,
+  COOLING_EXP_RATE: 0.0028,
+  EXTRACTION_K_RATE: 0.016,
+  TDS_SOLUTE_MULTIPLIER: 12.5,
+} as const;

@@ -1646,7 +1646,9 @@ export function simulateGongfuExtraction(
       k_polysaccharides = 0.0038 * thisTempFactorPoly * mineralMultiplier; // TPS
     } else if (brewingMethod === 'grandpa_cup') {
       // Non-isothermal continuous cooling in open cup
-      const avgCycleTempC = T_ambient + (steepEffectiveTempC - T_ambient) * (1 - Math.exp(-kCool * time)) / Math.max(0.0001, kCool * time);
+      const avgCycleTempC = time <= 0
+        ? steepEffectiveTempC
+        : T_ambient + (steepEffectiveTempC - T_ambient) * ((1 - Math.exp(-kCool * time)) / (kCool * time));
       const T_cycle_K = avgCycleTempC + 273.15;
       const cycleTempFactorTheanine = Math.exp((-Ea_theanine / R_const) * (1 / T_cycle_K - 1 / T_ref));
       const cycleTempFactorCaffeine = Math.exp((-Ea_caffeine / R_const) * (1 / T_cycle_K - 1 / T_ref));
@@ -1952,7 +1954,6 @@ export function simulateGongfuExtraction(
     });
   }
 
-  (results as any).rinseData = rinseSteepData;
   return results;
 }
 
