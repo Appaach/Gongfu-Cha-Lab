@@ -338,6 +338,7 @@ export interface AppSettings {
   showExtractionChart: boolean;       // 5. "График динамики экстракции" (default false)
   hideBrewingMethodSelector?: boolean; // legacy alias
   customTeasExportFilename?: string;  // Настройка имени файла по умолчанию при экспорте коллекции сортов
+  promptExportFilename?: boolean;     // Запрашивать собственное имя файла при экспорте любого файла
 }
 
 

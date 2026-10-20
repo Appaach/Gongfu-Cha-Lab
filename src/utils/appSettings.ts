@@ -9,6 +9,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   showChemicalComposition: false,
   showExtractionChart: false,
   customTeasExportFilename: 'my_teas.json',
+  promptExportFilename: false,
 };
 
 export function loadAppSettings(): AppSettings {
@@ -40,6 +41,7 @@ export function loadAppSettings(): AppSettings {
       customTeasExportFilename: typeof parsed.customTeasExportFilename === 'string' && parsed.customTeasExportFilename.trim()
         ? parsed.customTeasExportFilename.trim()
         : 'my_teas.json',
+      promptExportFilename: Boolean(parsed.promptExportFilename),
     };
   } catch (err) {
     console.error('Failed to parse app settings from localStorage:', err);

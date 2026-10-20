@@ -240,29 +240,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </button>
           </div>
 
-          {/* 6. Настройка имени файла для экспорта сортов */}
-          <div className="p-3.5 rounded-2xl border border-stone-200 bg-stone-50/50 hover:bg-stone-50 transition-colors flex flex-col gap-2">
-            <div className="flex items-center gap-1.5 font-bold text-sm text-stone-900">
-              <Download className="w-4 h-4 text-amber-700" />
-              <span>Имя файла для экспорта чаёв</span>
+          {/* 6. Плашка: Запрашивать имя файла при экспорте */}
+          <div className="p-3.5 rounded-2xl border border-stone-200 bg-stone-50/50 hover:bg-stone-50 transition-colors flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-sm text-stone-900">
+                <Download className="w-4 h-4 text-amber-700" />
+                <span>Запрашивать имя файла при экспорте</span>
+              </div>
+              <p className="text-xs text-stone-500 leading-relaxed">
+                Если включено — перед скачиванием любого файла (записи дневника, шпаргалки, сортов чая) симулятор запросит желаемое имя. Если выключено — файлы экспортируются сразу со стандартными названиями.
+              </p>
             </div>
-            <p className="text-xs text-stone-500 leading-relaxed">
-              Название файла по умолчанию при сохранении коллекции своих сортов в формате JSON.
-            </p>
-            <div className="mt-0.5">
-              <input
-                type="text"
-                value={settings.customTeasExportFilename ?? 'my_teas.json'}
-                onChange={(e) => {
-                  onUpdateSettings({
-                    ...settings,
-                    customTeasExportFilename: e.target.value,
-                  });
-                }}
-                placeholder="my_teas.json"
-                className="w-full px-3 py-2 rounded-xl border border-stone-300 bg-white font-mono text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-800"
+            <button
+              type="button"
+              role="switch"
+              aria-checked={Boolean(settings.promptExportFilename)}
+              onClick={() => handleToggle('promptExportFilename')}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-amber-800 ${
+                settings.promptExportFilename ? 'bg-amber-800' : 'bg-stone-300'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-sm ring-0 transition duration-200 ease-in-out ${
+                  settings.promptExportFilename ? 'translate-x-5' : 'translate-x-0'
+                }`}
               />
-            </div>
+            </button>
           </div>
         </div>
 

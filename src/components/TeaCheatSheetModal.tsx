@@ -16,6 +16,8 @@ import {
   Loader2
 } from 'lucide-react';
 import { exportElementToPdf } from '../utils/pdfExport';
+import { loadAppSettings } from '../utils/appSettings';
+import { FilenamePromptModal } from './FilenamePromptModal';
 
 export interface TeaCheatSheetModalProps {
   tea: TeaVariety;
@@ -121,16 +123,31 @@ export const TeaCheatSheetModal: React.FC<TeaCheatSheetModalProps> = ({
         return 8 + Math.round(Math.pow(idx - 2, 1.35) * 5);
       });
 
-  const handleExportPdf = async () => {
+  const [isFilenamePromptOpen, setIsFilenamePromptOpen] = useState(false);
+  const [pendingFilename, setPendingFilename] = useState('');
+
+  const defaultCheatSheetFilename = `шпаргалка_${tea.nameRu.replace(/[^\w\u0400-\u04FF]/gi, '_')}.pdf`;
+
+  const handleStartExportPdf = () => {
+    const settings = loadAppSettings();
+    if (settings.promptExportFilename) {
+      setPendingFilename(defaultCheatSheetFilename);
+      setIsFilenamePromptOpen(true);
+    } else {
+      executeExportPdf(defaultCheatSheetFilename);
+    }
+  };
+
+  const executeExportPdf = async (filenameToUse: string) => {
     if (!sheetRef.current || isExportingPdf) return;
     setIsExportingPdf(true);
     setExportNotice('Формирование PDF шпаргалки...');
     await new Promise((resolve) => setTimeout(resolve, 60));
 
     try {
-      const filename = `шпаргалка_${tea.nameRu.replace(/[^\w\u0400-\u04FF]/gi, '_')}`;
+      const cleanFilename = filenameToUse.replace(/\.pdf$/i, '');
       const title = `Шпаргалка: ${tea.nameRu}`;
-      await exportElementToPdf(sheetRef.current, filename, { title });
+      await exportElementToPdf(sheetRef.current, cleanFilename, { title });
       setExportNotice('PDF сформирован! Выберите, куда сохранить файл.');
       setTimeout(() => setExportNotice(null), 4500);
     } catch (err) {
@@ -139,6 +156,7 @@ export const TeaCheatSheetModal: React.FC<TeaCheatSheetModalProps> = ({
       setTimeout(() => setExportNotice(null), 4500);
     } finally {
       setIsExportingPdf(false);
+      setIsFilenamePromptOpen(false);
     }
   };
 
@@ -236,7 +254,7 @@ ${steepSchedule.map((sec, idx) => `#${idx + 1}: ${sec}с${useDynamicTemperatures
 
             <button
               type="button"
-              onClick={handleExportPdf}
+              onClick={handleStartExportPdf}
               disabled={isExportingPdf}
               className="px-3 py-1.5 rounded-lg bg-amber-800 hover:bg-amber-900 disabled:bg-amber-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer disabled:cursor-wait"
               title="Сохранить шпаргалку в файл PDF"
@@ -511,6 +529,15 @@ ${steepSchedule.map((sec, idx) => `#${idx + 1}: ${sec}с${useDynamicTemperatures
           </div>
         </div>
       </div>
+
+      <FilenamePromptModal
+        isOpen={isFilenamePromptOpen}
+        defaultFilename={pendingFilename}
+        title="Экспорт PDF шпаргалки"
+        description="Укажите имя для скачиваемого PDF документа"
+        onConfirm={(name) => executeExportPdf(name)}
+        onClose={() => setIsFilenamePromptOpen(false)}
+      />
     </div>
   );
 };

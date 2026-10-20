@@ -1731,9 +1731,14 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        setExportFilenameInput(appSettings.customTeasExportFilename || 'my_teas.json');
-                        setSelectedExportTeaIds(customTeas.map((t) => t.id));
-                        setIsExportModalOpen(true);
+                        const defaultName = appSettings.customTeasExportFilename || 'my_teas.json';
+                        if (appSettings.promptExportFilename) {
+                          setExportFilenameInput(defaultName);
+                          setSelectedExportTeaIds(customTeas.map((t) => t.id));
+                          setIsExportModalOpen(true);
+                        } else {
+                          handleExportTeas(customTeas, defaultName);
+                        }
                       }}
                       className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white hover:bg-stone-50 text-stone-700 border border-stone-300 transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer"
                       title="Экспортировать свои чаи в JSON-файл"
