@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Sliders, Flame, Sparkles, Thermometer, FlaskConical, TrendingUp, RotateCcw } from 'lucide-react';
+import { X, Sliders, Flame, Sparkles, Thermometer, FlaskConical, TrendingUp, RotateCcw, Download } from 'lucide-react';
 import { AppSettings } from '../types';
 import { DEFAULT_APP_SETTINGS } from '../utils/appSettings';
 
@@ -238,6 +238,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 }`}
               />
             </button>
+          </div>
+
+          {/* 6. Настройка имени файла для экспорта сортов */}
+          <div className="p-3.5 rounded-2xl border border-stone-200 bg-stone-50/50 hover:bg-stone-50 transition-colors flex flex-col gap-2">
+            <div className="flex items-center gap-1.5 font-bold text-sm text-stone-900">
+              <Download className="w-4 h-4 text-amber-700" />
+              <span>Имя файла для экспорта чаёв</span>
+            </div>
+            <p className="text-xs text-stone-500 leading-relaxed">
+              Название файла по умолчанию при сохранении коллекции своих сортов в формате JSON.
+            </p>
+            <div className="mt-0.5">
+              <input
+                type="text"
+                value={settings.customTeasExportFilename ?? 'my_teas.json'}
+                onChange={(e) => {
+                  onUpdateSettings({
+                    ...settings,
+                    customTeasExportFilename: e.target.value,
+                  });
+                }}
+                placeholder="my_teas.json"
+                className="w-full px-3 py-2 rounded-xl border border-stone-300 bg-white font-mono text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-800"
+              />
+            </div>
           </div>
         </div>
 

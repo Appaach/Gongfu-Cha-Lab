@@ -8,6 +8,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   useDynamicTemperatures: false,
   showChemicalComposition: false,
   showExtractionChart: false,
+  customTeasExportFilename: 'my_teas.json',
 };
 
 export function loadAppSettings(): AppSettings {
@@ -36,6 +37,9 @@ export function loadAppSettings(): AppSettings {
       useDynamicTemperatures: Boolean(parsed.useDynamicTemperatures),
       showChemicalComposition: Boolean(parsed.showChemicalComposition),
       showExtractionChart: Boolean(parsed.showExtractionChart),
+      customTeasExportFilename: typeof parsed.customTeasExportFilename === 'string' && parsed.customTeasExportFilename.trim()
+        ? parsed.customTeasExportFilename.trim()
+        : 'my_teas.json',
     };
   } catch (err) {
     console.error('Failed to parse app settings from localStorage:', err);

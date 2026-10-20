@@ -12,7 +12,7 @@ export type TeaType =
   | 'gaba_red'
   | 'custom';
 
-export type TeaCategoryGroup = 'generic' | 'specific' | 'favorites' | 'blend';
+export type TeaCategoryGroup = 'generic' | 'specific' | 'favorites' | 'blend' | 'my_teas';
 
 export interface BlendComponentItem {
   teaId: string;
@@ -108,6 +108,7 @@ export interface TeaVariety {
   rinseNoteRu?: string;
   vintageYear?: number;
   canAge?: boolean;
+  isCustom?: boolean;
   blendComponents?: TeaBlendComponentDetail[];
 }
 
@@ -336,6 +337,7 @@ export interface AppSettings {
   showChemicalComposition: boolean;   // 4. "Фракционный состав пиалы" (default false)
   showExtractionChart: boolean;       // 5. "График динамики экстракции" (default false)
   hideBrewingMethodSelector?: boolean; // legacy alias
+  customTeasExportFilename?: string;  // Настройка имени файла по умолчанию при экспорте коллекции сортов
 }
 
 

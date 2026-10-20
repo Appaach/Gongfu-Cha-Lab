@@ -184,7 +184,9 @@ export function calculateDynamicSteepTemperatures(
   totalSteeps: number = 8,
   optimizationGoal: OptimizationGoal = 'balanced',
   userCustomTemps?: (number | null)[],
-  customRinseTemp?: number | null
+  customRinseTemp?: number | null,
+  baseOptimizedTemp?: number,
+  brewingMethod?: BrewingMethod
 ): {
   rinseTempC: number;
   steepTempsC: number[];
@@ -192,16 +194,29 @@ export function calculateDynamicSteepTemperatures(
   isCustomSteepTemp: boolean[];
 } {
   const count = Math.max(1, Math.min(60, totalSteeps));
-  const baseOpt = tea.optimalTemp;
-  const isWhiteDebitter = optimizationGoal === 'white_debitter';
+  const goalPreset = OPTIMIZATION_PRESETS.find(g => g.id === optimizationGoal);
+  const goalOffset = goalPreset?.tempOffsetC || 0;
+  const methodOffset = brewingMethod === 'grandpa_cup' ? -3 : 0;
+
+  // Effective base temperature anchored by baseOptimizedTemp (which includes vessel/method/goal corrections)
+  // or derived from tea.optimalTemp + goalOffset + methodOffset
+  const rawBase = baseOptimizedTemp !== undefined 
+    ? baseOptimizedTemp 
+    : (tea.optimalTemp + goalOffset + methodOffset);
+
   const isOilTar = optimizationGoal === 'oil_tar' && (tea.type === 'shou_puerh' || tea.type === 'heicha');
+  const baseOpt = isOilTar 
+    ? 100 
+    : Math.max(tea.tempRange[0], Math.min(tea.tempRange[1], Math.round(rawBase)));
+
+  const isWhiteDebitter = optimizationGoal === 'white_debitter';
 
   // Baseline rinse temp
   let refRinseTemp = baseOpt;
   if (isWhiteDebitter) {
     refRinseTemp = 100; // Крутой кипяток 100°C на 60 сек для дебитеризации
-  } else if (tea.type === 'shou_puerh' || tea.type === 'heicha') {
-    refRinseTemp = 100;
+  } else if ((tea.type === 'shou_puerh' || tea.type === 'heicha') && optimizationGoal !== 'umami_sweetness') {
+    refRinseTemp = Math.min(100, Math.max(95, baseOpt));
   } else if (tea.type === 'green' || tea.type === 'yellow') {
     refRinseTemp = Math.min(85, baseOpt);
   }
@@ -230,35 +245,38 @@ export function calculateDynamicSteepTemperatures(
     }
 
     if (isWhiteDebitter) {
-      if (i === 0) steepTemps.push(85);
-      else if (i === 1) steepTemps.push(88);
-      else if (i === 2) steepTemps.push(90);
-      else if (i <= 5) steepTemps.push(92);
-      else steepTemps.push(95);
+      const debitterOffset = baseOpt - 90;
+      if (i === 0) steepTemps.push(Math.max(75, Math.min(95, 85 + debitterOffset)));
+      else if (i === 1) steepTemps.push(Math.max(78, Math.min(96, 88 + debitterOffset)));
+      else if (i === 2) steepTemps.push(Math.max(80, Math.min(98, 90 + debitterOffset)));
+      else if (i <= 5) steepTemps.push(Math.max(82, Math.min(98, 92 + debitterOffset)));
+      else steepTemps.push(Math.max(85, Math.min(100, 95 + debitterOffset)));
       continue;
     }
 
     if (tea.type === 'green' || tea.type === 'yellow') {
-      const startT = Math.min(baseOpt - 3, 78);
-      const stepT = Math.min(baseOpt + 5, Math.min(92, startT + Math.floor(i * 1.5)));
+      const startT = Math.max(65, baseOpt - 4);
+      const stepT = Math.min(tea.tempRange[1], Math.min(95, startT + Math.floor(i * 1.5)));
       steepTemps.push(stepT);
     } else if (tea.type === 'white') {
-      const startT = Math.min(baseOpt - 4, 82);
-      const stepT = Math.min(98, startT + Math.floor(i * 2.2));
+      const startT = Math.max(75, baseOpt - 5);
+      const stepT = Math.min(tea.tempRange[1], Math.min(100, startT + Math.floor(i * 2.0)));
       steepTemps.push(stepT);
     } else if (tea.type === 'shou_puerh' || tea.type === 'heicha') {
-      steepTemps.push(100);
+      const startT = Math.max(90, baseOpt - 2);
+      const stepT = Math.min(100, startT + Math.floor(i * 1.2));
+      steepTemps.push(stepT);
     } else if (tea.type === 'sheng_puerh') {
-      const startT = Math.min(baseOpt - 3, 88);
-      const stepT = Math.min(98, startT + Math.floor(i * 1.5));
+      const startT = Math.max(80, baseOpt - 4);
+      const stepT = Math.min(tea.tempRange[1], Math.min(100, startT + Math.floor(i * 1.5)));
       steepTemps.push(stepT);
     } else if (tea.type === 'oolong_strip' || tea.type === 'oolong_ball' || tea.type === 'gaba_oolong') {
-      const startT = Math.min(baseOpt - 4, 88);
-      const stepT = Math.min(100, startT + Math.floor(i * 1.8));
+      const startT = Math.max(82, baseOpt - 4);
+      const stepT = Math.min(tea.tempRange[1], Math.min(100, startT + Math.floor(i * 1.8)));
       steepTemps.push(stepT);
     } else {
-      const startT = Math.min(baseOpt - 3, 88);
-      const stepT = Math.min(98, startT + Math.floor(i * 1.5));
+      const startT = Math.max(80, baseOpt - 4);
+      const stepT = Math.min(tea.tempRange[1], Math.min(100, startT + Math.floor(i * 1.5)));
       steepTemps.push(stepT);
     }
   }
@@ -691,21 +709,16 @@ export function optimizeBrewingParametersMulti(
   else if (effectiveGoal === 'aroma_peak') goalMultiplier = 1.06;
   else if (effectiveGoal === 'oil_tar') goalMultiplier = 0.6; // dense ratio ~ 1:9
 
+  const nominalSteeps = Math.max(1, tea.recommendedSteeps || 8);
   let targetRatio = effectiveGoal === 'oil_tar' ? 9.0 : Math.round(canonicalRatio * goalMultiplier * 10) / 10;
 
   // Dynamic longevity ratio calculation based on target steep count:
-  // To stretch tea for 15+ steeps, leaf-to-water ratio must be denser (1:10 - 1:12)
-  // To stretch tea for 6 steeps, ratio can be lighter (1:16 - 1:22)
+  // Continuous power-law scaling relative to nominalSteeps:
+  // When optSteeps === nominalSteeps, steepRatioFactor is identically 1.0, ensuring that reset parameters
+  // and manual input of the same steep count give the exact same leaf mass!
   if (fixS || effectiveGoal === 'max_longevity') {
-    if (optSteeps >= 18) {
-      targetRatio = Math.min(targetRatio, 10.5);
-    } else if (optSteeps >= 14) {
-      targetRatio = Math.min(targetRatio, 12.0);
-    } else if (optSteeps >= 10) {
-      targetRatio = Math.min(targetRatio, canonicalRatio * 0.92);
-    } else if (optSteeps <= 5) {
-      targetRatio = Math.max(targetRatio, canonicalRatio * 1.15);
-    }
+    const steepRatioFactor = Math.pow(nominalSteeps / Math.max(1, optSteeps), 0.45);
+    targetRatio = Math.max(8.0, Math.min(28.0, Math.round(targetRatio * steepRatioFactor * 10) / 10));
   }
 
   let optVolume = tea.defaultVolume;
@@ -755,12 +768,12 @@ export function optimizeBrewingParametersMulti(
 
   // 3. Resolve Steeps Count if not fixed
   if (!fixS) {
-    if (actualRatio <= 11) {
-      optSteeps = Math.min(25, (tea.recommendedSteeps || 8) + 3);
-    } else if (actualRatio > 22) {
-      optSteeps = Math.max(4, (tea.recommendedSteeps || 8) - 2);
+    if (Math.abs(actualRatio - canonicalRatio) < 0.3) {
+      optSteeps = nominalSteeps;
     } else {
-      optSteeps = tea.recommendedSteeps || 8;
+      // Inverted relationship: N = nominalSteeps * (canonicalRatio / actualRatio)^2.22
+      const derivedSteeps = Math.round(nominalSteeps * Math.pow(canonicalRatio / Math.max(4, actualRatio), 2.22));
+      optSteeps = Math.max(3, Math.min(30, derivedSteeps));
     }
   }
 

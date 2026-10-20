@@ -1152,35 +1152,53 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
                   </select>
                 </div>
 
-                {/* Vessel Text Input */}
+                {/* Unified Vessel & Material */}
                 <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-stone-600 block">Посуда (название):</label>
-                  <input
-                    type="text"
-                    value={vesselUsed}
-                    onChange={(e) => setVesselUsed(e.target.value)}
-                    placeholder="Фарфоровая гайвань 120 мл"
-                    className="w-full px-2 py-1.5 rounded-lg border border-stone-300 font-medium text-xs text-stone-900 bg-white"
-                  />
-                </div>
+                  <label className="text-[11px] font-semibold text-stone-600 block">Посуда:</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <select
+                      value={vesselMaterial ?? 'porcelain'}
+                      onChange={(e) => {
+                        const newMat = e.target.value as VesselMaterialType;
+                        setVesselMaterial(newMat);
+                        const matPresetNames: Record<string, string> = {
+                          porcelain: 'Фарфоровая гайвань',
+                          yixing_clay: 'Исинский чайник из глины',
+                          glass_regular: 'Стеклянный типод / колба',
+                          ceramic_regular: 'Керамический чайник',
+                          ceramic_thick: 'Толстостенная керамика',
+                          cast_iron: 'Чугунный чайник',
+                          metal_silver: 'Серебряный чайник',
+                          thermos: 'Термос',
+                          glass: 'Стеклянный стакан'
+                        };
+                        const currentVessel = (vesselUsed || '').toLowerCase();
+                        if (!currentVessel || currentVessel.includes('гайвань') || currentVessel.includes('чайник') || currentVessel.includes('типод') || currentVessel.includes('термос') || currentVessel.includes('фарфор')) {
+                          setVesselUsed(`${matPresetNames[newMat] || 'Посуда'} ${waterVolumeMl} мл`);
+                        }
+                      }}
+                      className="w-full px-2 py-1.5 rounded-lg border border-stone-300 font-medium text-xs text-stone-900 bg-white"
+                      title="Материал посуды"
+                    >
+                      <option value="porcelain">Фарфор (нейтральный)</option>
+                      <option value="yixing_clay">Исинская глина (смягчает танины)</option>
+                      <option value="glass_regular">Стекло / Типод</option>
+                      <option value="ceramic_regular">Керамика стандартная</option>
+                      <option value="ceramic_thick">Керамика толстостенная</option>
+                      <option value="cast_iron">Чугун</option>
+                      <option value="metal_silver">Серебро</option>
+                      <option value="thermos">Термос</option>
+                    </select>
 
-                {/* Vessel Material */}
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-stone-600 block">Материал посуды:</label>
-                  <select
-                    value={vesselMaterial ?? 'porcelain'}
-                    onChange={(e) => setVesselMaterial(e.target.value as VesselMaterialType)}
-                    className="w-full px-2 py-1.5 rounded-lg border border-stone-300 font-medium text-xs text-stone-900 bg-white"
-                  >
-                    <option value="porcelain">Фарфор (нейтральный)</option>
-                    <option value="yixing_clay">Исинская глина (смягчает танины)</option>
-                    <option value="glass_regular">Стекло / Типод</option>
-                    <option value="ceramic_regular">Керамика стандартная</option>
-                    <option value="ceramic_thick">Керамика толстостенная</option>
-                    <option value="cast_iron">Чугун</option>
-                    <option value="metal_silver">Серебро</option>
-                    <option value="thermos">Термос</option>
-                  </select>
+                    <input
+                      type="text"
+                      value={vesselUsed}
+                      onChange={(e) => setVesselUsed(e.target.value)}
+                      placeholder="Название или объем посуды..."
+                      className="w-full px-2 py-1.5 rounded-lg border border-stone-300 font-medium text-xs text-stone-900 bg-white"
+                      title="Название посуды"
+                    />
+                  </div>
                 </div>
 
                 {/* Water Hardness */}
@@ -1470,17 +1488,21 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
                 <div className="text-xs font-sans text-stone-700 flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span>Посуда: <strong>{printingEntry.vesselUsed}</strong></span>
-                    {printingEntry.vesselMaterial && (
-                      <span className="px-2 py-0.5 rounded bg-stone-100 text-stone-700 text-[10px]">
-                        {printingEntry.vesselMaterial === 'yixing_clay' ? 'Исинская глина' :
-                         printingEntry.vesselMaterial === 'glass_regular' || printingEntry.vesselMaterial === 'glass' ? 'Стекло' :
-                         printingEntry.vesselMaterial === 'ceramic_thick' ? 'Толстая керамика' :
-                         printingEntry.vesselMaterial === 'ceramic_regular' ? 'Керамика' :
-                         printingEntry.vesselMaterial === 'cast_iron' ? 'Чугун' :
-                         printingEntry.vesselMaterial === 'metal_silver' ? 'Серебро' :
-                         printingEntry.vesselMaterial === 'thermos' ? 'Термос' : 'Фарфор'}
-                      </span>
-                    )}
+                    {printingEntry.vesselMaterial && (() => {
+                      const matName = printingEntry.vesselMaterial === 'yixing_clay' ? 'Исинская глина' :
+                       printingEntry.vesselMaterial === 'glass_regular' || printingEntry.vesselMaterial === 'glass' ? 'Стекло' :
+                       printingEntry.vesselMaterial === 'ceramic_thick' ? 'Толстая керамика' :
+                       printingEntry.vesselMaterial === 'ceramic_regular' ? 'Керамика' :
+                       printingEntry.vesselMaterial === 'cast_iron' ? 'Чугун' :
+                       printingEntry.vesselMaterial === 'metal_silver' ? 'Серебро' :
+                       printingEntry.vesselMaterial === 'thermos' ? 'Термос' : 'Фарфор';
+                      if ((printingEntry.vesselUsed || '').toLowerCase().includes(matName.toLowerCase())) return null;
+                      return (
+                        <span className="px-2 py-0.5 rounded bg-stone-100 text-stone-700 text-[10px]">
+                          {matName}
+                        </span>
+                      );
+                    })()}
                     {printingEntry.customRinseTime ? (
                       <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px]">
                         Промывка: {printingEntry.customRinseTime}с

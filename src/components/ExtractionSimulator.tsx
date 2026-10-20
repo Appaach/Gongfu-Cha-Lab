@@ -32,7 +32,13 @@ import {
   Bookmark,
   BookOpen,
   Scale as ScaleIcon,
-  Thermometer
+  Thermometer,
+  Plus,
+  Edit3,
+  Trash2,
+  Leaf,
+  Upload,
+  Download
 } from 'lucide-react';
 import { 
   TEA_VARIETIES, 
@@ -86,6 +92,7 @@ import { ExtractionCharts } from './ExtractionCharts';
 import { TeaBlendStudio } from './TeaBlendStudio';
 import { TeaCheatSheetModal } from './TeaCheatSheetModal';
 import { SteepTimerModal } from './SteepTimerModal';
+import { CustomTeaModal } from './CustomTeaModal';
 
 export interface ExtractionSimulatorProps {
   initialSelectedTea?: TeaVariety | null;
@@ -221,6 +228,31 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
   const [popularTypeFilter, setPopularTypeFilter] = useState<string>('all');
   const [showFlavorInPopular, setShowFlavorInPopular] = useState<boolean>(false);
 
+  // Custom Teas state with localStorage persistence
+  const [customTeas, setCustomTeas] = useState<TeaVariety[]>(() => {
+    try {
+      const saved = localStorage.getItem('gongfu_my_custom_teas');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isCustomTeaModalOpen, setIsCustomTeaModalOpen] = useState<boolean>(false);
+  const [editingCustomTea, setEditingCustomTea] = useState<TeaVariety | null>(null);
+  const [teaPendingDelete, setTeaPendingDelete] = useState<TeaVariety | null>(null);
+  const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
+  const [exportFilenameInput, setExportFilenameInput] = useState<string>('my_teas.json');
+  const [selectedExportTeaIds, setSelectedExportTeaIds] = useState<string[]>([]);
+  const [importNotification, setImportNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Dynamic tea map including user's custom teas
+  const allTeasMap = useMemo(() => {
+    const map = new Map(ALL_TEA_MAP);
+    customTeas.forEach((t) => map.set(t.id, t));
+    return map;
+  }, [customTeas]);
+
   // Flavor Search within Popular Teas (Sensory notes & bouquet)
   const [flavorSearchQuery, setFlavorSearchQuery] = useState<string>('');
   const deferredFlavorSearchQuery = useDeferredValue(flavorSearchQuery);
@@ -235,8 +267,8 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     if (customBlendTea && selectedTeaId === customBlendTea.id) {
       return customBlendTea;
     }
-    return ALL_TEA_MAP.get(selectedTeaId) || ALL_TEA_OPTIONS[0];
-  }, [selectedTeaId, customBlendTea]);
+    return allTeasMap.get(selectedTeaId) || ALL_TEA_OPTIONS[0];
+  }, [selectedTeaId, customBlendTea, allTeasMap]);
 
   // Fast rendering limits for 500+ tea varieties database (prevents frame drops and ensures 60 FPS)
   const [popularDisplayLimit, setPopularDisplayLimit] = useState<number>(10);
@@ -263,70 +295,69 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
 
   const getVintageSubtitle = useCallback((teaType: TeaType, age: number): string => {
     if (age === 0) {
-      if (teaType === 'shou_puerh') return 'Свежий пресс • Плотный землисто-ореховый профиль';
-      if (teaType === 'sheng_puerh') return 'Свежий сбор • Травянисто-цветочный, яркая горчинка и хуэйгань';
-      if (teaType === 'white') return 'Свежий сбор • Весенние цветы и белый виноград';
-      if (teaType === 'heicha') return 'Свежий сбор • Древесно-травянистый с легким дымом';
-      return 'Свежий сбор • Первичный букет листа';
+      if (teaType === 'shou_puerh') return 'Плотный землисто-ореховый профиль';
+      if (teaType === 'sheng_puerh') return 'Травянисто-цветочный, яркая горчинка и хуэйгань';
+      if (teaType === 'white') return 'Весенние цветы и белый виноград';
+      if (teaType === 'heicha') return 'Древесно-травянистый с легким дымом';
+      return 'Первичный свежий букет листа';
     }
 
-    const yearsText = `${age} ${getRussianYearWord(age)}`;
     if (teaType === 'sheng_puerh') {
-      if (age <= 3) return `${yearsText} • Смягчение зелени, ноты кураги и сухого разнотравья`;
-      if (age <= 7) return `${yearsText} • Янтарный настой, липовый мед и вяленое яблоко`;
-      if (age <= 14) return `${yearsText} • Густой темно-янтарный настой, камфора и осенний лес`;
-      return `${yearsText} • Рубиновый настой, лекарственные травы и финики`;
+      if (age <= 3) return 'Золотистый настой, курага и сухое разнотравье';
+      if (age <= 7) return 'Янтарный настой, липовый мед и вяленое яблоко';
+      if (age <= 14) return 'Тёмный янтарь, камфора и осенний лес';
+      return 'Рубиновый настой, лекарственные травы и финики';
     }
     if (teaType === 'shou_puerh') {
-      if (age <= 1) return `${yearsText} • Плотный настой, древесная кора и ноты влажной земли`;
-      if (age <= 4) return `${yearsText} • Чистый настой, темный шоколад и жареный орех`;
-      if (age <= 9) return `${yearsText} • Шелковистая текстура, сладкий чернослив и карамель`;
-      return `${yearsText} • Рубиновый настой, бальзамические и камфорные ноты`;
+      if (age <= 1) return 'Плотный настой, древесная кора и влажная земля';
+      if (age <= 4) return 'Чистый настой, темный шоколад и жареный орех';
+      if (age <= 9) return 'Шелковистая текстура, сладкий чернослив и карамель';
+      return 'Рубиновый настой, бальзамические и камфорные ноты';
     }
     if (teaType === 'heicha') {
-      if (age <= 2) return `${yearsText} • Плотный настой, древесно-хвойный с легким дымом`;
-      if (age <= 6) return `${yearsText} • Мягкий настой, сосновая кора и сушеные ягоды`;
-      if (age <= 12) return `${yearsText} • Коньячный настой, бетелевый орех и пряности`;
-      return `${yearsText} • Бархатистый настой, финики и корень солодки`;
+      if (age <= 2) return 'Плотный настой, древесно-хвойный с легким дымом';
+      if (age <= 6) return 'Мягкий настой, сосновая кора и сушеные ягоды';
+      if (age <= 12) return 'Коньячный настой, бетелевый орех и пряности';
+      return 'Бархатистый настой, финики и корень солодки';
     }
     if (teaType === 'white') {
-      if (age <= 1) return `${yearsText} • Весенние травы, белый виноград и тонкий мед`;
-      if (age <= 4) return `${yearsText} • Золотистый настой, липовый цвет, дыня и прополис`;
-      if (age <= 8) return `${yearsText} • Янтарный настой, печеное яблоко, воск и финики`;
-      return `${yearsText} • Глубокий настой, финиковый отвар и целебные травы`;
+      if (age <= 1) return 'Весенние травы, белый виноград и тонкий мед';
+      if (age <= 4) return 'Золотистый настой, липовый цвет, дыня и прополис';
+      if (age <= 8) return 'Янтарный настой, печеное яблоко, воск и финики';
+      return 'Глубокий настой, финиковый отвар и целебные травы';
     }
-    return `${yearsText} • Мягкий настой, округлый древесно-сухофруктовый вкус`;
-  }, [getRussianYearWord]);
+    return 'Мягкий настой, округлый древесно-сухофруктовый вкус';
+  }, []);
 
   const getVintageDescription = useCallback((teaType: TeaType, age: number): string => {
     if (teaType === 'sheng_puerh') {
-      if (age === 0) return 'Свежесобранный лист: светло-желтый настой, травянисто-цветочный букет с высокой полифенольной терпкостью и выраженной горчинкой, переходящей в долгое сладкое послевкусие (хуэйгань).';
-      if (age <= 3) return 'Снижается первичная резкость хлорофилла, настой теплеет до золотистого. Раскрываются ноты сухих луговых трав, кураги, белого изюма и яблочной пастилы.';
-      if (age <= 7) return 'Насыщенный янтарный настой. Катехины полимеризуются, делая терпкость мягкой и бархатистой. Проявляются глубокие ноты липового меда, сухофруктов и теплого дерева.';
-      if (age <= 14) return 'Густой темно-янтарный настой с выраженным ароматом осеннего леса, камфоры, сушеного инжира, фиников и смолистой древесины.';
-      return 'Глубокий коньячно-рубиновый настой, шелковистая маслянистая текстура (ча тан), полное отсутствие горечи. Ноты китайских лекарственных трав (яо сян), камфоры и финиковой сладости.';
+      if (age === 0) return 'Свежий лист: луговые цветы, яркая полифенольная терпкость и сладкий хуэйгань.';
+      if (age <= 3) return 'Золотистый настой: сухие травы, курага, светлый изюм и яблочная пастила.';
+      if (age <= 7) return 'Янтарный настой: мягкая бархатистость, липовый мёд, сухофрукты и теплое дерево.';
+      if (age <= 14) return 'Тёмный янтарь: осенний лес, камфора, вяленый инжир и смолистые ноты.';
+      return 'Коньячно-рубиновый настой: шелковистый вкус, камфора, финики и аптечные травы.';
     }
     if (teaType === 'shou_puerh') {
-      if (age <= 1) return 'Свежеспрессованный лист после скирдования (во дуй): густой темно-каштановый настой, ноты влажной коры и сырой земли, плотный минерально-ореховый вкус.';
-      if (age <= 4) return 'Следы скирдования полностью ушли, настой прозрачный и чистый. Раскрываются ноты темного горького шоколада, обжаренного фундука, дубовой коры и злаков.';
-      if (age <= 9) return 'Текстура становится выраженно шелковистой и маслянистой. Доминируют ноты сладкого чернослива, вяленой вишни, грецкого ореха и карамелизованной древесины.';
-      return 'Прозрачный настой цвета темного рубина. Бархатистый округлый вкус с благородными древесно-бальзамическими и камфорными нотами со сладким минеральным послевкусием.';
+      if (age <= 1) return 'Свежий сбор: густой настой, ноты влажной коры, сырой земли и минералов.';
+      if (age <= 4) return 'Чистый прозрачный настой: горький шоколад, жареный фундук и древесина.';
+      if (age <= 9) return 'Маслянистая текстура: сладкий чернослив, вяленая вишня и карамельный дуб.';
+      return 'Темный рубин: бархатистый вкус, бальзамические и камфорные ноты со сладостью.';
     }
     if (teaType === 'heicha') {
-      if (age <= 2) return 'Плотный красно-янтарный настой с выраженным древесно-хвойным характером, легкими нотами дымного прогрева и ощутимой вяжущей текстурой.';
-      if (age <= 6) return 'Дымность и резкость сглаживаются, настой становится чище и мягче. Проявляются оттенки сосновой коры, лугового сена, прелых листьев и сушеных ягод.';
-      if (age <= 12) return 'Глубокий коньячный настой с нотами бетелевого ореха (бинлан сян в Любао), лесных грибов, древесного бальзама и легкой медовой сладостью.';
-      return 'Мягкий бархатистый вкус без вяжущих веществ. Ноты сухих фиников, китайской медицины, старой древесины, сладкого корня солодки и смолистого шлейфа.';
+      if (age <= 2) return 'Плотный янтарный настой: древесно-хвойный характер с дымным прогревом.';
+      if (age <= 6) return 'Мягкий настой: сосновая кора, луговое сено, прелые листья и сухие ягоды.';
+      if (age <= 12) return 'Коньячный оттенок: ноты бетелевого ореха, лесных грибов и медовой сладости.';
+      return 'Бархатистый вкус: сушеные финики, старое дерево, солодка и смолистые ноты.';
     }
     if (teaType === 'white') {
-      if (age <= 1) return 'Светло-соломенный настой, нежный аромат весенних цветов, свежего сена, белого винограда и прозрачная освежающая медовая сладость.';
-      if (age <= 4) return 'Травянистая свежесть уступает место золотистому настою. Раскрываются ноты липового цвета, сушеной дыни, яблочной пастилы, сухого разнотравья и прополиса.';
-      if (age <= 8) return 'Насыщенный янтарно-оранжевый настой. Ноты печеного яблока, медового воска, фиников и сухих целебных трав с нарастающей обволакивающей сладостью.';
-      return 'Оранжево-красный глубокий настой, выраженный аромат финикового отвара, лекарственных трав, сушеного инжира и карамелизованного меда; идеален для варки.';
+      if (age <= 1) return 'Светло-соломенный настой: весенние цветы, свежее сено и белый виноград.';
+      if (age <= 4) return 'Золотистый настой: липовый цвет, сушеная дыня, разнотравье и прополис.';
+      if (age <= 8) return 'Янтарный настой: печеное яблоко, медовый воск, финики и целебные травы.';
+      return 'Глубокий настой: финиковый отвар, инжир и карамелизованный мед.';
     }
-    if (age === 0) return 'Свежий лист: пиковая цветочно-травянистая ароматика и яркий первичный профиль.';
-    if (age <= 3) return 'Сглаживание огня прожарки, округление вкуса и появление мягких фруктовых оттенков.';
-    return 'Выдержанный профиль: мягкий бархатистый настой с нотами сухофруктов, меда и благородной древесины.';
+    if (age === 0) return 'Свежий лист: яркая цветочно-травянистая ароматика.';
+    if (age <= 3) return 'Мягкий настой: округлый вкус и теплые фруктовые оттенки.';
+    return 'Выдержанный профиль: ноты сухофруктов, меда и благородной древесины.';
   }, []);
 
   const getDefaultTeaVintageYear = useCallback((tea: TeaVariety): number => {
@@ -377,12 +408,17 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     });
   }, [selectedEffectFilter]);
 
-  // Filtered popular teas: seamlessly combines name search, type filter, effect filter AND flavor bouquet notes!
+  // Filtered popular teas: seamlessly combines custom teas, name search, type filter, effect filter AND flavor bouquet notes!
   const filteredPopularTeas = useMemo(() => {
     const activeSensoryQuery = (selectedFlavorTag || deferredFlavorSearchQuery || '').trim();
 
-    return TEA_VARIETIES.map((tea) => {
-      if (popularTypeFilter !== 'all') {
+    // Pool of teas: custom teas first, then standard popular catalog
+    const teaPool = popularTypeFilter === 'my_teas' 
+      ? customTeas 
+      : [...customTeas, ...TEA_VARIETIES];
+
+    return teaPool.map((tea) => {
+      if (popularTypeFilter !== 'all' && popularTypeFilter !== 'my_teas') {
         if (popularTypeFilter === 'oolong' && !tea.type.includes('oolong')) return null;
         else if (popularTypeFilter === 'gaba' && !tea.type.startsWith('gaba')) return null;
         else if (popularTypeFilter === 'puerh' && !tea.type.includes('puerh') && tea.type !== 'heicha') return null;
@@ -416,14 +452,14 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
       }
       return { tea, matchedNotes };
     }).filter((item): item is { tea: TeaVariety; matchedNotes: string[] } => item !== null);
-  }, [deferredPopularSearchQuery, popularTypeFilter, selectedEffectFilter, selectedFlavorGroupId, selectedFlavorTag, deferredFlavorSearchQuery]);
+  }, [customTeas, deferredPopularSearchQuery, popularTypeFilter, selectedEffectFilter, selectedFlavorGroupId, selectedFlavorTag, deferredFlavorSearchQuery]);
 
   // Filtered favorites
   const filteredFavoriteTeas = useMemo(() => {
     return favoriteIds
       .map((id) => {
         if (customBlendTea && id === customBlendTea.id) return customBlendTea;
-        return ALL_TEA_MAP.get(id);
+        return allTeasMap.get(id);
       })
       .filter((tea): tea is TeaVariety => {
         if (!tea) return false;
@@ -441,17 +477,17 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
         }
         return matchTeaSearch(tea, deferredFavoritesSearchQuery);
       });
-  }, [favoriteIds, customBlendTea, deferredFavoritesSearchQuery, favoritesTypeFilter, selectedEffectFilter]);
+  }, [favoriteIds, customBlendTea, allTeasMap, deferredFavoritesSearchQuery, favoritesTypeFilter, selectedEffectFilter]);
 
   // Progressive rendering slices:
   // When active text search or flavor query is typed, show all matching results immediately.
   // When browsing all 483+ teas, show smooth chunked rendering to prevent DOM bloat.
   const visiblePopularTeas = useMemo(() => {
-    if (deferredPopularSearchQuery.trim() || deferredFlavorSearchQuery.trim() || selectedFlavorTag) {
+    if (deferredPopularSearchQuery.trim() || deferredFlavorSearchQuery.trim() || selectedFlavorTag || popularTypeFilter === 'my_teas') {
       return filteredPopularTeas;
     }
     return filteredPopularTeas.slice(0, popularDisplayLimit);
-  }, [filteredPopularTeas, deferredPopularSearchQuery, deferredFlavorSearchQuery, selectedFlavorTag, popularDisplayLimit]);
+  }, [filteredPopularTeas, deferredPopularSearchQuery, deferredFlavorSearchQuery, selectedFlavorTag, popularDisplayLimit, popularTypeFilter]);
 
   // If a tea is selected that is beyond the current limit, automatically expand to ensure visibility
   useEffect(() => {
@@ -521,6 +557,186 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     setIsGoalDropdownOpen(false);
     setIsVesselDropdownOpen(false);
   };
+
+  const handleSaveCustomTea = (tea: TeaVariety) => {
+    setCustomTeas((prev) => {
+      const exists = prev.some((t) => t.id === tea.id);
+      const updated = exists ? prev.map((t) => (t.id === tea.id ? tea : t)) : [tea, ...prev];
+      try {
+        localStorage.setItem('gongfu_my_custom_teas', JSON.stringify(updated));
+      } catch (e) {
+        console.error('Failed to save custom teas to localStorage', e);
+      }
+      return updated;
+    });
+    // Immediately select and switch to the new custom tea
+    handleTeaChange(tea);
+    // Switch to Popular Teas tab and 'my_teas' filter so user sees their tea
+    setActiveCategoryTab('specific');
+    setPopularTypeFilter('my_teas');
+  };
+
+  const handleDeleteCustomTea = (teaId: string) => {
+    setCustomTeas((prev) => {
+      const updated = prev.filter((t) => t.id !== teaId);
+      try {
+        localStorage.setItem('gongfu_my_custom_teas', JSON.stringify(updated));
+      } catch (e) {
+        console.error('Failed to save custom teas to localStorage', e);
+      }
+      return updated;
+    });
+    if (selectedTeaId === teaId) {
+      handleTeaChange(ALL_TEA_OPTIONS[0]);
+    }
+  };
+
+  const handleExportTeas = (teasToExport: TeaVariety[], filename: string) => {
+    if (teasToExport.length === 0) return;
+    let cleanFilename = filename.trim();
+    if (!cleanFilename.endsWith('.json')) {
+      cleanFilename += '.json';
+    }
+    const exportPayload = {
+      format: 'gongfu_cha_custom_teas',
+      version: 1,
+      exportDate: new Date().toISOString(),
+      count: teasToExport.length,
+      teas: teasToExport,
+    };
+    const jsonStr = JSON.stringify(exportPayload, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = cleanFilename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setIsExportModalOpen(false);
+    setImportNotification({
+      type: 'success',
+      message: `Экспортировано ${teasToExport.length} сортов в файл «${cleanFilename}»`
+    });
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = JSON.parse(text);
+        let incomingList: any[] = [];
+        if (Array.isArray(parsed)) {
+          incomingList = parsed;
+        } else if (parsed && Array.isArray(parsed.teas)) {
+          incomingList = parsed.teas;
+        } else if (parsed && Array.isArray(parsed.varieties)) {
+          incomingList = parsed.varieties;
+        } else if (parsed && typeof parsed === 'object' && (parsed.nameRu || parsed.id)) {
+          incomingList = [parsed];
+        }
+
+        if (incomingList.length === 0) {
+          setImportNotification({
+            type: 'error',
+            message: 'В выбранном файле не найдено сортов чая.'
+          });
+          return;
+        }
+
+        const validTeas: TeaVariety[] = [];
+        const existingIds = new Set(customTeas.map((t) => t.id));
+
+        for (const item of incomingList) {
+          if (!item || typeof item !== 'object' || !item.nameRu) continue;
+
+          let teaId = item.id;
+          if (!teaId || existingIds.has(teaId)) {
+            teaId = `custom_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+          }
+          existingIds.add(teaId);
+
+          const sanitized: TeaVariety = {
+            id: teaId,
+            nameRu: String(item.nameRu).trim(),
+            nameZh: item.nameZh ? String(item.nameZh).trim() : '',
+            namePinyin: item.namePinyin ? String(item.namePinyin).trim() : '',
+            transcriptionRu: item.transcriptionRu || `${String(item.nameRu).trim()} (Собственный чай)`,
+            type: item.type || 'sheng_puerh',
+            typeNameRu: item.typeNameRu || 'Шэн Пуэр',
+            origin: item.origin ? String(item.origin).trim() : '',
+            cultivar: item.cultivar ? String(item.cultivar).trim() : '',
+            leafMorphology: item.leafMorphology || 'twisted_strip',
+            oxidationLevel: item.oxidationLevel || '15%',
+            optimalTemp: Number(item.optimalTemp) || 95,
+            tempRange: Array.isArray(item.tempRange) && item.tempRange.length === 2 ? item.tempRange : [90, 100],
+            defaultMass: Number(item.defaultMass) || 7,
+            defaultVolume: Number(item.defaultVolume) || 120,
+            recommendedVesselRu: item.recommendedVesselRu || 'Фарфоровая гайвань 120 мл',
+            keySensoryNotes: Array.isArray(item.keySensoryNotes) ? item.keySensoryNotes : [],
+            scientificDescription: item.scientificDescription || '',
+            recommendedSteeps: Number(item.recommendedSteeps) || 8,
+            categoryGroup: 'specific',
+            isArchetype: false,
+            isCustom: true,
+            canAge: Boolean(item.canAge ?? item.isAgedTea),
+            vintageYear: item.vintageYear ? Number(item.vintageYear) : undefined,
+            rinseSeconds: item.rinseSeconds !== undefined ? Number(item.rinseSeconds) : 5,
+            rinseNoteRu: item.rinseNoteRu || 'Быстрое пробуждение листа'
+          };
+          validTeas.push(sanitized);
+        }
+
+        if (validTeas.length === 0) {
+          setImportNotification({
+            type: 'error',
+            message: 'Файл не содержит корректных записей сортов чая.'
+          });
+          return;
+        }
+
+        setCustomTeas((prev) => {
+          const updated = [...validTeas, ...prev];
+          try {
+            localStorage.setItem('gongfu_my_custom_teas', JSON.stringify(updated));
+          } catch (err) {
+            console.error('Failed to save imported teas', err);
+          }
+          return updated;
+        });
+
+        setActiveCategoryTab('specific');
+        setPopularTypeFilter('my_teas');
+        handleTeaChange(validTeas[0]);
+
+        setImportNotification({
+          type: 'success',
+          message: `Успешно импортировано: ${validTeas.length} ${validTeas.length === 1 ? 'сорт' : validTeas.length < 5 ? 'сорта' : 'сортов'}!`
+        });
+      } catch (err) {
+        console.error('Import error:', err);
+        setImportNotification({
+          type: 'error',
+          message: 'Ошибка при чтении файла JSON. Проверьте корректность формата.'
+        });
+      } finally {
+        if (e.target) e.target.value = '';
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  useEffect(() => {
+    if (!importNotification) return;
+    const timer = setTimeout(() => {
+      setImportNotification(null);
+    }, 4500);
+    return () => clearTimeout(timer);
+  }, [importNotification]);
 
   // Sync when initialBrewParams or initialSelectedTea changes
   useEffect(() => {
@@ -726,9 +942,11 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
       steepsCount,
       optimizationGoal,
       customSteepTemps,
-      customRinseTemp
+      customRinseTemp,
+      waterTemp,
+      brewingMethod
     );
-  }, [selectedTea, steepsCount, optimizationGoal, customSteepTemps, customRinseTemp]);
+  }, [selectedTea, steepsCount, optimizationGoal, customSteepTemps, customRinseTemp, waterTemp, brewingMethod]);
 
   const handleSetCustomSteepTemp = useCallback((steepIndex: number, tempC: number | null) => {
     setCustomSteepTemps((prev) => {
@@ -1033,7 +1251,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                   : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/60'
               }`}
             >
-              Популярные чаи ({TEA_VARIETIES.length})
+              Популярные чаи ({TEA_VARIETIES.length + customTeas.length})
             </button>
 
             {/* 3. Смешивание и купажирование */}
@@ -1066,7 +1284,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
 
         {/* Search Bar for Popular Teas */}
         {activeCategoryTab === 'specific' && (
-          <div className="flex items-center gap-2 flex-1 max-w-lg">
+          <div className="flex items-center gap-2 flex-1 max-w-xl">
             <div className="relative flex-1">
               <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
@@ -1150,16 +1368,17 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
       {/* Quick Category Filter Pills - Shown for Popular Teas */}
       {activeCategoryTab === 'specific' && (
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs scrollbar-none">
-          <span className="text-[11px] font-semibold text-stone-400 uppercase tracking-wider shrink-0 mr-1">Тип чая:</span>
+          <span className="text-[11px] font-semibold text-stone-400 uppercase tracking-wider shrink-0 mr-1">Раздел:</span>
           {[
-            { id: 'all', label: 'Все' },
+            { id: 'all', label: 'Все сорта' },
             { id: 'green', label: 'Зелёный' },
             { id: 'white', label: 'Белый' },
             { id: 'yellow', label: 'Жёлтый' },
             { id: 'oolong', label: 'Улун' },
             { id: 'gaba', label: 'Габа' },
             { id: 'red', label: 'Красный' },
-            { id: 'puerh', label: 'Пуэр / Хэйча' }
+            { id: 'puerh', label: 'Пуэр / Хэйча' },
+            { id: 'my_teas', label: `Мои чаи (${customTeas.length})` }
           ].map((filter) => {
             const isActive = popularTypeFilter === filter.id;
             return (
@@ -1169,7 +1388,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                 onClick={() => setPopularTypeFilter(filter.id)}
                 className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all shrink-0 border cursor-pointer ${
                   isActive
-                    ? 'bg-amber-900 text-white border-amber-900 shadow-2xs'
+                    ? 'bg-amber-900 text-white border-amber-900 shadow-2xs font-semibold'
                     : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-100'
                 }`}
               >
@@ -1422,28 +1641,109 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
         ) : activeCategoryTab === 'specific' ? (
           /* 2. Popular Teas (with integrated flavor notes & search) */
           filteredPopularTeas.length === 0 ? (
-            <div className="p-8 text-center bg-white rounded-2xl border border-stone-200 space-y-2.5">
-              <p className="text-sm font-semibold text-stone-800">По вашему запросу сортов не найдено</p>
-              <p className="text-xs text-stone-500 max-w-md mx-auto">
-                Попробуйте изменить запрос или сбросить фильтры по типу и нотам букета.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setPopularSearchQuery('');
-                  setFlavorSearchQuery('');
-                  setSelectedFlavorTag(null);
-                  setSelectedFlavorGroupId(null);
-                  setPopularTypeFilter('all');
-                  setSelectedEffectFilter('all');
-                }}
-                className="mt-2 inline-flex items-center text-xs font-semibold px-3.5 py-1.5 rounded-lg bg-amber-800 text-white hover:bg-amber-900 transition-colors shadow-2xs cursor-pointer"
-              >
-                Сбросить фильтры
-              </button>
-            </div>
+            popularTypeFilter === 'my_teas' ? (
+              <div className="p-8 text-center bg-white rounded-2xl border border-stone-200 space-y-3">
+                <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-900 flex items-center justify-center mx-auto shadow-2xs">
+                  <Leaf className="w-6 h-6 text-amber-800" />
+                </div>
+                <div className="space-y-1 max-w-sm mx-auto">
+                  <h4 className="text-sm font-bold text-stone-900">
+                    В разделе «Мои чаи» пока нет сортов
+                  </h4>
+                  <p className="text-xs text-stone-500">
+                    Добавьте свой чай, заполнив форму. Все необходимые данные для расчётов симулятора (температура, гидромодуль, кинетика экстракции) автоматически подставятся из выбранного архетипа.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingCustomTea(null);
+                      setIsCustomTeaModalOpen(true);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-amber-800 hover:bg-amber-900 text-white font-bold text-xs shadow-2xs transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Добавить чай</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-4 py-2 rounded-xl bg-white hover:bg-stone-50 text-stone-700 font-semibold text-xs border border-stone-300 shadow-2xs transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+                    title="Загрузить один или несколько сортов из JSON"
+                  >
+                    <Upload className="w-4 h-4 text-stone-600" />
+                    <span>Импортировать из файла</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="p-8 text-center bg-white rounded-2xl border border-stone-200 space-y-2.5">
+                <p className="text-sm font-semibold text-stone-800">По вашему запросу сортов не найдено</p>
+                <p className="text-xs text-stone-500 max-w-md mx-auto">
+                  Попробуйте изменить запрос или сбросить фильтры по типу и нотам букета.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPopularSearchQuery('');
+                    setFlavorSearchQuery('');
+                    setSelectedFlavorTag(null);
+                    setSelectedFlavorGroupId(null);
+                    setPopularTypeFilter('all');
+                    setSelectedEffectFilter('all');
+                  }}
+                  className="mt-2 inline-flex items-center text-xs font-semibold px-3.5 py-1.5 rounded-lg bg-amber-800 text-white hover:bg-amber-900 transition-colors shadow-2xs cursor-pointer"
+                >
+                  Сбросить фильтры
+                </button>
+              </div>
+            )
           ) : (
             <div className="space-y-3">
+              {popularTypeFilter === 'my_teas' && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    id="add-custom-tea-btn"
+                    onClick={() => {
+                      setEditingCustomTea(null);
+                      setIsCustomTeaModalOpen(true);
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-800 hover:bg-amber-900 text-white transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer"
+                    title="Добавить чай"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Добавить чай</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white hover:bg-stone-50 text-stone-700 border border-stone-300 transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer"
+                    title="Импортировать один или несколько чаёв из JSON-файла"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-stone-600" />
+                    <span>Импорт</span>
+                  </button>
+
+                  {customTeas.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExportFilenameInput(appSettings.customTeasExportFilename || 'my_teas.json');
+                        setSelectedExportTeaIds(customTeas.map((t) => t.id));
+                        setIsExportModalOpen(true);
+                      }}
+                      className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white hover:bg-stone-50 text-stone-700 border border-stone-300 transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer"
+                      title="Экспортировать свои чаи в JSON-файл"
+                    >
+                      <Download className="w-3.5 h-3.5 text-stone-600" />
+                      <span>Экспорт ({customTeas.length})</span>
+                    </button>
+                  )}
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-2.5">
                 {visiblePopularTeas.map(({ tea, matchedNotes }) => {
                   const isSelected = tea.id === selectedTeaId;
@@ -1471,10 +1771,50 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                     >
                       <div className="space-y-1.5 min-w-0 w-full">
                         <div className="flex items-center justify-between gap-1 text-[11px]">
-                          <span className={`font-semibold truncate ${isSelected ? 'text-amber-200' : 'text-amber-800'}`}>
-                            {tea.typeNameRu}
-                          </span>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className={`font-semibold truncate ${isSelected ? 'text-amber-200' : 'text-amber-800'}`}>
+                              {tea.typeNameRu}
+                            </span>
+                            {tea.isCustom && (
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider shrink-0 ${
+                                isSelected ? 'bg-stone-200/90 text-stone-900 border border-stone-300' : 'bg-stone-100 text-stone-600 border border-stone-200'
+                              }`}>
+                                Мой сорт
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center space-x-1 shrink-0">
+                            {tea.isCustom && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingCustomTea(tea);
+                                    setIsCustomTeaModalOpen(true);
+                                  }}
+                                  className={`p-1 rounded-md transition-colors cursor-pointer ${
+                                    isSelected ? 'text-amber-200 hover:text-white hover:bg-amber-700/60' : 'text-stone-400 hover:text-amber-800 hover:bg-stone-100'
+                                  }`}
+                                  title="Редактировать параметры чая"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setTeaPendingDelete(tea);
+                                  }}
+                                  className={`p-1 rounded-md transition-colors cursor-pointer ${
+                                    isSelected ? 'text-amber-300 hover:text-rose-200 hover:bg-amber-700/60' : 'text-stone-400 hover:text-rose-700 hover:bg-stone-100'
+                                  }`}
+                                  title="Удалить свой сорт"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </>
+                            )}
                             <span className={`font-serif italic text-[10px] ${isSelected ? 'text-amber-200' : 'text-stone-400'}`}>
                               {tea.nameZh}
                             </span>
@@ -1885,10 +2225,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                           <div className="space-y-0.5 min-w-0">
                             <div className="flex items-center space-x-2">
                               <span className="font-semibold text-xs text-stone-900 font-mono">
-                                {yr} г.
-                              </span>
-                              <span className="text-xs text-stone-600 font-sans">
-                                {yr === currentYear ? '• Свежий сбор' : `• ${age} ${getRussianYearWord(age)}`}
+                                {yr} год
                               </span>
                               {isSelected && (
                                 <Check className="w-3.5 h-3.5 text-amber-800 shrink-0" />
@@ -1905,7 +2242,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                                 ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                                 : 'bg-stone-100 text-stone-700 border-stone-200 font-mono'
                             }`}>
-                              {age === 0 ? 'Свежий' : `${age} ${getRussianYearWord(age)}`}
+                              {age === 0 ? 'Свежий сбор' : `${age} ${getRussianYearWord(age)}`}
                             </span>
                           </div>
                         </button>
@@ -1976,7 +2313,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  const vesselName = VESSEL_MATERIALS.find(v => v.id === vesselMaterial)?.nameRu || selectedTea.recommendedVesselRu?.split('(')[0]?.trim() || `Гайвань ${waterVolume} мл`;
+                  const vesselName = selectedTea.recommendedVesselRu?.split('(')[0]?.trim() || (brewingMethod === 'grandpa_cup' ? `Кружка / чашка ${waterVolume} мл` : `Гайвань ${waterVolume} мл`);
                   const eff = getTeaEffect(selectedTea);
                   const isDyn = Boolean(appSettings.useDynamicTemperatures);
                   const steepTemps = isDyn ? dynamicTemperatures.steepTempsC : undefined;
@@ -2112,7 +2449,10 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                 <button
                   type="button"
                   id="brewing-method-gongfu"
-                  onClick={() => setBrewingMethod('gongfu')}
+                  onClick={() => {
+                    setBrewingMethod('gongfu');
+                    setCustomSteepTemps([]);
+                  }}
                   className={`py-1.5 px-1.5 rounded-md text-xs font-semibold transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
                     brewingMethod === 'gongfu'
                       ? 'bg-amber-800 text-white shadow-2xs'
@@ -2128,7 +2468,10 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                 <button
                   type="button"
                   id="brewing-method-liu-gen"
-                  onClick={() => setBrewingMethod('liu_gen')}
+                  onClick={() => {
+                    setBrewingMethod('liu_gen');
+                    setCustomSteepTemps([]);
+                  }}
                   className={`py-1.5 px-1.5 rounded-md text-xs font-semibold transition-all text-center flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
                     brewingMethod === 'liu_gen'
                       ? 'bg-amber-800 text-white shadow-2xs'
@@ -2146,6 +2489,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                   id="brewing-method-grandpa-cup"
                   onClick={() => {
                     setBrewingMethod('grandpa_cup');
+                    setCustomSteepTemps([]);
                     if (!fixVolume && waterVolume < 200) {
                       setFixedVolumeVal(250);
                     }
@@ -2299,6 +2643,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                           onClick={() => {
                             if (isEligible) {
                               setOptimizationGoal(preset.id as OptimizationGoal);
+                              setCustomSteepTemps([]);
                               setIsGoalDropdownOpen(false);
                             }
                           }}
@@ -4041,11 +4386,226 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
         steepNumber={timerSteepIndex === -1 ? -1 : timerSteepIndex + 1}
         teaName={selectedTea.nameRu}
         totalSteepsCount={steepsCount}
+        hasRinse={isRinseEnabled}
         onSelectSteepIndex={(newIdx) => {
-          setTimerSteepIndex(newIdx);
-          setSelectedSteepIndex(newIdx);
+          const clamped = isRinseEnabled ? Math.max(-1, newIdx) : Math.max(0, newIdx);
+          setTimerSteepIndex(clamped);
+          setSelectedSteepIndex(clamped);
         }}
       />
+
+      {/* Custom Tea Creation & Editing Modal */}
+      <CustomTeaModal
+        isOpen={isCustomTeaModalOpen}
+        onClose={() => {
+          setIsCustomTeaModalOpen(false);
+          setEditingCustomTea(null);
+        }}
+        onSaveTea={handleSaveCustomTea}
+        editingTea={editingCustomTea}
+        onDeleteTea={handleDeleteCustomTea}
+      />
+
+      {/* Confirmation Modal for deleting custom tea */}
+      {teaPendingDelete && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/60 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => setTeaPendingDelete(null)}
+        >
+          <div 
+            className="bg-white rounded-2xl border border-stone-200 shadow-2xl p-5 max-w-sm w-full space-y-4 text-stone-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 shadow-2xs">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-sm font-bold text-stone-900 leading-tight">Удалить сорт?</h4>
+                <p className="text-xs text-stone-500 mt-0.5 truncate">«{teaPendingDelete.nameRu}»</p>
+              </div>
+            </div>
+            <p className="text-xs text-stone-600 leading-relaxed">
+              Сорт будет удалён из вашей коллекции «Мои чаи». Это действие нельзя отменить.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-1 border-t border-stone-100">
+              <button
+                type="button"
+                onClick={() => setTeaPendingDelete(null)}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer border border-stone-200"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleDeleteCustomTea(teaPendingDelete.id);
+                  setTeaPendingDelete(null);
+                }}
+                className="px-4 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white transition-colors cursor-pointer shadow-2xs"
+              >
+                Удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hidden file input for custom teas import */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleImportFile}
+        accept=".json,application/json"
+        className="hidden"
+      />
+
+      {/* Export Custom Teas Modal */}
+      {isExportModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/50 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setIsExportModalOpen(false)}
+        >
+          <div
+            className="relative w-full max-w-md bg-white rounded-3xl border border-stone-200 shadow-2xl p-6 text-stone-900 flex flex-col max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-stone-200 pb-3 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-amber-100 text-amber-900">
+                  <Download className="w-5 h-5 text-amber-800" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-stone-900">Экспорт своих сортов</h3>
+                  <p className="text-xs text-stone-500">Сохранение коллекции в файл JSON</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsExportModalOpen(false)}
+                className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-stone-700 mb-1">
+                  Имя экспортируемого файла:
+                </label>
+                <input
+                  type="text"
+                  value={exportFilenameInput}
+                  onChange={(e) => setExportFilenameInput(e.target.value)}
+                  placeholder="my_teas.json"
+                  className="w-full px-3 py-2 rounded-xl border border-stone-300 font-mono text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-800"
+                />
+                <span className="text-[11px] text-stone-400 mt-1 block">
+                  Файл будет скачан в формате .json с указанным вами именем.
+                </span>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-stone-700">Сорта для экспорта:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedExportTeaIds.length === customTeas.length) {
+                        setSelectedExportTeaIds([]);
+                      } else {
+                        setSelectedExportTeaIds(customTeas.map((t) => t.id));
+                      }
+                    }}
+                    className="text-xs font-semibold text-amber-800 hover:underline cursor-pointer"
+                  >
+                    {selectedExportTeaIds.length === customTeas.length ? 'Снять все' : 'Выбрать все'}
+                  </button>
+                </div>
+
+                <div className="max-h-48 overflow-y-auto space-y-1.5 border border-stone-200 rounded-xl p-2 bg-stone-50">
+                  {customTeas.map((t) => {
+                    const isChecked = selectedExportTeaIds.includes(t.id);
+                    return (
+                      <label
+                        key={t.id}
+                        className={`flex items-center gap-2.5 p-2 rounded-lg text-xs cursor-pointer transition-colors ${
+                          isChecked ? 'bg-amber-100/60 font-semibold text-amber-950' : 'bg-white text-stone-700 hover:bg-stone-100'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            if (isChecked) {
+                              setSelectedExportTeaIds(selectedExportTeaIds.filter((id) => id !== t.id));
+                            } else {
+                              setSelectedExportTeaIds([...selectedExportTeaIds, t.id]);
+                            }
+                          }}
+                          className="rounded text-amber-800 focus:ring-amber-800"
+                        />
+                        <span className="truncate">{t.nameRu}</span>
+                        <span className="text-[10px] text-stone-400 ml-auto shrink-0 font-normal">
+                          {t.typeNameRu}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-stone-200">
+                <button
+                  type="button"
+                  onClick={() => setIsExportModalOpen(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-stone-600 hover:bg-stone-100 cursor-pointer"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  disabled={selectedExportTeaIds.length === 0}
+                  onClick={() => {
+                    const teasToExport = customTeas.filter((t) => selectedExportTeaIds.includes(t.id));
+                    handleExportTeas(teasToExport, exportFilenameInput || 'my_teas.json');
+                  }}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer ${
+                    selectedExportTeaIds.length > 0
+                      ? 'bg-amber-800 hover:bg-amber-900 text-white shadow-2xs'
+                      : 'bg-stone-200 text-stone-400 cursor-not-allowed'
+                  }`}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Экспортировать ({selectedExportTeaIds.length})</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast notification for import/export actions */}
+      {importNotification && (
+        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl shadow-xl border bg-white animate-in slide-in-from-bottom-2 duration-200 max-w-sm">
+          {importNotification.type === 'success' ? (
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+          ) : (
+            <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+          )}
+          <span className="text-xs font-semibold text-stone-900">
+            {importNotification.message}
+          </span>
+          <button
+            type="button"
+            onClick={() => setImportNotification(null)}
+            className="p-1 rounded-lg text-stone-400 hover:text-stone-700 ml-auto shrink-0 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

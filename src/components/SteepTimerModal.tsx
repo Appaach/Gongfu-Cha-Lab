@@ -19,6 +19,7 @@ export interface SteepTimerModalProps {
   targetSeconds: number;
   steepNumber: number; // -1 for Rinse #0, 1..N for regular steeps
   teaName: string;
+  hasRinse?: boolean;
   onSelectSteepIndex?: (index: number) => void;
   totalSteepsCount?: number;
 }
@@ -30,6 +31,7 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
   targetSeconds,
   steepNumber,
   teaName,
+  hasRinse = true,
   onSelectSteepIndex,
   totalSteepsCount = 8,
 }) => {
@@ -204,12 +206,20 @@ export const SteepTimerModal: React.FC<SteepTimerModalProps> = ({
   };
 
   const currentIdx = steepNumber === -1 ? -1 : steepNumber - 1;
-  const canGoPrev = currentIdx > -1;
+  const minIdx = hasRinse ? -1 : 0;
+  const canGoPrev = currentIdx > minIdx;
   const canGoNext = currentIdx < totalSteepsCount - 1;
+
+  // Safeguard: If current tea has no rinse but timer was on steep -1, automatically advance to steep 0
+  useEffect(() => {
+    if (!hasRinse && steepNumber === -1 && onSelectSteepIndex) {
+      onSelectSteepIndex(0);
+    }
+  }, [hasRinse, steepNumber, onSelectSteepIndex]);
 
   const handlePrev = () => {
     if (onSelectSteepIndex && canGoPrev) {
-      onSelectSteepIndex(currentIdx - 1);
+      onSelectSteepIndex(Math.max(minIdx, currentIdx - 1));
     }
   };
 
