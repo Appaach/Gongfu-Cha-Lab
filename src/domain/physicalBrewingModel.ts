@@ -647,7 +647,7 @@ function runPhysicalSimulation(input: PhysicalBrewingInput): PhysicalBrewingResu
     if (args.isZero) {
       const disposition = args.disposition ?? 'discard';
       if (disposition === 'retain') {
-        targetRetainedVolume = Math.max(leafHeld, args.retainedVolumeMl ?? leafHeld);
+        targetRetainedVolume = preDrainVolume;
       } else if (disposition === 'partial') {
         targetRetainedVolume = Math.max(leafHeld, args.retainedVolumeMl ?? leafHeld);
       } else {
