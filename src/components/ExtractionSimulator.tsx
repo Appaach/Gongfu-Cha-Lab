@@ -523,6 +523,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     setSelectedTeaId(tea.id);
     setSelectedSteepIndex(0);
     setCustomRinseTime(null);
+    setCustomRinseTemp(null);
 
     // Restore saved vintage year if tea is in favorites, else default
     const favEntry = favoriteEntries.find((f) => f.id === tea.id);
@@ -834,6 +835,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     setSelectedTeaId(compositeTea.id);
     setSelectedSteepIndex(0);
     setCustomRinseTime(null);
+    setCustomRinseTemp(null);
     setRawVolumeStr(null);
     setRawMassStr(null);
     setRawTempStr(null);
@@ -3653,7 +3655,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
             )}
           </div>
 
-          {/* Cumulative Totals according to ISO 9768 (Advanced Mode) */}
+          {/* Cumulative tracked-compound totals (Advanced Mode) */}
           {appSettings.advancedMode && (
             <div className="pt-2 border-t border-stone-100 text-xs space-y-2 text-stone-600">
               <div className="flex justify-between">
@@ -4242,8 +4244,18 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                       * Расчётная сумма отслеживаемых веществ, а не лабораторное измерение TDS. Выход отслеживаемых веществ не равен общему выходу сухого экстракта и не является результатом испытания ISO 9768.
                     </p>
                     <p className="text-[10px] leading-relaxed text-stone-500">
-                      Статус параметров: {currentSteepData.modelConfidence === 'high' ? 'высокая полнота калибровки' : currentSteepData.modelConfidence === 'medium' ? 'частичная калибровка' : 'типовые оценочные параметры'}. Сенсорные баллы пока не калиброваны на дегустационной панели.
+                      Статус параметров: {currentSteepData.modelConfidence === 'high' ? 'высокая полнота калибровки' : currentSteepData.modelConfidence === 'medium' ? 'частичная калибровка' : currentSteepData.modelNotesRu?.some((note) => note.includes('HPLC-данным')) ? 'частичная литературная калибровка (кофеин и L-теанин); остальные параметры оценочные' : 'типовые оценочные параметры'}. Сенсорные баллы пока не калиброваны на дегустационной панели.
                     </p>
+                    <details className="rounded-xl border border-stone-200 bg-stone-50/70 px-3 py-2">
+                      <summary className="cursor-pointer text-[11px] font-semibold text-stone-700">
+                        Метод расчёта и источники
+                      </summary>
+                      <ul className="mt-2 list-disc space-y-1 pl-4 text-[10px] leading-relaxed text-stone-500">
+                        {(currentSteepData.modelNotesRu ?? []).map((note, index) => (
+                          <li key={index}>{note}</li>
+                        ))}
+                      </ul>
+                    </details>
 
                     <div className="space-y-1.5">
                       <div className="text-[11px] font-medium text-stone-500">
