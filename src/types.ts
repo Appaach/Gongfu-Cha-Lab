@@ -86,7 +86,7 @@ export type ParameterSourceStatus =
 
 /** Optional, provenance-aware parameters for the physical extraction model. */
 export interface CompoundPhysicsParameter {
-  /** Initial measured/estimated quantity in mg per g of dry tea leaf. */
+  /** Initial pool available to the model in mg/g. For fitted priors this is not the leaf's total laboratory composition. */
   initialMgPerG?: number;
   /** Fraction of the total compound pool available to the modeled extraction. */
   extractableFraction?: number;
@@ -95,6 +95,10 @@ export interface CompoundPhysicsParameter {
   /** Effective activation energy in kJ/mol. */
   activationEnergyKJMol?: number;
   sourceStatus?: ParameterSourceStatus;
+  /** DOI or other stable identifier for the source data used in fitting. */
+  sourceCitation?: string;
+  /** Human-readable calibration scope and limitations. */
+  calibrationNoteRu?: string;
 }
 
 export type TrackedTeaCompound =
