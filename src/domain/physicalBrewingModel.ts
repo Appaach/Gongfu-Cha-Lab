@@ -1250,7 +1250,7 @@ export function optimizePhysicalBrewingParameters(
     steepsCount: clamp(Math.round(fixed.steepsCount ?? input.seed.steepsCount), 1, 60),
   };
   const values = { ...seed };
-  const minimumSteeps = Math.max(1, Math.min(20, userDurations.reduce(
+  const minimumSteeps = Math.max(1, Math.min(20, userDurations.reduce<number>(
     (maxIndex, seconds, index) => seconds !== null && seconds !== undefined && seconds > 0
       ? Math.max(maxIndex, index + 1)
       : maxIndex,
