@@ -128,6 +128,69 @@ const sourceFit = {
   },
 } satisfies Record<CalibrationArchetype, Partial<Record<MeasuredCompound, CompoundPhysicsParameter>>>;
 
+export interface TeaArchetypeCalibrationDiagnostic {
+  sampleCountCaffeine: number;
+  sampleCountTheanine: number;
+  rmseCaffeineMgPer200Ml: number;
+  rmseTheanineMgPer200Ml: number;
+  conditionsCountPerCompound: number;
+}
+
+function predictCalibrationMeanMgPer200Ml(
+  fit: CompoundPhysicsParameter,
+  point: TeaInfusionReferencePoint,
+): number {
+  const gasConstant = 8.314462618;
+  const referenceTempK = 358.15;
+  const tempK = point.temperatureC + 273.15;
+  const activationEnergy = (fit.activationEnergyKJMol ?? 0) * 1000;
+  const rateAtReference = fit.rateAt85CPerSec ?? 0;
+  const exponent = -(activationEnergy / gasConstant) * (1 / tempK - 1 / referenceTempK);
+  const rate = rateAtReference * Math.exp(Math.max(-40, Math.min(40, exponent)));
+  // Fixed two-pool split used for the fit diagnostic only. Production simulation also
+  // uses leaf-morphology-dependent pool fractions, which intentionally limits equivalence.
+  const fastFraction = 0.45;
+  const slowFraction = 1 - fastFraction;
+  const time = point.durationSec;
+  const extractedFraction = fastFraction * (1 - Math.exp(-1.8 * rate * time))
+    + slowFraction * (1 - Math.exp(-0.45 * rate * time));
+  return Math.max(0, (fit.initialMgPerG ?? 0) * 2 * extractedFraction);
+}
+
+function calculateRmse(
+  observations: TeaInfusionReferencePoint[],
+  fit: CompoundPhysicsParameter,
+): number {
+  const squaredErrors = observations.map((point) => {
+    const residual = predictCalibrationMeanMgPer200Ml(fit, point) - point.meanMgPer200Ml;
+    return residual * residual;
+  });
+  return Math.sqrt(squaredErrors.reduce((sum, value) => sum + value, 0) / Math.max(1, squaredErrors.length));
+}
+
+/**
+ * RMSE against the six published temperature/time means per tea category. This evaluates
+ * the calibration approximation, not out-of-sample performance on individual teas or
+ * short Gongfu steeps.
+ */
+export const TEA_ARCHETYPE_CALIBRATION_DIAGNOSTICS: Record<CalibrationArchetype, TeaArchetypeCalibrationDiagnostic> =
+  Object.fromEntries(
+    (Object.keys(sourceFit) as CalibrationArchetype[]).map((archetype) => {
+      const fits = sourceFit[archetype];
+      const observations = TEA_EXTRACTION_REFERENCE_DATA[archetype];
+      const caffeineFit = fits.caffeine;
+      const theanineFit = fits.theanine;
+      if (!caffeineFit || !theanineFit) throw new Error('Missing calibration fit for ' + archetype);
+      return [archetype, {
+        sampleCountCaffeine: observations.sampleCountCaffeine,
+        sampleCountTheanine: observations.sampleCountTheanine,
+        rmseCaffeineMgPer200Ml: Number(calculateRmse(observations.caffeine, caffeineFit).toFixed(2)),
+        rmseTheanineMgPer200Ml: Number(calculateRmse(observations.theanine, theanineFit).toFixed(2)),
+        conditionsCountPerCompound: observations.caffeine.length,
+      }];
+    }),
+  ) as Record<CalibrationArchetype, TeaArchetypeCalibrationDiagnostic>;
+
 const typeToArchetype: Partial<Record<TeaType, CalibrationArchetype>> = {
   green: 'green',
   white: 'white',
@@ -146,6 +209,11 @@ export const TEA_ARCHETYPE_EXTRACTION_PRIORS: Partial<Record<TeaType, Partial<Re
   Object.fromEntries(
     Object.entries(typeToArchetype).map(([teaType, archetype]) => [teaType, sourceFit[archetype as CalibrationArchetype]]),
   ) as Partial<Record<TeaType, Partial<Record<MeasuredCompound, CompoundPhysicsParameter>>>>;
+
+export function getTeaArchetypeCalibrationDiagnostics(teaType: TeaType) {
+  const archetype = typeToArchetype[teaType];
+  return archetype ? { archetype, ...TEA_ARCHETYPE_CALIBRATION_DIAGNOSTICS[archetype] } : undefined;
+}
 
 /** Metadata for UI notes and future re-fitting scripts. */
 export const TEA_CALIBRATION_NOTES_RU = [
