@@ -529,6 +529,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     setSelectedTeaId(tea.id);
     setSelectedSteepIndex(0);
     setCustomRinseTime(null);
+    setZeroInfusionOverride(null);
 
     // Restore saved vintage year if tea is in favorites, else default
     const favEntry = favoriteEntries.find((f) => f.id === tea.id);
@@ -840,6 +841,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     setSelectedTeaId(compositeTea.id);
     setSelectedSteepIndex(0);
     setCustomRinseTime(null);
+    setZeroInfusionOverride(null);
     setRawVolumeStr(null);
     setRawMassStr(null);
     setRawTempStr(null);
@@ -881,6 +883,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     setVesselMaterial('porcelain');
     setSelectedSteepIndex(0);
     setCustomRinseTime(null);
+    setZeroInfusionOverride(null);
     setBrewingMethod('gongfu');
     setRootFraction(0.333);
   };
