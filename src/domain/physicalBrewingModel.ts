@@ -1242,10 +1242,12 @@ export function optimizePhysicalBrewingParameters(
   const userTemps = input.userTemperaturesC ?? [];
   const targetSteepIndex = input.targetSteepIndex ?? 0;
   const seed = {
-    waterVolumeMl: clamp(fixed.waterVolumeMl ?? input.seed.waterVolumeMl, 30, 1000),
-    leafMassGrams: clamp(fixed.leafMassGrams ?? input.seed.leafMassGrams, 0.5, 40),
+    // Fixed user-entered values use the physical model's full valid range; the narrower
+    // candidate search bounds below apply only to automatically selected values.
+    waterVolumeMl: clamp(fixed.waterVolumeMl ?? input.seed.waterVolumeMl, 10, 5000),
+    leafMassGrams: clamp(fixed.leafMassGrams ?? input.seed.leafMassGrams, 0.1, 100),
     waterTempC: clamp(fixed.waterTempC ?? input.seed.waterTempC, 40, 100),
-    steepsCount: clamp(Math.round(fixed.steepsCount ?? input.seed.steepsCount), 1, 20),
+    steepsCount: clamp(Math.round(fixed.steepsCount ?? input.seed.steepsCount), 1, 60),
   };
   const values = { ...seed };
   const minimumSteeps = Math.max(1, Math.min(20, userDurations.reduce(
