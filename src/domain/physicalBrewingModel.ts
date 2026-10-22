@@ -12,6 +12,7 @@ import {
   VESSEL_MATERIALS,
 } from '../data/teaData';
 import {
+  getTeaArchetypeCalibrationDiagnostics,
   TEA_ARCHETYPE_EXTRACTION_PRIORS,
   TEA_CALIBRATION_NOTES_RU,
   TEA_EXTRACTION_REFERENCE_SOURCE,
@@ -490,6 +491,15 @@ function createSteepRow(args: {
     aroma: 5,
   };
   const typicalNotes = args.tea.keySensoryNotes?.slice(0, 3).join('、') || 'типовой профиль выбранной категории';
+  const calibrationDiagnostic = getTeaArchetypeCalibrationDiagnostics(args.tea.type);
+  const calibrationFitNote = calibrationDiagnostic
+    ? 'Остаточная ошибка подгонки средних лабораторных точек (RMSE на 6 условиях, мг/200 мл): кофеин '
+      + calibrationDiagnostic.rmseCaffeineMgPer200Ml.toFixed(2)
+      + ', L-теанин ' + calibrationDiagnostic.rmseTheanineMgPer200Ml.toFixed(2)
+      + '. Размеры выборок: n=' + calibrationDiagnostic.sampleCountCaffeine
+      + ' для кофеина и n=' + calibrationDiagnostic.sampleCountTheanine
+      + ' для L-теанина; это не оценка ошибки на коротких проливах гунфу.'
+    : undefined;
   const keyNotes = args.isZero
     ? 'Нулевой пролив: экстракция учтена отдельно. ' + (args.zeroDiscardedMg !== undefined
       ? 'Удалено со слитой жидкостью около ' + round(args.zeroDiscardedMg, 1) + ' мг отслеживаемых веществ.'
@@ -550,6 +560,7 @@ function createSteepRow(args: {
         ? [
             'Для кофеина и L-теанина используются аппроксимированные архетипические параметры по опубликованным средним HPLC-данным: ' + TEA_EXTRACTION_REFERENCE_SOURCE.citation + ' (DOI: ' + TEA_EXTRACTION_REFERENCE_SOURCE.doi + ').',
             ...TEA_CALIBRATION_NOTES_RU,
+            ...(calibrationFitNote ? [calibrationFitNote] : []),
           ]
         : ['Кинетические параметры этого архетипа оценочные; опубликованный калибровочный набор кофеина/теанина не назначен.']),
     ],
