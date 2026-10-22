@@ -65,6 +65,9 @@ export async function exportElementToPdf(
       scrollY: 0,
       windowWidth: 800,
       onclone: (clonedDoc) => {
+        // Enforce classic theme for high-contrast, clean printable PDF pages
+        clonedDoc.documentElement.setAttribute('data-theme', 'classic');
+        clonedDoc.documentElement.classList.remove('dark');
         // Double-guard: automatically convert any lingering oklab / oklch color values to standard rgb/hex
         try {
           const testCanvas = clonedDoc.createElement('canvas');
@@ -177,7 +180,7 @@ export async function exportElementToPdf(
 /**
  * Exports all tasting journal entries into a comprehensive, beautifully styled PDF document.
  */
-export async function exportJournalEntriesToPdf(entries: TastingJournalEntry[]): Promise<void> {
+export async function exportJournalEntriesToPdf(entries: TastingJournalEntry[], customFilename?: string): Promise<void> {
   if (entries.length === 0) return;
 
   const container = document.createElement('div');
@@ -307,7 +310,9 @@ export async function exportJournalEntriesToPdf(entries: TastingJournalEntry[]):
   document.body.appendChild(container);
 
   try {
-    const filename = `gongfu_cha_journal_${new Date().toISOString().split('T')[0]}`;
+    const filename = customFilename
+      ? customFilename.replace(/\.pdf$/i, '')
+      : `gongfu_cha_journal_${new Date().toISOString().split('T')[0]}`;
     await exportElementToPdf(container, filename, { title: 'Журнал дегустаций Gongfu Cha' });
   } finally {
     document.body.removeChild(container);

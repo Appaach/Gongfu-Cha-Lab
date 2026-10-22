@@ -10,6 +10,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   showExtractionChart: false,
   customTeasExportFilename: 'my_teas.json',
   promptExportFilename: false,
+  appTheme: 'classic',
 };
 
 export function loadAppSettings(): AppSettings {
@@ -31,6 +32,9 @@ export function loadAppSettings(): AppSettings {
         : false
     );
 
+    const validThemes = ['classic', 'dark', 'bamboo', 'porcelain'];
+    const appTheme = validThemes.includes(parsed.appTheme) ? parsed.appTheme : 'classic';
+
     return {
       advancedMode: Boolean(parsed.advancedMode),
       showBrewingMethod,
@@ -42,6 +46,7 @@ export function loadAppSettings(): AppSettings {
         ? parsed.customTeasExportFilename.trim()
         : 'my_teas.json',
       promptExportFilename: Boolean(parsed.promptExportFilename),
+      appTheme,
     };
   } catch (err) {
     console.error('Failed to parse app settings from localStorage:', err);

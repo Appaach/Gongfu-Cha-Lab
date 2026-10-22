@@ -140,6 +140,7 @@ export const CustomTeaModal: React.FC<CustomTeaModalProps> = ({
   const [showAdvancedParams, setShowAdvancedParams] = useState<boolean>(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState<boolean>(false);
+  const [isArchetypeDropdownOpen, setIsArchetypeDropdownOpen] = useState<boolean>(false);
   const [isMorphologyDropdownOpen, setIsMorphologyDropdownOpen] = useState<boolean>(false);
   const [isVesselDropdownOpen, setIsVesselDropdownOpen] = useState<boolean>(false);
 
@@ -182,6 +183,7 @@ export const CustomTeaModal: React.FC<CustomTeaModalProps> = ({
     if (!isOpen) return;
 
     setIsConfirmingDelete(false);
+    setIsArchetypeDropdownOpen(false);
     setIsMorphologyDropdownOpen(false);
     setIsVesselDropdownOpen(false);
 
@@ -240,7 +242,7 @@ export const CustomTeaModal: React.FC<CustomTeaModalProps> = ({
     if (sensoryTags.includes(tag)) {
       setSensoryTags(sensoryTags.filter((t) => t !== tag));
     } else {
-      if (sensoryTags.length < 8) {
+      if (sensoryTags.length < 10) {
         setSensoryTags([...sensoryTags, tag]);
       }
     }
@@ -248,7 +250,7 @@ export const CustomTeaModal: React.FC<CustomTeaModalProps> = ({
 
   const handleAddCustomTag = () => {
     const trimmed = customTagInput.trim();
-    if (trimmed && !sensoryTags.includes(trimmed) && sensoryTags.length < 8) {
+    if (trimmed && !sensoryTags.includes(trimmed) && sensoryTags.length < 10) {
       setSensoryTags([...sensoryTags, trimmed]);
       setCustomTagInput('');
     }
@@ -261,11 +263,20 @@ export const CustomTeaModal: React.FC<CustomTeaModalProps> = ({
       return;
     }
 
-    // Calculations parameters (fallback to base archetype if empty)
+    // Auto-commit any currently typed custom sensory note if under limit
+    let finalSensoryTags = [...sensoryTags];
+    const trimmedCustom = customTagInput.trim();
+    if (trimmedCustom && !finalSensoryTags.includes(trimmedCustom) && finalSensoryTags.length < 10) {
+      finalSensoryTags.push(trimmedCustom);
+      setCustomTagInput('');
+      setSensoryTags(finalSensoryTags);
+    }
+
+    // Calculations parameters (fallback to base archetype if empty, strictly clamped to safe ranges)
     const parsedTemp = optimalTemp.trim() ? Math.max(60, Math.min(100, Math.round(Number(optimalTemp)))) : baseArchetype.optimalTemp;
-    const parsedMass = defaultMass.trim() ? Math.max(1, Math.min(25, Number(defaultMass))) : baseArchetype.defaultMass;
+    const parsedMass = defaultMass.trim() ? Math.max(1, Math.min(25, Math.round(Number(defaultMass) * 10) / 10)) : baseArchetype.defaultMass;
     const parsedVolume = defaultVolume.trim() ? Math.max(40, Math.min(500, Math.round(Number(defaultVolume)))) : baseArchetype.defaultVolume;
-    const parsedSteeps = recommendedSteeps.trim() ? Math.max(3, Math.min(20, Math.round(Number(recommendedSteeps)))) : baseArchetype.recommendedSteeps;
+    const parsedSteeps = recommendedSteeps.trim() ? Math.max(1, Math.min(30, Math.round(Number(recommendedSteeps)))) : baseArchetype.recommendedSteeps;
     const parsedYear = vintageYear.trim() ? Math.max(1950, Math.min(currentYear, Math.round(Number(vintageYear)))) : currentYear;
 
     // Rinse is strictly derived from archetype
@@ -302,7 +313,7 @@ export const CustomTeaModal: React.FC<CustomTeaModalProps> = ({
       defaultMass: parsedMass,
       defaultVolume: parsedVolume,
       recommendedVesselRu: recommendedVesselRu.trim() || baseArchetype.recommendedVesselRu,
-      keySensoryNotes: sensoryTags,
+      keySensoryNotes: finalSensoryTags,
       scientificDescription: scientificDescription.trim(),
       recommendedSteeps: parsedSteeps,
       categoryGroup: 'specific',
@@ -383,26 +394,55 @@ export const CustomTeaModal: React.FC<CustomTeaModalProps> = ({
             </div>
 
             <div className="relative">
-              <select
-                id="archetype-select"
-                value={selectedArchetypeId}
-                onChange={(e) => handleArchetypeChange(e.target.value)}
-                className="w-full px-3 py-2.5 text-xs font-semibold rounded-xl border border-stone-300 bg-white text-stone-900 focus:outline-hidden focus:ring-2 focus:ring-amber-800/20 focus:border-amber-700 transition-all cursor-pointer shadow-2xs appearance-none pr-8"
+              <button
+                type="button"
+                id="archetype-select-btn"
+                onClick={() => {
+                  setIsArchetypeDropdownOpen(!isArchetypeDropdownOpen);
+                  setIsMorphologyDropdownOpen(false);
+                  setIsVesselDropdownOpen(false);
+                }}
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-stone-300 bg-white hover:border-amber-700/60 focus:outline-hidden focus:ring-2 focus:ring-amber-800/20 text-left transition-all flex items-center justify-between shadow-2xs cursor-pointer"
               >
-                {GENERIC_TEA_ARCHETYPES.map((arch) => (
-                  <option key={arch.id} value={arch.id}>
-                    {arch.nameRu} ({arch.typeNameRu}) • Базово {arch.optimalTemp}°C, 1:{Math.round(arch.defaultVolume / arch.defaultMass)}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="w-4 h-4 text-stone-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
+                <div className="min-w-0 pr-2">
+                  <div className="font-bold text-stone-900 truncate">
+                    {baseArchetype.nameRu} ({baseArchetype.typeNameRu})
+                  </div>
+                  <div className="text-[11px] text-stone-500 truncate mt-0.5 font-mono">
+                    Базово {baseArchetype.optimalTemp}°C • 1:{Math.round(baseArchetype.defaultVolume / baseArchetype.defaultMass)} ({baseArchetype.defaultMass}г / {baseArchetype.defaultVolume}мл)
+                  </div>
+                </div>
+                <ChevronDown className={`w-4 h-4 text-stone-400 shrink-0 transition-transform duration-200 ${isArchetypeDropdownOpen ? 'rotate-180 text-amber-800' : ''}`} />
+              </button>
 
-            <div className="text-[11px] text-stone-600 bg-amber-50/70 p-2.5 rounded-xl border border-amber-200/70 flex items-start gap-2">
-              <Sparkles className="w-3.5 h-3.5 text-amber-800 shrink-0 mt-0.5" />
-              <div>
-                <strong>{baseArchetype.nameRu}:</strong> {baseArchetype.scientificDescription.slice(0, 140)}...
-              </div>
+              {isArchetypeDropdownOpen && (
+                <div className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-xl border border-stone-200 shadow-xl p-1.5 space-y-1 z-30 animate-in fade-in duration-150 max-h-64 overflow-y-auto">
+                  {GENERIC_TEA_ARCHETYPES.map((arch) => {
+                    const isSelected = selectedArchetypeId === arch.id;
+                    return (
+                      <button
+                        key={arch.id}
+                        type="button"
+                        onClick={() => {
+                          handleArchetypeChange(arch.id);
+                          setIsArchetypeDropdownOpen(false);
+                        }}
+                        className={`w-full text-left p-2.5 rounded-lg text-xs transition-colors cursor-pointer flex flex-col ${
+                          isSelected ? 'bg-amber-100/70 text-amber-950 font-bold' : 'hover:bg-stone-50 text-stone-800'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold">{arch.nameRu} ({arch.typeNameRu})</span>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-amber-800 shrink-0" />}
+                        </div>
+                        <span className="text-[11px] text-stone-500 font-mono mt-0.5">
+                          Базово {arch.optimalTemp}°C • 1:{Math.round(arch.defaultVolume / arch.defaultMass)} ({arch.defaultMass}г / {arch.defaultVolume}мл) • {arch.recommendedSteeps} проливов
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
@@ -514,11 +554,39 @@ export const CustomTeaModal: React.FC<CustomTeaModalProps> = ({
                 <Sparkles className="w-3.5 h-3.5 text-amber-700" />
                 <span>Вкусовой букет и ноты:</span>
               </label>
-              <span className="text-[11px] text-stone-400">
-                выбрано {sensoryTags.length} из 8
+              <span className="text-[11px] font-mono text-stone-500">
+                выбрано <strong className="text-amber-900">{sensoryTags.length}</strong> из 10
               </span>
             </div>
 
+            {/* Selected Active Tags with Remove Badges */}
+            {sensoryTags.length > 0 && (
+              <div className="p-2.5 bg-amber-50/60 rounded-xl border border-amber-200/80 space-y-1.5">
+                <span className="text-[10px] uppercase font-bold text-amber-900 tracking-wider block">
+                  Выбранные дескрипторы:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {sensoryTags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-800 text-white shadow-2xs"
+                    >
+                      <span>{tag}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleTag(tag)}
+                        className="hover:text-amber-200 cursor-pointer ml-0.5 p-0.5"
+                        title="Удалить дескриптор"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Common Suggested Tags */}
             <div className="flex flex-wrap gap-1.5 p-2 bg-stone-50 rounded-xl border border-stone-200 max-h-36 overflow-y-auto">
               {COMMON_SENSORY_TAGS.map((tag) => {
                 const isSelected = sensoryTags.includes(tag);
@@ -550,13 +618,13 @@ export const CustomTeaModal: React.FC<CustomTeaModalProps> = ({
                     handleAddCustomTag();
                   }
                 }}
-                placeholder="например: курага, жасмин, лесной мох..."
-                className="flex-1 px-3 py-1.5 text-xs rounded-lg border border-stone-300 bg-white text-stone-900 placeholder:text-stone-400"
+                placeholder="Своя вкусовая нота (например: курага, жасмин, лесной мох...)"
+                className="flex-1 px-3 py-1.5 text-xs rounded-lg border border-stone-300 bg-white text-stone-900 placeholder:text-stone-400 focus:outline-hidden focus:ring-1 focus:ring-amber-800"
               />
               <button
                 type="button"
                 onClick={handleAddCustomTag}
-                className="px-3 py-1.5 text-xs rounded-lg bg-stone-200 hover:bg-stone-300 font-semibold text-stone-800 transition-colors cursor-pointer"
+                className="px-3 py-1.5 text-xs rounded-lg bg-stone-200 hover:bg-stone-300 font-semibold text-stone-800 transition-colors cursor-pointer shrink-0"
               >
                 Добавить
               </button>
@@ -603,6 +671,7 @@ export const CustomTeaModal: React.FC<CustomTeaModalProps> = ({
                       onClick={() => {
                         setIsMorphologyDropdownOpen(!isMorphologyDropdownOpen);
                         setIsVesselDropdownOpen(false);
+                        setIsArchetypeDropdownOpen(false);
                       }}
                       className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 bg-white hover:border-amber-700/60 focus:outline-hidden focus:ring-2 focus:ring-amber-800/20 text-left transition-all flex items-center justify-between shadow-2xs cursor-pointer"
                     >
@@ -656,6 +725,7 @@ export const CustomTeaModal: React.FC<CustomTeaModalProps> = ({
                       onClick={() => {
                         setIsVesselDropdownOpen(!isVesselDropdownOpen);
                         setIsMorphologyDropdownOpen(false);
+                        setIsArchetypeDropdownOpen(false);
                       }}
                       className="w-full px-3 py-2 text-xs rounded-xl border border-stone-300 bg-white hover:border-amber-700/60 focus:outline-hidden focus:ring-2 focus:ring-amber-800/20 text-left transition-all flex items-center justify-between shadow-2xs cursor-pointer"
                     >
@@ -731,6 +801,12 @@ export const CustomTeaModal: React.FC<CustomTeaModalProps> = ({
                       max="100"
                       value={optimalTemp}
                       onChange={(e) => setOptimalTemp(e.target.value)}
+                      onBlur={() => {
+                        if (optimalTemp.trim()) {
+                          const val = Math.max(60, Math.min(100, Math.round(Number(optimalTemp))));
+                          setOptimalTemp(String(val));
+                        }
+                      }}
                       placeholder={`например: ${baseArchetype.optimalTemp}`}
                       className="w-full px-3 py-1.5 rounded-lg border border-stone-300 bg-white font-mono text-center font-bold text-stone-900"
                     />
@@ -743,11 +819,17 @@ export const CustomTeaModal: React.FC<CustomTeaModalProps> = ({
                     <input
                       id="custom-mass"
                       type="number"
-                      step="0.1"
+                      step="0.5"
                       min="1"
-                      max="20"
+                      max="25"
                       value={defaultMass}
                       onChange={(e) => setDefaultMass(e.target.value)}
+                      onBlur={() => {
+                        if (defaultMass.trim()) {
+                          const val = Math.max(1, Math.min(25, Math.round(Number(defaultMass) * 10) / 10));
+                          setDefaultMass(String(val));
+                        }
+                      }}
                       placeholder={`например: ${baseArchetype.defaultMass}`}
                       className="w-full px-3 py-1.5 rounded-lg border border-stone-300 bg-white font-mono text-center font-bold text-stone-900"
                     />
@@ -762,8 +844,15 @@ export const CustomTeaModal: React.FC<CustomTeaModalProps> = ({
                       type="number"
                       min="40"
                       max="500"
+                      step="5"
                       value={defaultVolume}
                       onChange={(e) => setDefaultVolume(e.target.value)}
+                      onBlur={() => {
+                        if (defaultVolume.trim()) {
+                          const val = Math.max(40, Math.min(500, Math.round(Number(defaultVolume))));
+                          setDefaultVolume(String(val));
+                        }
+                      }}
                       placeholder={`например: ${baseArchetype.defaultVolume}`}
                       className="w-full px-3 py-1.5 rounded-lg border border-stone-300 bg-white font-mono text-center font-bold text-stone-900"
                     />
@@ -808,10 +897,17 @@ export const CustomTeaModal: React.FC<CustomTeaModalProps> = ({
                   <input
                     id="custom-steeps"
                     type="number"
-                    min="3"
-                    max="20"
+                    min="1"
+                    max="30"
+                    step="1"
                     value={recommendedSteeps}
                     onChange={(e) => setRecommendedSteeps(e.target.value)}
+                    onBlur={() => {
+                      if (recommendedSteeps.trim()) {
+                        const val = Math.max(1, Math.min(30, Math.round(Number(recommendedSteeps))));
+                        setRecommendedSteeps(String(val));
+                      }
+                    }}
                     placeholder={`например: ${baseArchetype.recommendedSteeps}`}
                     className="w-full px-3 py-1.5 rounded-lg border border-stone-300 bg-white font-mono text-center font-bold text-stone-900"
                   />

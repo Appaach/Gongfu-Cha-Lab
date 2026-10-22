@@ -281,14 +281,14 @@ export const ExtractionCharts: React.FC<ExtractionChartsProps> = ({
                     y1={lazyCupPaths.pTop}
                     x2={x}
                     y2={lazyCupPaths.pTop + lazyCupPaths.cH}
-                    stroke="#f0f0f0"
+                    stroke="var(--color-chart-grid)"
                     strokeWidth={1}
                   />
                   <text
                     x={x}
                     y={lazyCupPaths.pTop + lazyCupPaths.cH + 16}
                     fontSize="9.5"
-                    fill="#78716c"
+                    fill="var(--color-chart-text)"
                     textAnchor="middle"
                     fontFamily="monospace"
                   >
@@ -467,14 +467,14 @@ export const ExtractionCharts: React.FC<ExtractionChartsProps> = ({
                   y1={y}
                   x2={svgWidth - padding.right}
                   y2={y}
-                  stroke="#e7e5e4"
+                  stroke="var(--color-chart-grid)"
                   strokeDasharray="3 3"
                 />
                 <text
                   x={padding.left - 6}
                   y={y + 3}
                   fontSize="9"
-                  fill="#78716c"
+                  fill="var(--color-chart-text)"
                   textAnchor="end"
                   fontFamily="monospace"
                 >
@@ -519,7 +519,7 @@ export const ExtractionCharts: React.FC<ExtractionChartsProps> = ({
                   y1={padding.top}
                   x2={x}
                   y2={padding.top + chartH}
-                  stroke={isSelected ? '#64748b' : '#f5f5f4'}
+                  stroke={isSelected ? 'var(--color-accent-solid)' : 'var(--color-chart-grid)'}
                   strokeWidth={isSelected ? 1.5 : 1}
                   strokeDasharray={isSelected ? '3 3' : undefined}
                 />
@@ -528,7 +528,7 @@ export const ExtractionCharts: React.FC<ExtractionChartsProps> = ({
                   y={padding.top + chartH + 16}
                   fontSize="10"
                   fontWeight={isSelected ? 'bold' : 'normal'}
-                  fill={isSelected ? '#334155' : '#78716c'}
+                  fill={isSelected ? 'var(--color-text-primary)' : 'var(--color-chart-text)'}
                   textAnchor="middle"
                 >
                   {isRinsePoint ? `#0 (${d.timeSec}с)` : `#${d.steepNumber} (${d.timeSec}с)`}
@@ -539,7 +539,7 @@ export const ExtractionCharts: React.FC<ExtractionChartsProps> = ({
                     y={padding.top + chartH + 27}
                     fontSize="8.5"
                     fontWeight="bold"
-                    fill="#92400e"
+                    fill="var(--color-accent-text)"
                     textAnchor="middle"
                   >
                     факт
@@ -551,7 +551,7 @@ export const ExtractionCharts: React.FC<ExtractionChartsProps> = ({
                     y={padding.top + chartH + 27}
                     fontSize="8.5"
                     fontWeight="bold"
-                    fill="#d97706"
+                    fill="var(--color-accent-text)"
                     textAnchor="middle"
                   >
                     адапт

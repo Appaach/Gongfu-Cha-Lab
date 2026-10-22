@@ -23,6 +23,12 @@ import {
   Clock, 
   Download, 
   ChevronRight, 
+  ChevronDown,
+  Droplets,
+  Flame,
+  Coffee,
+  Target,
+  FileDown,
   Sliders, 
   Edit3, 
   FileText, 
@@ -37,6 +43,8 @@ import {
 import { matchTeaSearch } from '../utils/teaSearch';
 import { exportElementToPdf, exportJournalEntriesToPdf } from '../utils/pdfExport';
 import { saveOrShareFile } from '../utils/fileExportHelper';
+import { FilenamePromptModal } from './FilenamePromptModal';
+import { loadAppSettings } from '../utils/appSettings';
 
 const JOURNAL_STORAGE_KEY = 'gongfu_tasting_journal_v1';
 
@@ -146,6 +154,51 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
   const [waterHardness, setWaterHardness] = useState<WaterHardnessLevel | undefined>(initialSessionData?.waterHardness);
   const [customRinseTime, setCustomRinseTime] = useState<number | null | undefined>(initialSessionData?.customRinseTime);
   const [rootFraction, setRootFraction] = useState<number | undefined>(initialSessionData?.rootFraction);
+
+  // Custom dropdown open states for journal entry modal
+  const [isMethodDropdownOpen, setIsMethodDropdownOpen] = useState(false);
+  const [isVesselDropdownOpen, setIsVesselDropdownOpen] = useState(false);
+  const [isHardnessDropdownOpen, setIsHardnessDropdownOpen] = useState(false);
+  const [isGoalDropdownOpen, setIsGoalDropdownOpen] = useState(false);
+  const [isVintageDropdownOpen, setIsVintageDropdownOpen] = useState(false);
+  const [isRinseDropdownOpen, setIsRinseDropdownOpen] = useState(false);
+
+  // Filename Prompt Modal state
+  const [filenamePromptState, setFilenamePromptState] = useState<{
+    isOpen: boolean;
+    defaultFilename: string;
+    title: string;
+    description?: string;
+    onConfirmAction: (filename: string) => void;
+  }>({
+    isOpen: false,
+    defaultFilename: '',
+    title: '',
+    onConfirmAction: () => {},
+  });
+
+  const requestExportFilename = (
+    defaultName: string,
+    title: string,
+    description: string,
+    proceed: (filename: string) => void
+  ) => {
+    const currentSettings = loadAppSettings();
+    if (currentSettings.promptExportFilename) {
+      setFilenamePromptState({
+        isOpen: true,
+        defaultFilename: defaultName,
+        title,
+        description,
+        onConfirmAction: (customName) => {
+          setFilenamePromptState((prev) => ({ ...prev, isOpen: false }));
+          proceed(customName);
+        }
+      });
+    } else {
+      proceed(defaultName);
+    }
+  };
 
   const [useDynamicTemperatures, setUseDynamicTemperatures] = useState<boolean>(
     Boolean(initialSessionData?.useDynamicTemperatures)
@@ -362,54 +415,95 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
     setTags(tags.filter((t) => t !== tagToRemove));
   };
 
+  const handleExportSingleEntryJson = async (entry: TastingJournalEntry) => {
+    const safeName = (entry.teaNameRu || 'tea').replace(/[^\w\u0400-\u04FF]/gi, '_');
+    const defaultName = `дегустация_${safeName}_${entry.dateIso.split('T')[0]}.json`;
+
+    requestExportFilename(
+      defaultName,
+      'Экспорт отдельной записи дегустации',
+      `Сохранение карточки "${entry.teaNameRu}" в файл JSON`,
+      async (finalFilename) => {
+        try {
+          const jsonText = JSON.stringify(entry, null, 2);
+          const blob = new Blob([jsonText], { type: 'application/json' });
+          await saveOrShareFile({
+            filename: finalFilename,
+            blob,
+            textContent: jsonText,
+            mimeType: 'application/json',
+            title: `Запись дегустации: ${entry.teaNameRu}`
+          });
+          showNotification(`Запись "${entry.teaNameRu}" успешно экспортирована!`, 'success');
+        } catch (err: any) {
+          showNotification('Ошибка экспорта записи: ' + (err?.message || 'не удалось экспортировать'), 'error');
+        }
+      }
+    );
+  };
+
   const handleExportJson = async () => {
-    try {
-      const jsonText = JSON.stringify(entries, null, 2);
-      const filename = `tea_tasting_journal_${new Date().toISOString().split('T')[0]}.json`;
-      const blob = new Blob([jsonText], { type: 'application/json' });
-      await saveOrShareFile({
-        filename,
-        blob,
-        textContent: jsonText,
-        mimeType: 'application/json',
-        title: 'Экспорт журнала дегустаций Gongfu Cha'
-      });
-      showNotification('Файл JSON сформирован! Выберите, куда сохранить файл.', 'success');
-    } catch (err: any) {
-      showNotification('Ошибка экспорта JSON: ' + (err?.message || 'не удалось экспортировать'), 'error');
-    }
+    const defaultName = `tea_tasting_journal_${new Date().toISOString().split('T')[0]}.json`;
+    requestExportFilename(
+      defaultName,
+      'Экспорт всех записей журнала',
+      'Сохранение базы дегустаций в файл JSON для бэкапа и переноса',
+      async (finalFilename) => {
+        try {
+          const jsonText = JSON.stringify(entries, null, 2);
+          const blob = new Blob([jsonText], { type: 'application/json' });
+          await saveOrShareFile({
+            filename: finalFilename,
+            blob,
+            textContent: jsonText,
+            mimeType: 'application/json',
+            title: 'Экспорт журнала дегустаций Gongfu Cha'
+          });
+          showNotification('Файл JSON сформирован! Выберите, куда сохранить файл.', 'success');
+        } catch (err: any) {
+          showNotification('Ошибка экспорта JSON: ' + (err?.message || 'не удалось экспортировать'), 'error');
+        }
+      }
+    );
   };
 
   const handleExportCsv = async () => {
     if (entries.length === 0) return;
-    try {
-      const headers = ["Дата", "Сорт", "Иероглифы", "Оценка", "Температура", "Масса_г", "Объем_мл", "Посуда", "Проливов", "Заметки"];
-      const rows = entries.map(e => [
-        `"${new Date(e.dateIso).toLocaleDateString('ru-RU')}"`,
-        `"${(e.teaNameRu || '').replace(/"/g, '""')}"`,
-        `"${(e.teaNameZh || '').replace(/"/g, '""')}"`,
-        e.rating,
-        e.waterTempC,
-        e.teaMassG,
-        e.waterVolumeMl,
-        `"${(e.vesselUsed || '').replace(/"/g, '""')}"`,
-        e.steepsCount,
-        `"${(e.userNotes || '').replace(/"/g, '""')}"`
-      ]);
-      const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
-      const filename = `tea_journal_${new Date().toISOString().split('T')[0]}.csv`;
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      await saveOrShareFile({
-        filename,
-        blob,
-        textContent: csvContent,
-        mimeType: 'text/csv',
-        title: 'Экспорт таблицы дегустаций Gongfu Cha'
-      });
-      showNotification('Таблица CSV сформирована! Выберите, куда сохранить файл.', 'success');
-    } catch (err: any) {
-      showNotification('Ошибка экспорта CSV: ' + (err?.message || 'не удалось экспортировать'), 'error');
-    }
+    const defaultName = `tea_journal_${new Date().toISOString().split('T')[0]}.csv`;
+    requestExportFilename(
+      defaultName,
+      'Экспорт таблицы дегустаций (CSV)',
+      'Сохранение таблицы дегустаций в формате CSV для Excel и Google Sheets',
+      async (finalFilename) => {
+        try {
+          const headers = ["Дата", "Сорт", "Иероглифы", "Оценка", "Температура", "Масса_г", "Объем_мл", "Посуда", "Проливов", "Заметки"];
+          const rows = entries.map(e => [
+            `"${new Date(e.dateIso).toLocaleDateString('ru-RU')}"`,
+            `"${(e.teaNameRu || '').replace(/"/g, '""')}"`,
+            `"${(e.teaNameZh || '').replace(/"/g, '""')}"`,
+            e.rating,
+            e.waterTempC,
+            e.teaMassG,
+            e.waterVolumeMl,
+            `"${(e.vesselUsed || '').replace(/"/g, '""')}"`,
+            e.steepsCount,
+            `"${(e.userNotes || '').replace(/"/g, '""')}"`
+          ]);
+          const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+          await saveOrShareFile({
+            filename: finalFilename,
+            blob,
+            textContent: csvContent,
+            mimeType: 'text/csv',
+            title: 'Экспорт таблицы дегустаций Gongfu Cha'
+          });
+          showNotification('Таблица CSV сформирована! Выберите, куда сохранить файл.', 'success');
+        } catch (err: any) {
+          showNotification('Ошибка экспорта CSV: ' + (err?.message || 'не удалось экспортировать'), 'error');
+        }
+      }
+    );
   };
 
   const importJsonString = (rawJson: string): boolean => {
@@ -498,39 +592,56 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
 
   const handleExportPdfAll = async () => {
     if (entries.length === 0 || isExportingAllPdf) return;
-    setIsExportingAllPdf(true);
-    showNotification('Формирование сводного PDF документа...', 'info');
-    // Yield to main thread for 60ms so browser paints the spinner
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    try {
-      const listToExport = filteredEntries.length > 0 ? filteredEntries : entries;
-      await exportJournalEntriesToPdf(listToExport);
-      showNotification('PDF всего журнала готов! Выберите, куда сохранить файл.', 'success');
-    } catch (err: any) {
-      console.warn('PDF export failed, falling back to window.print()', err);
-      showNotification('Не удалось сформировать PDF: ' + (err?.message || 'ошибка'), 'error');
-    } finally {
-      setIsExportingAllPdf(false);
-    }
+    const defaultName = `gongfu_cha_journal_${new Date().toISOString().split('T')[0]}.pdf`;
+
+    requestExportFilename(
+      defaultName,
+      'Экспорт журнала в PDF',
+      'Формирование сводного типографского каталога всех дегустаций',
+      async (finalFilename) => {
+        setIsExportingAllPdf(true);
+        showNotification('Формирование сводного PDF документа...', 'info');
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        try {
+          const listToExport = filteredEntries.length > 0 ? filteredEntries : entries;
+          await exportJournalEntriesToPdf(listToExport, finalFilename);
+          showNotification('PDF всего журнала готов! Выберите, куда сохранить файл.', 'success');
+        } catch (err: any) {
+          console.warn('PDF export failed, falling back to window.print()', err);
+          showNotification('Не удалось сформировать PDF: ' + (err?.message || 'ошибка'), 'error');
+        } finally {
+          setIsExportingAllPdf(false);
+        }
+      }
+    );
   };
 
   const handleExportCardPdf = async () => {
     if (!tastingSheetRef.current || !printingEntry || isExportingCardPdf) return;
-    setIsExportingCardPdf(true);
-    showNotification('Формирование PDF дегустационного листа...', 'info');
-    // Yield to main thread for 60ms so browser paints the spinner
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    try {
-      const safeName = printingEntry.teaNameRu.replace(/[^\w\u0400-\u04FF]/gi, '_');
-      const title = `Дегустационный лист: ${printingEntry.teaNameRu}`;
-      await exportElementToPdf(tastingSheetRef.current, `дегустационный_лист_${safeName}`, { title });
-      showNotification('PDF дегустационного листа готов! Выберите, куда сохранить файл.', 'success');
-    } catch (err: any) {
-      console.warn('PDF card export failed, falling back to print', err);
-      showNotification('Не удалось сформировать PDF: ' + (err?.message || 'ошибка'), 'error');
-    } finally {
-      setIsExportingCardPdf(false);
-    }
+    const safeName = printingEntry.teaNameRu.replace(/[^\w\u0400-\u04FF]/gi, '_');
+    const defaultName = `дегустационный_лист_${safeName}.pdf`;
+
+    requestExportFilename(
+      defaultName,
+      'Экспорт дегустационного листа в PDF',
+      `Сохранение карточки "${printingEntry.teaNameRu}" в файл PDF высокого разрешения`,
+      async (finalFilename) => {
+        setIsExportingCardPdf(true);
+        showNotification('Формирование PDF дегустационного листа...', 'info');
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        try {
+          const title = `Дегустационный лист: ${printingEntry.teaNameRu}`;
+          const cleanName = finalFilename.replace(/\.pdf$/i, '');
+          await exportElementToPdf(tastingSheetRef.current!, cleanName, { title });
+          showNotification('PDF дегустационного листа готов! Выберите, куда сохранить файл.', 'success');
+        } catch (err: any) {
+          console.warn('PDF card export failed, falling back to print', err);
+          showNotification('Не удалось сформировать PDF: ' + (err?.message || 'ошибка'), 'error');
+        } finally {
+          setIsExportingCardPdf(false);
+        }
+      }
+    );
   };
 
   const filteredEntries = useMemo(() => {
@@ -778,7 +889,19 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
                         ))}
                       </div>
 
-                      {/* Action buttons: Edit, Print, Delete */}
+                      {/* Action buttons: Export Single Entry, Edit, Delete */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleExportSingleEntryJson(entry);
+                        }}
+                        className="p-1.5 text-stone-400 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                        title="Экспортировать эту запись (JSON)"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+
                       <button
                         type="button"
                         onClick={(e) => {
@@ -898,9 +1021,23 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
                 </div>
 
                 <div className="pt-2.5 border-t border-stone-100 flex items-center justify-between gap-2 text-xs">
-                  <div className="flex items-center gap-1.5 text-stone-400 group-hover:text-amber-800 transition-colors font-medium text-[11px]">
-                    <FileText className="w-3.5 h-3.5" />
-                    <span>Открыть карточку (PDF)</span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 text-stone-400 group-hover:text-amber-800 transition-colors font-medium text-[11px]">
+                      <FileText className="w-3.5 h-3.5" />
+                      <span>Карточка (PDF)</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleExportSingleEntryJson(entry);
+                      }}
+                      className="text-[11px] font-semibold text-stone-500 hover:text-amber-900 flex items-center gap-1 transition-colors px-1.5 py-0.5 rounded hover:bg-amber-50 cursor-pointer"
+                      title="Экспорт этой записи в JSON"
+                    >
+                      <Download className="w-3 h-3 text-amber-700" />
+                      <span>JSON</span>
+                    </button>
                   </div>
 
                   {onSelectTeaToBrew && (
@@ -1071,15 +1208,19 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
               </div>
             </div>
 
-            {/* Brewing Params Grid */}
+            {/* Brewing Params Grid (Strict Range Limits) */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-stone-600 block">Вода (°C)</label>
                 <input
                   type="number"
+                  min="60"
+                  max="100"
+                  step="1"
                   value={waterTempC}
                   onChange={(e) => setWaterTempC(Number(e.target.value))}
-                  className="w-full px-2 py-1 rounded-lg border border-stone-300 font-mono text-xs font-bold text-amber-900 bg-stone-50"
+                  onBlur={() => setWaterTempC(Math.max(60, Math.min(100, Math.round(waterTempC || 95))))}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 font-mono text-xs font-bold text-amber-900 bg-stone-50 text-center"
                 />
               </div>
               <div className="space-y-1">
@@ -1087,147 +1228,521 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
                 <input
                   type="number"
                   step="0.5"
+                  min="1"
+                  max="25"
                   value={teaMassG}
                   onChange={(e) => setTeaMassG(Number(e.target.value))}
-                  className="w-full px-2 py-1 rounded-lg border border-stone-300 font-mono text-xs font-bold text-stone-900 bg-stone-50"
+                  onBlur={() => setTeaMassG(Math.max(1, Math.min(25, Math.round((teaMassG || 5) * 10) / 10)))}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 font-mono text-xs font-bold text-stone-900 bg-stone-50 text-center"
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-stone-600 block">Объём (мл)</label>
                 <input
                   type="number"
+                  min="40"
+                  max="500"
+                  step="5"
                   value={waterVolumeMl}
                   onChange={(e) => setWaterVolumeMl(Number(e.target.value))}
-                  className="w-full px-2 py-1 rounded-lg border border-stone-300 font-mono text-xs font-bold text-stone-900 bg-stone-50"
+                  onBlur={() => setWaterVolumeMl(Math.max(40, Math.min(500, Math.round(waterVolumeMl || 100))))}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 font-mono text-xs font-bold text-stone-900 bg-stone-50 text-center"
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-stone-600 block">Проливов</label>
                 <input
                   type="number"
+                  min="1"
+                  max="30"
+                  step="1"
                   value={steepsCount}
                   onChange={(e) => setSteepsCount(Number(e.target.value))}
-                  className="w-full px-2 py-1 rounded-lg border border-stone-300 font-mono text-xs font-bold text-stone-900 bg-stone-50"
+                  onBlur={() => setSteepsCount(Math.max(1, Math.min(30, Math.round(steepsCount || 7))))}
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 font-mono text-xs font-bold text-stone-900 bg-stone-50 text-center"
                 />
               </div>
             </div>
 
-            {/* Extended Parameters: Vintage Year, Method, Vessel & Material, Hardness, Rinse, Optimization */}
-            <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 space-y-2.5">
+            {/* Extended Parameters: All Dropdowns matching the app style */}
+            <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 space-y-3">
               <span className="text-xs font-bold text-stone-800 block">
                 Параметры заваривания, посуда и метод:
               </span>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                {/* Vintage Year */}
-                {canTeaAge(selectedTea) && (
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-stone-600 block">Год сбора / Выдержка:</label>
-                    <select
-                      value={vintageYear ?? ''}
-                      onChange={(e) => setVintageYear(e.target.value ? Number(e.target.value) : undefined)}
-                      className="w-full px-2 py-1.5 rounded-lg border border-stone-300 font-mono text-xs font-bold text-stone-900 bg-white"
-                    >
-                      <option value="">Свежий сбор (текущий год)</option>
-                      {Array.from({ length: 45 }, (_, i) => new Date().getFullYear() - i).map((yr) => (
-                        <option key={yr} value={yr}>
-                          {yr} г.
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Brewing Method */}
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-stone-600 block">Метод заваривания:</label>
-                  <select
-                    value={brewingMethod}
-                    onChange={(e) => setBrewingMethod(e.target.value as BrewingMethod)}
-                    className="w-full px-2 py-1.5 rounded-lg border border-stone-300 font-medium text-xs text-stone-900 bg-white"
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                {/* 1. Brewing Method Dropdown */}
+                <div className="relative space-y-1">
+                  <label className="text-[11px] font-bold text-stone-700 flex items-center gap-1.5">
+                    <Flame className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Метод заваривания:</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMethodDropdownOpen(!isMethodDropdownOpen);
+                      setIsVesselDropdownOpen(false);
+                      setIsHardnessDropdownOpen(false);
+                      setIsGoalDropdownOpen(false);
+                      setIsVintageDropdownOpen(false);
+                      setIsRinseDropdownOpen(false);
+                    }}
+                    className="w-full px-3 py-2 bg-white rounded-xl border-2 border-stone-200 hover:border-amber-700/60 focus:outline-hidden focus:ring-2 focus:ring-amber-800/30 text-left transition-all flex items-center justify-between shadow-2xs gap-2 cursor-pointer"
                   >
-                    <option value="gongfu">Гунфу Ча (100% слив)</option>
-                    <option value="liu_gen">Оставление корня (Лю Гэнь)</option>
-                    <option value="grandpa_cup">«Ленивый» метод (Бэй Пао / чашка)</option>
-                  </select>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-stone-900 truncate">
+                        {brewingMethod === 'liu_gen'
+                          ? 'Оставление корня (Лю Гэнь)'
+                          : brewingMethod === 'grandpa_cup'
+                          ? '«Ленивый» метод (Бэй Пао Фа)'
+                          : 'Гунфу Ча (100% слив)'}
+                      </div>
+                      <div className="text-[10px] text-stone-500 truncate">
+                        {brewingMethod === 'liu_gen'
+                          ? 'Сохранение 25-50% настоя в посуде'
+                          : brewingMethod === 'grandpa_cup'
+                          ? 'Настаивание в чашке или колбе'
+                          : 'Классический пролив в чахай'}
+                      </div>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-stone-400 shrink-0 transition-transform duration-200 ${isMethodDropdownOpen ? 'rotate-180 text-amber-800' : ''}`} />
+                  </button>
+
+                  {isMethodDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-stone-200 shadow-xl p-1.5 space-y-1 z-30 animate-in fade-in max-h-56 overflow-y-auto">
+                      {[
+                        { id: 'gongfu' as BrewingMethod, name: 'Гунфу Ча (功夫茶)', desc: 'Классический 100% слив настоя в чахай' },
+                        { id: 'liu_gen' as BrewingMethod, name: 'Оставление корня (留根法)', desc: 'Сохранение 25-50% настоя на дне посуды' },
+                        { id: 'grandpa_cup' as BrewingMethod, name: '«Ленивый» метод (杯泡法)', desc: 'Прямое настаивание в чашке или колбе' },
+                      ].map((opt) => {
+                        const isSelected = brewingMethod === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              setBrewingMethod(opt.id);
+                              setIsMethodDropdownOpen(false);
+                            }}
+                            className={`w-full p-2 rounded-lg text-left text-xs transition-all flex items-start justify-between gap-2 cursor-pointer ${
+                              isSelected ? 'bg-amber-50 text-amber-950 font-semibold border border-amber-200' : 'hover:bg-stone-50 text-stone-700'
+                            }`}
+                          >
+                            <div>
+                              <div className="font-bold text-xs">{opt.name}</div>
+                              <div className="text-[10px] text-stone-500">{opt.desc}</div>
+                            </div>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-amber-800 shrink-0 mt-0.5" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
-                {/* Unified Vessel & Material */}
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-stone-600 block">Посуда:</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <select
-                      value={vesselMaterial ?? 'porcelain'}
-                      onChange={(e) => {
-                        const newMat = e.target.value as VesselMaterialType;
-                        setVesselMaterial(newMat);
-                        const matPresetNames: Record<string, string> = {
-                          porcelain: 'Фарфоровая гайвань',
-                          yixing_clay: 'Исинский чайник из глины',
-                          glass_regular: 'Стеклянный типод / колба',
-                          ceramic_regular: 'Керамический чайник',
-                          ceramic_thick: 'Толстостенная керамика',
-                          cast_iron: 'Чугунный чайник',
-                          metal_silver: 'Серебряный чайник',
-                          thermos: 'Термос',
-                          glass: 'Стеклянный стакан'
-                        };
-                        const currentVessel = (vesselUsed || '').toLowerCase();
-                        if (!currentVessel || currentVessel.includes('гайвань') || currentVessel.includes('чайник') || currentVessel.includes('типод') || currentVessel.includes('термос') || currentVessel.includes('фарфор')) {
-                          setVesselUsed(`${matPresetNames[newMat] || 'Посуда'} ${waterVolumeMl} мл`);
-                        }
-                      }}
-                      className="w-full px-2 py-1.5 rounded-lg border border-stone-300 font-medium text-xs text-stone-900 bg-white"
-                      title="Материал посуды"
-                    >
-                      <option value="porcelain">Фарфор (нейтральный)</option>
-                      <option value="yixing_clay">Исинская глина (смягчает танины)</option>
-                      <option value="glass_regular">Стекло / Типод</option>
-                      <option value="ceramic_regular">Керамика стандартная</option>
-                      <option value="ceramic_thick">Керамика толстостенная</option>
-                      <option value="cast_iron">Чугун</option>
-                      <option value="metal_silver">Серебро</option>
-                      <option value="thermos">Термос</option>
-                    </select>
-
-                    <input
-                      type="text"
-                      value={vesselUsed}
-                      onChange={(e) => setVesselUsed(e.target.value)}
-                      placeholder="Название или объем посуды..."
-                      className="w-full px-2 py-1.5 rounded-lg border border-stone-300 font-medium text-xs text-stone-900 bg-white"
-                      title="Название посуды"
-                    />
-                  </div>
-                </div>
-
-                {/* Water Hardness */}
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-stone-600 block">Жесткость воды:</label>
-                  <select
-                    value={waterHardness ?? 'soft'}
-                    onChange={(e) => setWaterHardness(e.target.value as WaterHardnessLevel)}
-                    className="w-full px-2 py-1.5 rounded-lg border border-stone-300 font-medium text-xs text-stone-900 bg-white"
+                {/* 2. Vessel Material Dropdown + Custom Name Input */}
+                <div className="relative space-y-1">
+                  <label className="text-[11px] font-bold text-stone-700 flex items-center gap-1.5">
+                    <Coffee className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Посуда и материал:</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsVesselDropdownOpen(!isVesselDropdownOpen);
+                      setIsMethodDropdownOpen(false);
+                      setIsHardnessDropdownOpen(false);
+                      setIsGoalDropdownOpen(false);
+                      setIsVintageDropdownOpen(false);
+                      setIsRinseDropdownOpen(false);
+                    }}
+                    className="w-full px-3 py-2 bg-white rounded-xl border-2 border-stone-200 hover:border-amber-700/60 focus:outline-hidden focus:ring-2 focus:ring-amber-800/30 text-left transition-all flex items-center justify-between shadow-2xs gap-2 cursor-pointer"
                   >
-                    <option value="soft">Мягкая горная (&lt;60 ppm)</option>
-                    <option value="optimal">Оптимальная (80-120 ppm)</option>
-                    <option value="hard">Минеральная (&gt;150 ppm)</option>
-                  </select>
-                </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-stone-900 truncate">
+                        {(() => {
+                          const mat = vesselMaterial ?? 'porcelain';
+                          const names: Record<string, string> = {
+                            porcelain: 'Фарфор (Гайвань)',
+                            yixing_clay: 'Исинская глина (Цзыша)',
+                            glass_regular: 'Стекло / Типод',
+                            ceramic_regular: 'Керамика стандартная',
+                            ceramic_thick: 'Толстостенная керамика',
+                            cast_iron: 'Чугунный чайник',
+                            metal_silver: 'Серебряный чайник',
+                            thermos: 'Термос',
+                            glass: 'Стеклянный стакан'
+                          };
+                          return names[mat] || 'Фарфоровая гайвань';
+                        })()}
+                      </div>
+                      <div className="text-[10px] text-stone-500 truncate">
+                        {vesselUsed || 'Фарфоровая гайвань 120 мл'}
+                      </div>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-stone-400 shrink-0 transition-transform duration-200 ${isVesselDropdownOpen ? 'rotate-180 text-amber-800' : ''}`} />
+                  </button>
 
-                {/* Rinse Seconds */}
-                <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-stone-600 block">Промыв листа (сек):</label>
+                  {isVesselDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-stone-200 shadow-xl p-1.5 space-y-1 z-30 animate-in fade-in max-h-56 overflow-y-auto">
+                      {[
+                        { id: 'porcelain' as VesselMaterialType, name: 'Фарфор (Гайвань / Пиалы)', desc: 'Нейтральный, раскрывает тонкий аромат', defaultName: 'Фарфоровая гайвань' },
+                        { id: 'yixing_clay' as VesselMaterialType, name: 'Исинская глина (Цзыша)', desc: 'Смягчает танины, держит глубокий жар', defaultName: 'Исинский чайник из глины' },
+                        { id: 'glass_regular' as VesselMaterialType, name: 'Жаропрочное стекло / Типод', desc: 'Контроль цвета настоя и раскрытия листа', defaultName: 'Стеклянный типод / колба' },
+                        { id: 'ceramic_regular' as VesselMaterialType, name: 'Керамика стандартная', desc: 'Равномерное мягкое удержание тепла', defaultName: 'Керамический чайник' },
+                        { id: 'ceramic_thick' as VesselMaterialType, name: 'Толстостенная керамика', desc: 'Для шу пуэров и темных улунов', defaultName: 'Толстостенный чайник' },
+                        { id: 'cast_iron' as VesselMaterialType, name: 'Чугунный чайник (Тэцубин)', desc: 'Максимальное удержание температуры', defaultName: 'Чугунный чайник' },
+                        { id: 'metal_silver' as VesselMaterialType, name: 'Серебряный чайник', desc: 'Звонкий чистый вкус, смягчение воды', defaultName: 'Серебряный чайник' },
+                        { id: 'thermos' as VesselMaterialType, name: 'Термос', desc: 'Долгое настаивание и томление', defaultName: 'Термос' },
+                      ].map((v) => {
+                        const isSelected = (vesselMaterial ?? 'porcelain') === v.id;
+                        return (
+                          <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => {
+                              setVesselMaterial(v.id);
+                              setVesselUsed(`${v.defaultName} ${waterVolumeMl} мл`);
+                              setIsVesselDropdownOpen(false);
+                            }}
+                            className={`w-full p-2 rounded-lg text-left text-xs transition-all flex items-start justify-between gap-2 cursor-pointer ${
+                              isSelected ? 'bg-amber-50 text-amber-950 font-semibold border border-amber-200' : 'hover:bg-stone-50 text-stone-700'
+                            }`}
+                          >
+                            <div>
+                              <div className="font-bold text-xs">{v.name}</div>
+                              <div className="text-[10px] text-stone-500">{v.desc}</div>
+                            </div>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-amber-800 shrink-0 mt-0.5" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   <input
-                    type="number"
-                    min="0"
-                    max="60"
-                    placeholder="0 — без промывки"
-                    value={customRinseTime ?? ''}
-                    onChange={(e) => setCustomRinseTime(e.target.value === '' ? null : Number(e.target.value))}
-                    className="w-full px-2 py-1.5 rounded-lg border border-stone-300 font-mono text-xs font-bold text-stone-900 bg-white"
+                    type="text"
+                    value={vesselUsed}
+                    onChange={(e) => setVesselUsed(e.target.value)}
+                    placeholder="Уточнение посуды (например: Чайник Си Ши 130 мл)..."
+                    className="w-full mt-1 px-3 py-1.5 rounded-lg border border-stone-300 text-xs text-stone-800 placeholder:text-stone-400 bg-white"
                   />
                 </div>
+
+                {/* 3. Water Hardness Dropdown */}
+                <div className="relative space-y-1">
+                  <label className="text-[11px] font-bold text-stone-700 flex items-center gap-1.5">
+                    <Droplets className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Жесткость воды:</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsHardnessDropdownOpen(!isHardnessDropdownOpen);
+                      setIsMethodDropdownOpen(false);
+                      setIsVesselDropdownOpen(false);
+                      setIsGoalDropdownOpen(false);
+                      setIsVintageDropdownOpen(false);
+                      setIsRinseDropdownOpen(false);
+                    }}
+                    className="w-full px-3 py-2 bg-white rounded-xl border-2 border-stone-200 hover:border-amber-700/60 focus:outline-hidden focus:ring-2 focus:ring-amber-800/30 text-left transition-all flex items-center justify-between shadow-2xs gap-2 cursor-pointer"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-stone-900 truncate">
+                        {waterHardness === 'hard'
+                          ? 'Минерализованная (>150 ppm)'
+                          : waterHardness === 'optimal'
+                          ? 'Оптимальная (80-120 ppm)'
+                          : 'Мягкая горная (<60 ppm)'}
+                      </div>
+                      <div className="text-[10px] text-stone-500 truncate">
+                        {waterHardness === 'hard'
+                          ? 'Плотная вода — смягчает терпкость'
+                          : waterHardness === 'optimal'
+                          ? 'Золотой стандарт баланса экстракции'
+                          : 'Талая, родниковая — яркая сладость'}
+                      </div>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-stone-400 shrink-0 transition-transform duration-200 ${isHardnessDropdownOpen ? 'rotate-180 text-amber-800' : ''}`} />
+                  </button>
+
+                  {isHardnessDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-stone-200 shadow-xl p-1.5 space-y-1 z-30 animate-in fade-in max-h-56 overflow-y-auto">
+                      {[
+                        { id: 'soft' as WaterHardnessLevel, name: 'Мягкая вода (<60 ppm)', desc: 'Талая, родниковая — яркая сладость и аромат' },
+                        { id: 'optimal' as WaterHardnessLevel, name: 'Оптимальная (80-120 ppm)', desc: 'Золотой стандарт баланса экстракции' },
+                        { id: 'hard' as WaterHardnessLevel, name: 'Минерализованная (>150 ppm)', desc: 'Плотная вода — смягчает терпкость' },
+                      ].map((h) => {
+                        const isSelected = (waterHardness ?? 'soft') === h.id;
+                        return (
+                          <button
+                            key={h.id}
+                            type="button"
+                            onClick={() => {
+                              setWaterHardness(h.id);
+                              setIsHardnessDropdownOpen(false);
+                            }}
+                            className={`w-full p-2 rounded-lg text-left text-xs transition-all flex items-start justify-between gap-2 cursor-pointer ${
+                              isSelected ? 'bg-amber-50 text-amber-950 font-semibold border border-amber-200' : 'hover:bg-stone-50 text-stone-700'
+                            }`}
+                          >
+                            <div>
+                              <div className="font-bold text-xs">{h.name}</div>
+                              <div className="text-[10px] text-stone-500">{h.desc}</div>
+                            </div>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-amber-800 shrink-0 mt-0.5" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Optimization Goal Dropdown */}
+                <div className="relative space-y-1">
+                  <label className="text-[11px] font-bold text-stone-700 flex items-center gap-1.5">
+                    <Target className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Цель экстракции:</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsGoalDropdownOpen(!isGoalDropdownOpen);
+                      setIsMethodDropdownOpen(false);
+                      setIsVesselDropdownOpen(false);
+                      setIsHardnessDropdownOpen(false);
+                      setIsVintageDropdownOpen(false);
+                      setIsRinseDropdownOpen(false);
+                    }}
+                    className="w-full px-3 py-2 bg-white rounded-xl border-2 border-stone-200 hover:border-amber-700/60 focus:outline-hidden focus:ring-2 focus:ring-amber-800/30 text-left transition-all flex items-center justify-between shadow-2xs gap-2 cursor-pointer"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-stone-900 truncate">
+                        {(() => {
+                          const g = optimizationGoal ?? 'balanced';
+                          const titles: Record<string, string> = {
+                            balanced: 'Сбалансированный баланс',
+                            aroma_peak: 'Пик аромата и терпенов',
+                            umami_sweetness: 'Максимум сладости и умами',
+                            body_density: 'Плотное нефтяное тело',
+                            white_debitter: 'Бережная дебиттеризация'
+                          };
+                          return titles[g] || 'Сбалансированный баланс';
+                        })()}
+                      </div>
+                      <div className="text-[10px] text-stone-500 truncate">
+                        {(() => {
+                          const g = optimizationGoal ?? 'balanced';
+                          const subs: Record<string, string> = {
+                            balanced: 'Гармония сладости, плотности и послевкусия',
+                            aroma_peak: 'Яркие эфирные масла и летучие фракции',
+                            umami_sweetness: 'Выраженная сладость, мягкие танины',
+                            body_density: 'Густой настой для шу пуэров и хэйча',
+                            white_debitter: 'Мягкое настаивание без горечи'
+                          };
+                          return subs[g] || 'Гармония экстракции';
+                        })()}
+                      </div>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-stone-400 shrink-0 transition-transform duration-200 ${isGoalDropdownOpen ? 'rotate-180 text-amber-800' : ''}`} />
+                  </button>
+
+                  {isGoalDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-stone-200 shadow-xl p-1.5 space-y-1 z-30 animate-in fade-in max-h-56 overflow-y-auto">
+                      {[
+                        { id: 'balanced' as OptimizationGoal, name: 'Сбалансированный баланс', desc: 'Гармония сладости, плотности и послевкусия' },
+                        { id: 'aroma_peak' as OptimizationGoal, name: 'Пик аромата и терпенов', desc: 'Яркие эфирные масла и летучие фракции' },
+                        { id: 'umami_sweetness' as OptimizationGoal, name: 'Максимум сладости и умами', desc: 'Выраженная сладость, мягкие танины' },
+                        { id: 'body_density' as OptimizationGoal, name: 'Плотное нефтяное тело', desc: 'Густой настой для шу пуэров и хэйча' },
+                        { id: 'white_debitter' as OptimizationGoal, name: 'Бережная дебиттеризация', desc: 'Мягкое настаивание без горечи' },
+                      ].map((g) => {
+                        const isSelected = (optimizationGoal ?? 'balanced') === g.id;
+                        return (
+                          <button
+                            key={g.id}
+                            type="button"
+                            onClick={() => {
+                              setOptimizationGoal(g.id);
+                              setIsGoalDropdownOpen(false);
+                            }}
+                            className={`w-full p-2 rounded-lg text-left text-xs transition-all flex items-start justify-between gap-2 cursor-pointer ${
+                              isSelected ? 'bg-amber-50 text-amber-950 font-semibold border border-amber-200' : 'hover:bg-stone-50 text-stone-700'
+                            }`}
+                          >
+                            <div>
+                              <div className="font-bold text-xs">{g.name}</div>
+                              <div className="text-[10px] text-stone-500">{g.desc}</div>
+                            </div>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-amber-800 shrink-0 mt-0.5" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* 5. Leaf Rinse Dropdown */}
+                <div className="relative space-y-1">
+                  <label className="text-[11px] font-bold text-stone-700 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-700" />
+                    <span>Промыв листа (Нулевой пролив #0):</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsRinseDropdownOpen(!isRinseDropdownOpen);
+                      setIsMethodDropdownOpen(false);
+                      setIsVesselDropdownOpen(false);
+                      setIsHardnessDropdownOpen(false);
+                      setIsGoalDropdownOpen(false);
+                      setIsVintageDropdownOpen(false);
+                    }}
+                    className="w-full px-3 py-2 bg-white rounded-xl border-2 border-stone-200 hover:border-amber-700/60 focus:outline-hidden focus:ring-2 focus:ring-amber-800/30 text-left transition-all flex items-center justify-between shadow-2xs gap-2 cursor-pointer"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-stone-900 truncate">
+                        {customRinseTime && customRinseTime > 0
+                          ? `Промыв: ${customRinseTime} сек`
+                          : 'Без промыва (0 сек)'}
+                      </div>
+                      <div className="text-[10px] text-stone-500 truncate">
+                        {customRinseTime && customRinseTime > 0
+                          ? 'Прогрев и раскрытие чайного листа'
+                          : 'Прямой 1-й пролив без промывки'}
+                      </div>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-stone-400 shrink-0 transition-transform duration-200 ${isRinseDropdownOpen ? 'rotate-180 text-amber-800' : ''}`} />
+                  </button>
+
+                  {isRinseDropdownOpen && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-stone-200 shadow-xl p-1.5 space-y-1 z-30 animate-in fade-in max-h-56 overflow-y-auto">
+                      {[
+                        { sec: null, name: 'Без промывки (0 сек)', desc: 'Деликатные белые, зелёные, жёлтые сорта' },
+                        { sec: 3, name: 'Быстрое пробуждение (3 сек)', desc: 'Смыв чайной пыли и лёгкий прогрев' },
+                        { sec: 5, name: 'Стандартный прогрев (5 сек)', desc: 'Классический нулевой пролив' },
+                        { sec: 8, name: 'Раскрытие скрутки (8 сек)', desc: 'Сферические улуны (Тегуаньинь, Тайвань)' },
+                        { sec: 10, name: 'Глубокое пробуждение (10 сек)', desc: 'Прессованный шэн пуэр, плотные блины' },
+                        { sec: 15, name: 'Горячее пропаривание (15 сек)', desc: 'Выдержанные шу пуэры и хэйча' },
+                      ].map((r, rIdx) => {
+                        const isSelected = r.sec === null
+                          ? (!customRinseTime || customRinseTime === 0)
+                          : customRinseTime === r.sec;
+                        return (
+                          <button
+                            key={rIdx}
+                            type="button"
+                            onClick={() => {
+                              setCustomRinseTime(r.sec);
+                              setIsRinseDropdownOpen(false);
+                            }}
+                            className={`w-full p-2 rounded-lg text-left text-xs transition-all flex items-start justify-between gap-2 cursor-pointer ${
+                              isSelected ? 'bg-amber-50 text-amber-950 font-semibold border border-amber-200' : 'hover:bg-stone-50 text-stone-700'
+                            }`}
+                          >
+                            <div>
+                              <div className="font-bold text-xs">{r.name}</div>
+                              <div className="text-[10px] text-stone-500">{r.desc}</div>
+                            </div>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-amber-800 shrink-0 mt-0.5" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* 6. Vintage Year Dropdown (Only for aged / aging-capable teas) */}
+                {canTeaAge(selectedTea) && (
+                  <div className="relative space-y-1">
+                    <label className="text-[11px] font-bold text-stone-700 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Год сбора / Выдержка:</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsVintageDropdownOpen(!isVintageDropdownOpen);
+                        setIsMethodDropdownOpen(false);
+                        setIsVesselDropdownOpen(false);
+                        setIsHardnessDropdownOpen(false);
+                        setIsGoalDropdownOpen(false);
+                        setIsRinseDropdownOpen(false);
+                      }}
+                      className="w-full px-3 py-2 bg-white rounded-xl border-2 border-stone-200 hover:border-amber-700/60 focus:outline-hidden focus:ring-2 focus:ring-amber-800/30 text-left transition-all flex items-center justify-between shadow-2xs gap-2 cursor-pointer"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-stone-900 truncate">
+                          {vintageYear ? `${vintageYear} год сбора` : 'Свежий сбор (текущий год)'}
+                        </div>
+                        <div className="text-[10px] text-stone-500 truncate">
+                          {(() => {
+                            const currentYearNum = new Date().getFullYear();
+                            if (!vintageYear || vintageYear === currentYearNum) {
+                              return 'Свежий сбор текущего сезона';
+                            }
+                            const age = Math.max(0, currentYearNum - vintageYear);
+                            const mod10 = age % 10;
+                            const mod100 = age % 100;
+                            const word = (mod100 >= 11 && mod100 <= 14) ? 'лет' : mod10 === 1 ? 'год' : (mod10 >= 2 && mod10 <= 4) ? 'года' : 'лет';
+                            return `${age} ${word} выдержки`;
+                          })()}
+                        </div>
+                      </div>
+                      <ChevronDown className={`w-4 h-4 text-stone-400 shrink-0 transition-transform duration-200 ${isVintageDropdownOpen ? 'rotate-180 text-amber-800' : ''}`} />
+                    </button>
+
+                    {isVintageDropdownOpen && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-stone-200 shadow-xl p-1.5 space-y-1 z-30 animate-in fade-in max-h-56 overflow-y-auto">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVintageYear(undefined);
+                            setIsVintageDropdownOpen(false);
+                          }}
+                          className={`w-full p-2 rounded-lg text-left text-xs transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                            !vintageYear ? 'bg-amber-50 text-amber-950 font-semibold border border-amber-200' : 'hover:bg-stone-50 text-stone-700'
+                          }`}
+                        >
+                          <div>
+                            <div className="font-bold text-xs">Свежий сбор (текущий год)</div>
+                            <div className="text-[10px] text-stone-500">Без выдержки</div>
+                          </div>
+                          {!vintageYear && <Check className="w-3.5 h-3.5 text-amber-800 shrink-0" />}
+                        </button>
+
+                        {Array.from({ length: 45 }, (_, i) => new Date().getFullYear() - i).map((yr) => {
+                          const isSelected = vintageYear === yr;
+                          const currentYearNum = new Date().getFullYear();
+                          const age = Math.max(0, currentYearNum - yr);
+                          const mod10 = age % 10;
+                          const mod100 = age % 100;
+                          const word = (mod100 >= 11 && mod100 <= 14) ? 'лет' : mod10 === 1 ? 'год' : (mod10 >= 2 && mod10 <= 4) ? 'года' : 'лет';
+                          return (
+                            <button
+                              key={yr}
+                              type="button"
+                              onClick={() => {
+                                setVintageYear(yr);
+                                setIsVintageDropdownOpen(false);
+                              }}
+                              className={`w-full p-2 rounded-lg text-left text-xs transition-all flex items-center justify-between gap-2 cursor-pointer ${
+                                isSelected ? 'bg-amber-50 text-amber-950 font-semibold border border-amber-200' : 'hover:bg-stone-50 text-stone-700'
+                              }`}
+                            >
+                              <div>
+                                <div className="font-bold text-xs font-mono">{yr} год сбора</div>
+                                <div className="text-[10px] text-stone-500">
+                                  {age === 0 ? 'Свежий сбор' : `${age} ${word} выдержки`}
+                                </div>
+                              </div>
+                              {isSelected && <Check className="w-3.5 h-3.5 text-amber-800 shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1399,6 +1914,15 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
                 </h3>
               </div>
               <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => handleExportSingleEntryJson(printingEntry)}
+                  className="px-3 sm:px-3.5 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold flex items-center gap-1.5 shadow-2xs border border-stone-300 cursor-pointer transition-colors"
+                  title="Экспорт отдельной записи дегустации в файл JSON"
+                >
+                  <Download className="w-3.5 h-3.5 text-amber-800" />
+                  <span>JSON</span>
+                </button>
                 <button
                   type="button"
                   onClick={handleExportCardPdf}
@@ -1889,6 +2413,16 @@ export const TeaTastingJournalView: React.FC<TeaTastingJournalViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Custom Filename Export Prompt Modal */}
+      <FilenamePromptModal
+        isOpen={filenamePromptState.isOpen}
+        defaultFilename={filenamePromptState.defaultFilename}
+        title={filenamePromptState.title}
+        description={filenamePromptState.description}
+        onConfirm={(name) => filenamePromptState.onConfirmAction(name)}
+        onClose={() => setFilenamePromptState((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

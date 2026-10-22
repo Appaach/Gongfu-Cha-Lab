@@ -329,6 +329,8 @@ export interface InitialTastingSessionData extends InitialBrewParams {
 }
 
 
+export type AppTheme = 'classic' | 'dark' | 'bamboo' | 'porcelain';
+
 export interface AppSettings {
   advancedMode: boolean;              // Master переключатель «Детализация параметров» (гидромодуль, ppm, ISO 9768, теплофизика)
   showBrewingMethod: boolean;         // 1. "Выбор метода заваривания" (default false)
@@ -339,6 +341,8 @@ export interface AppSettings {
   hideBrewingMethodSelector?: boolean; // legacy alias
   customTeasExportFilename?: string;  // Настройка имени файла по умолчанию при экспорте коллекции сортов
   promptExportFilename?: boolean;     // Запрашивать собственное имя файла при экспорте любого файла
+  appTheme?: AppTheme;                // Тема интерфейса (Классическая чайная, Тёмная лаборатория, Бамбуковый сад, Фарфор)
 }
+
 
 

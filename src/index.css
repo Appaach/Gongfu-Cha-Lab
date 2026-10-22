@@ -1,5 +1,502 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   MINIMAL SEMANTIC PALETTE ARCHITECTURE
+   ========================================================================== */
+
+/* 
+   ALL LIGHT THEMES (Classic, Bamboo, Porcelain) share the IDENTICAL neutral
+   light-gray canvas background (#f4f4f5), header, cards, panels, and borders.
+   Their uniqueness is expressed through their theme accents.
+*/
+
+:root,
+[data-theme='classic'] {
+  /* Unified Neutral Light-Gray Foundation */
+  --color-app-bg: #f4f4f5;
+  --color-header-bg: #f4f4f5;
+  --color-card-bg: #ffffff;
+  --color-panel-bg: #eaeaea;
+  --color-panel-hover: #e0e0e3;
+  --color-border: #dcdce0;
+
+  /* Typography */
+  --color-text-primary: #18181b;
+  --color-text-muted: #71717a;
+
+  /* Accent (Classic Terracotta Amber) */
+  --color-accent: #92400e;
+  --color-accent-hover: #78350f;
+  --color-accent-contrast: #ffffff;
+  --color-accent-soft-bg: #fef3c7;
+  --color-accent-soft-border: #fcd34d;
+  --color-accent-text: #92400e;
+
+  /* Data Graphics */
+  --color-chart-grid: #dcdce0;
+  --color-chart-text: #71717a;
+
+  /* Aliases */
+  --color-card-border: var(--color-border);
+  --color-panel-border: var(--color-border);
+  --color-header-border: var(--color-border);
+  --color-subtle-bg: var(--color-panel-bg);
+  --color-subtle-border: var(--color-border);
+  --color-text-secondary: var(--color-text-muted);
+  --color-accent-solid: var(--color-accent);
+  --color-accent-solid-hover: var(--color-accent-hover);
+  --color-accent-solid-text: var(--color-accent-contrast);
+  --color-input-bg: var(--color-card-bg);
+  --color-input-border: var(--color-border);
+  --color-input-text: var(--color-text-primary);
+  --color-switch-off-bg: var(--color-border);
+  --color-switch-on-bg: var(--color-accent);
+  --color-switch-thumb: #ffffff;
+  --color-cup-badge-bg: rgba(255, 255, 255, 0.95);
+  --color-cup-badge-text: #18181b;
+}
+
+[data-theme='bamboo'] {
+  /* Unified Neutral Light-Gray Foundation (Identical to Classic & Porcelain) */
+  --color-app-bg: #f4f4f5;
+  --color-header-bg: #f4f4f5;
+  --color-card-bg: #ffffff;
+  --color-panel-bg: #eaeaea;
+  --color-panel-hover: #e0e0e3;
+  --color-border: #dcdce0;
+
+  /* Typography */
+  --color-text-primary: #18181b;
+  --color-text-muted: #71717a;
+
+  /* Accent (Emerald Bamboo Leaf) */
+  --color-accent: #15803d;
+  --color-accent-hover: #166534;
+  --color-accent-contrast: #ffffff;
+  --color-accent-soft-bg: #dcfce7;
+  --color-accent-soft-border: #86efac;
+  --color-accent-text: #15803d;
+
+  /* Data Graphics */
+  --color-chart-grid: #dcdce0;
+  --color-chart-text: #71717a;
+
+  /* Aliases */
+  --color-card-border: var(--color-border);
+  --color-panel-border: var(--color-border);
+  --color-header-border: var(--color-border);
+  --color-subtle-bg: var(--color-panel-bg);
+  --color-subtle-border: var(--color-border);
+  --color-text-secondary: var(--color-text-muted);
+  --color-accent-solid: var(--color-accent);
+  --color-accent-solid-hover: var(--color-accent-hover);
+  --color-accent-solid-text: var(--color-accent-contrast);
+  --color-input-bg: var(--color-card-bg);
+  --color-input-border: var(--color-border);
+  --color-input-text: var(--color-text-primary);
+  --color-switch-off-bg: var(--color-border);
+  --color-switch-on-bg: var(--color-accent);
+  --color-switch-thumb: #ffffff;
+  --color-cup-badge-bg: rgba(255, 255, 255, 0.95);
+  --color-cup-badge-text: #18181b;
+}
+
+[data-theme='porcelain'] {
+  /* Unified Neutral Light-Gray Foundation (Identical to Classic & Bamboo) */
+  --color-app-bg: #f4f4f5;
+  --color-header-bg: #f4f4f5;
+  --color-card-bg: #ffffff;
+  --color-panel-bg: #eaeaea;
+  --color-panel-hover: #e0e0e3;
+  --color-border: #dcdce0;
+
+  /* Typography */
+  --color-text-primary: #18181b;
+  --color-text-muted: #71717a;
+
+  /* Accent (Imperial Cobalt Blue) */
+  --color-accent: #2563eb;
+  --color-accent-hover: #1d4ed8;
+  --color-accent-contrast: #ffffff;
+  --color-accent-soft-bg: #dbeafe;
+  --color-accent-soft-border: #93c5fd;
+  --color-accent-text: #2563eb;
+
+  /* Data Graphics */
+  --color-chart-grid: #dcdce0;
+  --color-chart-text: #71717a;
+
+  /* Aliases */
+  --color-card-border: var(--color-border);
+  --color-panel-border: var(--color-border);
+  --color-header-border: var(--color-border);
+  --color-subtle-bg: var(--color-panel-bg);
+  --color-subtle-border: var(--color-border);
+  --color-text-secondary: var(--color-text-muted);
+  --color-accent-solid: var(--color-accent);
+  --color-accent-solid-hover: var(--color-accent-hover);
+  --color-accent-solid-text: var(--color-accent-contrast);
+  --color-input-bg: var(--color-card-bg);
+  --color-input-border: var(--color-border);
+  --color-input-text: var(--color-text-primary);
+  --color-switch-off-bg: var(--color-border);
+  --color-switch-on-bg: var(--color-accent);
+  --color-switch-thumb: #ffffff;
+  --color-cup-badge-bg: rgba(255, 255, 255, 0.95);
+  --color-cup-badge-text: #18181b;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Foundation - Pure Obsidian Dark Canvas & Elevated Surfaces (NEVER Orange) */
+  --color-app-bg: #121214;
+  --color-header-bg: #121214;
+  --color-card-bg: #1a1a20;
+  --color-panel-bg: #24242e;
+  --color-panel-hover: #2e2e3a;
+  --color-border: #383846;
+
+  /* Typography - Pure White & Crisp Silver */
+  --color-text-primary: #ffffff;
+  --color-text-muted: #b4b4c4;
+
+  /* Accent (Amber Gold) */
+  --color-accent: #f59e0b;
+  --color-accent-hover: #fbbf24;
+  --color-accent-contrast: #000000;
+  --color-accent-soft-bg: rgba(245, 158, 11, 0.16);
+  --color-accent-soft-border: rgba(245, 158, 11, 0.45);
+  --color-accent-text: #fbbf24;
+
+  /* Data Graphics */
+  --color-chart-grid: #2e2e3a;
+  --color-chart-text: #b4b4c4;
+
+  /* Aliases */
+  --color-card-border: var(--color-border);
+  --color-panel-border: var(--color-border);
+  --color-header-border: var(--color-border);
+  --color-subtle-bg: var(--color-panel-bg);
+  --color-subtle-border: var(--color-border);
+  --color-text-secondary: var(--color-text-muted);
+  --color-accent-solid: var(--color-accent);
+  --color-accent-solid-hover: var(--color-accent-hover);
+  --color-accent-solid-text: var(--color-accent-contrast);
+  --color-input-bg: var(--color-panel-bg);
+  --color-input-border: var(--color-border);
+  --color-input-text: var(--color-text-primary);
+  --color-switch-off-bg: #383846;
+  --color-switch-on-bg: var(--color-accent);
+  --color-switch-thumb: #ffffff;
+  --color-cup-badge-bg: #24242e;
+  --color-cup-badge-text: #fbbf24;
+}
+
+
+/* ==========================================================================
+   PALETTE TO DOM MAPPING
+   ========================================================================== */
+
+body {
+  background-color: var(--color-app-bg) !important;
+  color: var(--color-text-primary) !important;
+}
+
+/* Header & Footer */
+header.bg-stone-50 {
+  background-color: var(--color-header-bg) !important;
+  border-bottom-color: var(--color-header-border) !important;
+  box-shadow: none !important;
+}
+
+footer.bg-stone-50 {
+  background-color: var(--color-header-bg) !important;
+  border-top-color: var(--color-header-border) !important;
+}
+
+/* Navigation */
+nav.bg-stone-100 {
+  background-color: var(--color-panel-bg) !important;
+  border-color: var(--color-border) !important;
+}
+
+nav button:not(.bg-amber-800) {
+  color: var(--color-text-muted) !important;
+}
+
+nav button:not(.bg-amber-800):hover {
+  background-color: var(--color-panel-hover) !important;
+  color: var(--color-text-primary) !important;
+}
+
+/* Card Surfaces */
+.bg-white,
+[class*="bg-white/"] {
+  background-color: var(--color-card-bg) !important;
+  color: var(--color-text-primary) !important;
+}
+
+/* Panel & Subtle Surfaces */
+.bg-stone-50,
+.bg-stone-100,
+.bg-stone-200,
+.bg-stone-300,
+[class*="bg-stone-50/"],
+[class*="bg-stone-100/"],
+[class*="bg-stone-200/"],
+[class*="bg-stone-300/"] {
+  background-color: var(--color-panel-bg) !important;
+  color: var(--color-text-primary) !important;
+}
+
+/* Hover States */
+[class*="hover:bg-stone-50"]:hover,
+[class*="hover:bg-stone-100"]:hover,
+[class*="hover:bg-stone-200"]:hover,
+[class*="hover:bg-white"]:hover {
+  background-color: var(--color-panel-hover) !important;
+}
+
+/* Universal Structural Borders */
+.border-stone-100,
+.border-stone-200,
+.border-stone-300,
+[class*="border-stone-100"],
+[class*="border-stone-200"],
+[class*="border-stone-300"] {
+  border-color: var(--color-border) !important;
+}
+
+/* Text Hierarchies */
+.text-stone-900,
+.text-stone-950,
+.text-stone-800,
+[class*="text-stone-900"],
+[class*="text-stone-950"],
+[class*="text-stone-800"] {
+  color: var(--color-text-primary) !important;
+}
+
+.text-stone-700,
+.text-stone-600,
+.text-stone-500,
+.text-stone-400,
+[class*="text-stone-700"],
+[class*="text-stone-600"],
+[class*="text-stone-500"],
+[class*="text-stone-400"] {
+  color: var(--color-text-muted) !important;
+}
+
+/* ==========================================================================
+   THEME ACCENT MAPPINGS (PREVENTS ORANGE LEAKS IN BAMBOO & PORCELAIN)
+   ========================================================================== */
+
+/* Solid Accent Elements: Strictly match bg-amber-800 and bg-amber-900 (never selection or focus) */
+.bg-amber-800,
+.bg-amber-900,
+[class~="bg-amber-800"],
+[class~="bg-amber-900"],
+[class*=" bg-amber-800/"],
+[class*=" bg-amber-900/"],
+[class^="bg-amber-800/"],
+[class^="bg-amber-900/"] {
+  background-color: var(--color-accent) !important;
+  color: var(--color-accent-contrast) !important;
+}
+
+.hover\:bg-amber-800:hover,
+.hover\:bg-amber-900:hover,
+[class~="hover:bg-amber-800"]:hover,
+[class~="hover:bg-amber-900"]:hover,
+[class*=" hover:bg-amber-800/"]:hover,
+[class*=" hover:bg-amber-900/"]:hover {
+  background-color: var(--color-accent-hover) !important;
+}
+
+/* Soft Accent Surfaces */
+.bg-amber-50,
+.bg-amber-100,
+[class~="bg-amber-50"],
+[class~="bg-amber-100"],
+[class*=" bg-amber-50/"],
+[class*=" bg-amber-100/"],
+[class^="bg-amber-50/"],
+[class^="bg-amber-100/"] {
+  background-color: var(--color-accent-soft-bg) !important;
+  color: var(--color-accent-text) !important;
+}
+
+/* Accent Text */
+.text-amber-600,
+.text-amber-700,
+.text-amber-800,
+.text-amber-900,
+.text-amber-950,
+[class*="text-amber-600"],
+[class*="text-amber-700"],
+[class*="text-amber-800"],
+[class*="text-amber-900"],
+[class*="text-amber-950"] {
+  color: var(--color-accent-text) !important;
+}
+
+/* Strong Accent Borders (500-900, focus & hover borders adapt to active theme) */
+.border-amber-500,
+.border-amber-600,
+.border-amber-700,
+.border-amber-800,
+.border-amber-900,
+[class*="border-amber-500"],
+[class*="border-amber-600"],
+[class*="border-amber-700"],
+[class*="border-amber-800"],
+[class*="border-amber-900"],
+[class*="hover:border-amber-"]:hover,
+[class*="focus:border-amber-"]:focus {
+  border-color: var(--color-accent) !important;
+}
+
+/* Light / Soft Accent Borders (100-400 adapt to active theme) */
+.border-amber-100,
+.border-amber-200,
+.border-amber-300,
+.border-amber-400,
+[class*="border-amber-100"],
+[class*="border-amber-200"],
+[class*="border-amber-300"],
+[class*="border-amber-400"] {
+  border-color: var(--color-accent-soft-border) !important;
+}
+
+/* Rings & Focus Indicators (Adapt to active theme accent) */
+.ring-amber-300,
+.ring-amber-400,
+.ring-amber-500,
+.ring-amber-600,
+.ring-amber-700,
+.ring-amber-800,
+.ring-amber-900,
+[class*="ring-amber-"],
+[class*="focus:ring-amber-"],
+[class*="hover:ring-amber-"] {
+  --tw-ring-color: var(--color-accent) !important;
+}
+
+/* Form Controls & Checkboxes */
+[class*="accent-amber-"],
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--color-accent) !important;
+}
+
+input:not([type='checkbox']):not([type='radio']),
+textarea,
+select {
+  background-color: var(--color-input-bg) !important;
+  color: var(--color-input-text) !important;
+  border-color: var(--color-input-border) !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-text-muted) !important;
+}
+
+/* Toggle Switches */
+button[role='switch'].bg-amber-800 {
+  background-color: var(--color-switch-on-bg) !important;
+}
+
+button[role='switch'].bg-stone-300 {
+  background-color: var(--color-switch-off-bg) !important;
+}
+
+button[role='switch'] > span,
+button[role='switch'] span.rounded-full {
+  background-color: #ffffff !important;
+}
+
+/* Cup Number Badge */
+.cup-number-badge {
+  background-color: var(--color-cup-badge-bg) !important;
+  color: var(--color-cup-badge-text) !important;
+  border-color: var(--color-border) !important;
+}
+
+/* Charts & SVGs */
+svg text {
+  fill: var(--color-chart-text) !important;
+}
+
+svg line[stroke="#e7e5e4"],
+svg line[stroke="#f5f5f4"],
+svg line[stroke="#f0f0f0"],
+svg line[stroke="#d6d3d1"] {
+  stroke: var(--color-chart-grid) !important;
+}
+
+svg circle[stroke="#e7e5e4"] {
+  stroke: var(--color-chart-grid) !important;
+}
+
+/* Specific Dark Mode Enhancements for Graphics and Badges */
+[data-theme='dark'] svg text[fill="#334155"] {
+  fill: #fcd34d !important;
+  font-weight: 700 !important;
+}
+
+[data-theme='dark'] svg text[fill="#92400e"],
+[data-theme='dark'] svg text[fill="#d97706"] {
+  fill: #fde68a !important;
+  font-weight: 700 !important;
+}
+
+[data-theme='dark'] svg rect[fill="rgba(148, 163, 184, 0.2)"] {
+  fill: rgba(245, 158, 11, 0.22) !important;
+  stroke: rgba(245, 158, 11, 0.6) !important;
+}
+
+[data-theme='dark'] [class*="bg-stone-900/"],
+[data-theme='dark'] [class*="bg-stone-950/"],
+[data-theme='dark'] [class*="bg-black/"] {
+  background-color: rgba(0, 0, 0, 0.78) !important;
+}
+
+/* Colored Compound Badges in Dark Mode */
+[data-theme='dark'] .bg-emerald-50,
+[data-theme='dark'] [class*="bg-emerald-50"] {
+  background-color: rgba(16, 185, 129, 0.18) !important;
+  color: #6ee7b7 !important;
+  border-color: rgba(16, 185, 129, 0.45) !important;
+}
+
+[data-theme='dark'] .bg-blue-50,
+[data-theme='dark'] [class*="bg-blue-50"] {
+  background-color: rgba(59, 130, 246, 0.18) !important;
+  color: #93c5fd !important;
+  border-color: rgba(59, 130, 246, 0.45) !important;
+}
+
+[data-theme='dark'] .bg-rose-50,
+[data-theme='dark'] [class*="bg-rose-50"] {
+  background-color: rgba(244, 63, 94, 0.18) !important;
+  color: #fda4af !important;
+  border-color: rgba(244, 63, 94, 0.45) !important;
+}
+
+[data-theme='dark'] .bg-purple-50,
+[data-theme='dark'] [class*="bg-purple-50"] {
+  background-color: rgba(168, 85, 247, 0.18) !important;
+  color: #d8b4fe !important;
+  border-color: rgba(168, 85, 247, 0.45) !important;
+}
+
+
+/* ==========================================================================
+   PRINT / PDF EXPORT SHIELD
+   ========================================================================== */
 @media print {
   header,
   footer,
@@ -8,7 +505,6 @@
     display: none !important;
   }
 
-  /* Reset modal overlays so they don't darken or obscure print pages */
   .fixed.inset-0 {
     position: static !important;
     background: transparent !important;
@@ -27,7 +523,6 @@
     padding: 0 !important;
   }
 
-  /* Printable containers */
   #printable-cheat-sheet,
   #journal-printable-area,
   #printable-tasting-sheet {
@@ -45,7 +540,6 @@
     break-inside: avoid !important;
   }
 
-  /* Ensure card backgrounds and borders print clearly */
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;

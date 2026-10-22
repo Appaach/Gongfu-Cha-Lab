@@ -87,8 +87,24 @@ export default function App() {
     setActiveTab('simulator');
   };
 
+  useEffect(() => {
+    const theme = settings.appTheme || 'classic';
+    document.documentElement.setAttribute('data-theme', theme);
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [settings.appTheme]);
+
   return (
-    <div className="min-h-screen bg-stone-100/70 text-stone-900 flex flex-col font-sans selection:bg-amber-200 selection:text-amber-950">
+    <div 
+      className="min-h-screen flex flex-col font-sans transition-colors duration-200"
+      style={{
+        backgroundColor: 'var(--color-app-bg)',
+        color: 'var(--color-text-primary)'
+      }}
+    >
       {/* Top Header & Navigation - Sticky and always accessible */}
       <Header 
         activeTab={activeTab} 
@@ -155,7 +171,13 @@ export default function App() {
         <button
           type="button"
           onClick={scrollToTop}
-          className="fixed bottom-6 right-6 z-50 p-3.5 bg-amber-900/90 hover:bg-amber-950 text-white rounded-full shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 focus:outline-hidden focus:ring-2 focus:ring-amber-500/50 flex items-center justify-center cursor-pointer border border-amber-700/30 backdrop-blur-xs group"
+          className="fixed bottom-6 right-6 z-50 p-3.5 rounded-full shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 focus:outline-hidden flex items-center justify-center cursor-pointer border backdrop-blur-xs group"
+          style={{
+            backgroundColor: 'var(--color-accent-solid)',
+            color: 'var(--color-accent-solid-text)',
+            borderColor: 'var(--color-accent-soft-border)',
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)'
+          }}
           title="Наверх"
           aria-label="Перейти наверх страницы"
         >

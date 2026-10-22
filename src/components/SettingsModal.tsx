@@ -1,6 +1,6 @@
 import React from 'react';
-import { X, Sliders, Flame, Sparkles, Thermometer, FlaskConical, TrendingUp, RotateCcw, Download } from 'lucide-react';
-import { AppSettings } from '../types';
+import { X, Sliders, Flame, Sparkles, Thermometer, FlaskConical, TrendingUp, RotateCcw, Download, Palette, Check } from 'lucide-react';
+import { AppSettings, AppTheme } from '../types';
 import { DEFAULT_APP_SETTINGS } from '../utils/appSettings';
 
 interface SettingsModalProps {
@@ -266,6 +266,74 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 }`}
               />
             </button>
+          </div>
+
+          {/* 7. Выбор темы приложения */}
+          <div className="p-3.5 rounded-2xl border border-stone-200 bg-stone-50/50 space-y-3">
+            <div className="flex items-center gap-1.5 font-bold text-sm text-stone-900">
+              <Palette className="w-4 h-4 text-amber-700" />
+              <span>Тема оформления приложения</span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {[
+                {
+                  id: 'classic' as AppTheme,
+                  title: 'Классическая',
+                  dotBg: '#92400e',
+                  dotBorder: '#78350f',
+                },
+                {
+                  id: 'dark' as AppTheme,
+                  title: 'Тёмная',
+                  dotBg: '#121214',
+                  dotBorder: '#f59e0b',
+                },
+                {
+                  id: 'bamboo' as AppTheme,
+                  title: 'Бамбук',
+                  dotBg: '#15803d',
+                  dotBorder: '#166534',
+                },
+                {
+                  id: 'porcelain' as AppTheme,
+                  title: 'Фарфор',
+                  dotBg: '#2563eb',
+                  dotBorder: '#1d4ed8',
+                }
+              ].map((themeOpt) => {
+                const isSelected = (settings.appTheme || 'classic') === themeOpt.id;
+                return (
+                  <button
+                    key={themeOpt.id}
+                    type="button"
+                    onClick={() => {
+                      onUpdateSettings({
+                        ...settings,
+                        appTheme: themeOpt.id,
+                      });
+                    }}
+                    className={`w-full p-3 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                      isSelected
+                        ? 'bg-amber-50/80 border-amber-600 ring-2 ring-amber-600/20 shadow-2xs font-bold'
+                        : 'bg-white border-stone-200 hover:bg-stone-100/60'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span 
+                        className="w-3.5 h-3.5 rounded-full border shadow-2xs shrink-0" 
+                        style={{ backgroundColor: themeOpt.dotBg, borderColor: themeOpt.dotBorder }}
+                      />
+                      <span className="text-xs font-bold text-stone-900 truncate">
+                        {themeOpt.title}
+                      </span>
+                    </div>
+                    {isSelected && (
+                      <Check className="w-4 h-4 text-amber-800 shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 

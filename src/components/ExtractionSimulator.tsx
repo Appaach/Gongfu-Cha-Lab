@@ -1732,16 +1732,12 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                       type="button"
                       onClick={() => {
                         const defaultName = appSettings.customTeasExportFilename || 'my_teas.json';
-                        if (appSettings.promptExportFilename) {
-                          setExportFilenameInput(defaultName);
-                          setSelectedExportTeaIds(customTeas.map((t) => t.id));
-                          setIsExportModalOpen(true);
-                        } else {
-                          handleExportTeas(customTeas, defaultName);
-                        }
+                        setExportFilenameInput(defaultName);
+                        setSelectedExportTeaIds(customTeas.map((t) => t.id));
+                        setIsExportModalOpen(true);
                       }}
                       className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white hover:bg-stone-50 text-stone-700 border border-stone-300 transition-all shadow-2xs inline-flex items-center gap-1.5 cursor-pointer"
-                      title="Экспортировать свои чаи в JSON-файл"
+                      title="Выбрать сорта и экспортировать свои чаи в JSON-файл"
                     >
                       <Download className="w-3.5 h-3.5 text-stone-600" />
                       <span>Экспорт ({customTeas.length})</span>
@@ -2144,15 +2140,17 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
               );
             })()}
             {/* Rinse Status Badge */}
-            <span className={`inline-flex items-center gap-1 text-xs px-2.5 py-0.5 rounded-full font-medium ${
-              teaRinseInfo.required
-                ? 'bg-amber-100 text-amber-900 border border-amber-200'
-                : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-            }`}>
-              <span>Промыв #0:</span>
-              <span className="font-semibold">
-                {teaRinseInfo.required ? `${teaRinseInfo.seconds}с (${teaRinseInfo.badgeRu})` : 'Не нужен'}
-              </span>
+            <span 
+              className={`inline-flex items-center text-xs px-2.5 py-0.5 rounded-full font-medium ${
+                teaRinseInfo.required
+                  ? 'bg-amber-100 text-amber-950 border border-amber-300 shadow-2xs'
+                  : 'bg-stone-100 text-stone-700 border border-stone-300 shadow-2xs'
+              }`}
+              title={teaRinseInfo.required ? `Нулевой пролив: ${teaRinseInfo.seconds}с • ${teaRinseInfo.badgeRu}` : 'Прямой 1-й пролив без промывки'}
+            >
+              <strong className="font-semibold">
+                {teaRinseInfo.required ? 'Нулевой пролив' : 'Без нулевого пролива'}
+              </strong>
             </span>
           </div>
 
@@ -2746,8 +2744,8 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                     id="water-volume-input"
                     type="number"
                     step="5"
-                    min="20"
-                    max="1000"
+                    min="40"
+                    max="500"
                     placeholder={String(selectedTea.defaultVolume)}
                     value={rawVolumeStr !== null ? rawVolumeStr : waterVolume}
                     onChange={(e) => {
@@ -2766,7 +2764,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                         setFixedVolumeVal(selectedTea.defaultVolume);
                         setFixVolume(true);
                       } else {
-                        const clamped = Math.max(20, Math.min(1000, Math.round(parseFloat(trimmed))));
+                        const clamped = Math.max(40, Math.min(500, Math.round(parseFloat(trimmed))));
                         setFixedVolumeVal(clamped);
                         setFixVolume(true);
                       }
@@ -2793,9 +2791,9 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                   id="water-volume-slider"
                   type="range"
                   min="40"
-                  max="350"
+                  max="500"
                   step="5"
-                  value={Math.min(350, Math.max(40, waterVolume))}
+                  value={Math.min(500, Math.max(40, waterVolume))}
                   onChange={(e) => {
                     setRawVolumeStr(null);
                     setFixVolume(true);
@@ -2861,9 +2859,9 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                   <input
                     id="leaf-mass-input"
                     type="number"
-                    step="0.1"
-                    min="0.5"
-                    max="50"
+                    step="0.5"
+                    min="1"
+                    max="25"
                     placeholder={String(selectedTea.defaultMass)}
                     value={rawMassStr !== null ? rawMassStr : leafMass}
                     onChange={(e) => {
@@ -2882,7 +2880,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                         setFixedMassVal(selectedTea.defaultMass);
                         setFixMass(true);
                       } else {
-                        const clamped = Math.max(0.5, Math.min(50, Math.round(parseFloat(trimmed) * 10) / 10));
+                        const clamped = Math.max(1, Math.min(25, Math.round(parseFloat(trimmed) * 10) / 10));
                         setFixedMassVal(clamped);
                         setFixMass(true);
                       }
@@ -2908,10 +2906,10 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                 <input
                   id="leaf-mass-slider"
                   type="range"
-                  min="2"
+                  min="1"
                   max="25"
                   step="0.5"
-                  value={Math.min(25, Math.max(2, leafMass))}
+                  value={Math.min(25, Math.max(1, leafMass))}
                   onChange={(e) => {
                     setRawMassStr(null);
                     setFixMass(true);
@@ -3057,7 +3055,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                         id="water-temp-input"
                         type="number"
                         step="1"
-                        min="50"
+                        min="60"
                         max="100"
                         placeholder={String(selectedTea.optimalTemp)}
                         value={rawTempStr !== null ? rawTempStr : waterTemp}
@@ -3077,7 +3075,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                             setFixedTempVal(selectedTea.optimalTemp);
                             setFixTemp(true);
                           } else {
-                            const clamped = Math.max(50, Math.min(100, Math.round(parseFloat(trimmed))));
+                            const clamped = Math.max(60, Math.min(100, Math.round(parseFloat(trimmed))));
                             setFixedTempVal(clamped);
                             setFixTemp(true);
                           }
@@ -3104,7 +3102,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                   <input
                     id="water-temp-slider"
                     type="range"
-                    min="65"
+                    min="60"
                     max="100"
                     step="1"
                     value={waterTemp}
@@ -3205,7 +3203,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                       id="steeps-count-input"
                       type="number"
                       min="1"
-                      max="40"
+                      max="30"
                       placeholder={String(selectedTea.recommendedSteeps || 8)}
                       value={rawSteepsStr !== null ? rawSteepsStr : steepsCount}
                       onChange={(e) => {
@@ -3224,7 +3222,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                           setFixedSteepsVal(selectedTea.recommendedSteeps || 8);
                           setFixSteeps(true);
                         } else {
-                          const clamped = Math.max(1, Math.min(40, parseInt(trimmed, 10)));
+                          const clamped = Math.max(1, Math.min(30, parseInt(trimmed, 10)));
                           setFixedSteepsVal(clamped);
                           setFixSteeps(true);
                         }
@@ -3247,7 +3245,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                       onClick={() => {
                         setRawSteepsStr(null);
                         setFixSteeps(true);
-                        setFixedSteepsVal(Math.min(40, steepsCount + 1));
+                        setFixedSteepsVal(Math.min(30, steepsCount + 1));
                       }}
                       className="w-7 h-7 rounded bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold flex items-center justify-center transition-colors"
                     >
@@ -3799,13 +3797,17 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                           setEditingSteepIndex(-1);
                         }}
                         title="Клик для выбора, зажмите для таймера, двойной клик для ввода времени"
-                        className={`group relative min-h-[92px] p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all select-none cursor-pointer shadow-2xs ${
+                        className={`group relative min-h-[92px] p-2.5 rounded-xl text-left flex flex-col justify-between transition-all select-none cursor-pointer shadow-2xs ${
                           selectedSteepIndex === -1
-                            ? 'border-amber-800 bg-amber-50/90 text-stone-900 shadow-xs ring-2 ring-amber-800'
+                            ? 'border-2 border-amber-800 ring-2 ring-amber-800 bg-amber-50/90 text-stone-900 shadow-xs'
                             : customRinseTime !== null
-                            ? 'bg-amber-50 border-amber-300 text-amber-950 hover:border-amber-400'
-                            : 'border-stone-200 bg-white text-stone-700 hover:border-amber-300 hover:bg-stone-50'
+                            ? 'border-transparent bg-amber-50 text-amber-950 hover:bg-amber-100/60'
+                            : 'border-transparent bg-white text-stone-700 hover:bg-stone-100/60'
                         }`}
+                        style={{
+                          borderWidth: selectedSteepIndex === -1 ? '2px' : '0px',
+                          borderStyle: 'solid'
+                        }}
                       >
                         <div className="flex items-center justify-between gap-1 w-full">
                           <span className={`text-[11px] font-bold font-mono tracking-wider uppercase ${
@@ -3947,7 +3949,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                       }}
                       title="Цвет промывки листа (#0)"
                     >
-                      <span className="text-[10px] font-bold text-stone-900 bg-white/80 px-1.5 py-0.5 rounded-full backdrop-blur-xs">
+                      <span className="cup-number-badge text-[10px] font-bold px-1.5 py-0.5 rounded-full backdrop-blur-xs font-mono shadow-2xs">
                         #0
                       </span>
                     </div>
@@ -4016,7 +4018,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                     }}
                     title={`Цвет настоя на ${currentSteepData.steepNumber}-м проливе`}
                   >
-                    <span className="text-[10px] font-bold text-stone-900 bg-white/80 px-1.5 py-0.5 rounded-full backdrop-blur-xs">
+                    <span className="cup-number-badge text-[10px] font-bold px-1.5 py-0.5 rounded-full backdrop-blur-xs font-mono shadow-2xs">
                       #{currentSteepData.steepNumber}
                     </span>
                   </div>
@@ -4495,21 +4497,28 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
             </div>
 
             <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-stone-700 mb-1">
-                  Имя экспортируемого файла:
-                </label>
-                <input
-                  type="text"
-                  value={exportFilenameInput}
-                  onChange={(e) => setExportFilenameInput(e.target.value)}
-                  placeholder="my_teas.json"
-                  className="w-full px-3 py-2 rounded-xl border border-stone-300 font-mono text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-800"
-                />
-                <span className="text-[11px] text-stone-400 mt-1 block">
-                  Файл будет скачан в формате .json с указанным вами именем.
-                </span>
-              </div>
+              {appSettings.promptExportFilename ? (
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">
+                    Имя экспортируемого файла:
+                  </label>
+                  <input
+                    type="text"
+                    value={exportFilenameInput}
+                    onChange={(e) => setExportFilenameInput(e.target.value)}
+                    placeholder="my_teas.json"
+                    className="w-full px-3 py-2 rounded-xl border border-stone-300 font-mono text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-800"
+                  />
+                  <span className="text-[11px] text-stone-400 mt-1 block">
+                    Файл будет скачан в формате .json с указанным вами именем.
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-stone-100 text-xs text-stone-600 border border-stone-200">
+                  <span>Стандартное имя файла:</span>
+                  <span className="font-mono font-semibold text-stone-800">{exportFilenameInput || 'my_teas.json'}</span>
+                </div>
+              )}
 
               <div>
                 <div className="flex items-center justify-between mb-2">

@@ -139,15 +139,19 @@ export const SteepBubbleCard = memo(function SteepBubbleCard({
         }
       }}
       title={isManualModeActive ? "Клик для выбора, двойной клик для ввода времени, удержание для таймера" : "Клик для выбора, удержание для таймера"}
-      className={`group relative min-h-[92px] rounded-xl border p-2.5 flex flex-col justify-between text-left transition-all cursor-pointer select-none shadow-2xs ${
+      className={`group relative min-h-[92px] rounded-xl p-2.5 flex flex-col justify-between text-left transition-all cursor-pointer select-none shadow-2xs ${
         isSelected
-          ? 'ring-2 ring-amber-800 border-amber-800 bg-amber-50/90 shadow-xs'
+          ? 'border-2 border-amber-800 ring-2 ring-amber-800 bg-amber-50/90 shadow-xs'
           : isCustom
-          ? 'bg-amber-50 border-amber-300 text-amber-950 hover:border-amber-400'
+          ? 'border-transparent bg-amber-50 text-amber-950 hover:bg-amber-100/60'
           : isAdapted
-          ? 'bg-amber-50/50 border-amber-200 text-amber-900 hover:bg-amber-50'
-          : 'bg-white border-stone-200 hover:border-amber-300 hover:bg-stone-50 text-stone-800'
+          ? 'border-transparent bg-amber-50/50 text-amber-900 hover:bg-amber-100/60'
+          : 'border-transparent bg-white hover:bg-stone-100/60 text-stone-800'
       }`}
+      style={{
+        borderWidth: isSelected ? '2px' : '0px',
+        borderStyle: 'solid'
+      }}
     >
       {/* Top: Steep Number & Status Badge */}
       <div className="flex items-center justify-between gap-1 w-full">
