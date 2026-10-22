@@ -231,9 +231,7 @@ function createInitialPools(tea: TeaVariety, leafMassGrams: number): InitialPool
     egcMg = Math.max(0, egcParam.initialMgPerG) * mass;
     egcgMg = Math.max(0, catechinTotalMg - egcMg);
   } else if (egcgParam?.initialMgPerG !== undefined) {
-    egcgMg = Math.max(0, catechinTotalMg - Math.max(0, egcgParam.initialMgPerG) * mass);
-    egcgMg = Math.min(catechinTotalMg, egcgMg);
-    egcgMg = Math.max(0, catechinTotalMg - egcgMg);
+    egcgMg = Math.min(catechinTotalMg, Math.max(0, egcgParam.initialMgPerG) * mass);
     egcMg = Math.max(0, catechinTotalMg - egcgMg);
   } else {
     egcMg = catechinTotalMg * catechinSplitRatio(tea);
@@ -782,8 +780,18 @@ export function resolveZeroInfusionOptions(args: {
   const rinse = getTeaRinseInfo(args.tea, effectiveTemp, args.optimizationGoal);
   const profile = args.tea.zeroInfusionProfile;
   const durationSec = args.customDurationSec ?? profile?.durationSec ?? rinse.seconds;
+  const policy = profile?.policy;
+  const enabledByPolicy = policy === 'disabled'
+    ? false
+    : policy === 'enabled'
+      ? true
+      : profile?.enabled !== undefined
+        ? profile.enabled
+        : policy === 'optional'
+          ? (profile.enabled ?? rinse.required)
+          : rinse.required;
   return {
-    enabled: rinse.required && durationSec > 0,
+    enabled: enabledByPolicy && durationSec > 0,
     durationSec: clamp(durationSec, 0, 3600),
     temperatureC: clamp(args.customTemperatureC ?? profile?.temperatureC ?? rinse.tempC ?? args.waterTempC, 40, 100),
     waterVolumeMl: clamp(profile?.waterVolumeMl ?? args.waterVolumeMl, 10, 5000),
