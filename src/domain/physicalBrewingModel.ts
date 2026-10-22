@@ -505,6 +505,7 @@ function createSteepRow(args: {
     modelNotesRu: [
       'Концентрации рассчитаны для четырёх групп: теанин, кофеин, катехины и полисахариды.',
       'Выход относится только к отслеживаемым веществам, а не ко всему сухому экстракту.',
+      'TDS здесь является прокси по четырём отслеживаемым группам, а не измерением общего содержания растворённых веществ.',
       'Сенсорные баллы предварительные и не откалиброваны на дегустационной панели.',
       'Аромат представлен типовым профилем чая, а не динамическим химическим прогнозом.',
     ],
@@ -609,8 +610,12 @@ function runPhysicalSimulation(input: PhysicalBrewingInput): PhysicalBrewingResu
     isAdaptedReference?: boolean;
   }): SteepKineticData => {
     const duration = clamp(args.durationSec, 0, 3600);
-    const addedWaterMl = args.isZero
+    const addedWaterMl = args.isZero || method === 'gongfu'
+      // For gongfu, waterVolumeMl is the fresh pour volume. Liquid absorbed by wet leaves
+      // carries forward but must not silently reduce the user's next pour.
       ? Math.max(0, args.targetVolumeMl)
+      // Liu Gen and the cup method treat waterVolumeMl as the target vessel fill volume:
+      // fresh water tops up the free/root liquid that remains after the previous drink/drain.
       : Math.max(0, args.targetVolumeMl - state.liquidVolumeMl);
     const pourTemp = clamp(args.waterTempC, 40, 100);
     const carriedMassMg = sumVector(state.liquidMassMg);
@@ -695,7 +700,8 @@ function runPhysicalSimulation(input: PhysicalBrewingInput): PhysicalBrewingResu
       liquidVolumeMl: preDrainVolume,
       liquidMass: preDrainMass,
       freshWaterAddedMl: addedWaterMl,
-      drinkableVolumeMl: args.isZero && (args.disposition ?? 'discard') !== 'retain' ? 0 : removedVolume,
+      // The zero-infusion liquid is not a drinking serving, even when only part of it is drained.
+      drinkableVolumeMl: args.isZero ? 0 : removedVolume,
       retainedRootVolumeMl: method === 'gongfu' ? 0 : rootFreeVolume,
       retainedLiquidVolumeMl: targetRetainedVolume,
       carryoverMassMg: carriedMassMg,
