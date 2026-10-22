@@ -4255,6 +4255,16 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                           <li key={index}>{note}</li>
                         ))}
                       </ul>
+                      {currentSteepData.modelNotesRu?.some((note) => note.includes('HPLC-данным')) && (
+                        <a
+                          className="mt-2 inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-800 underline underline-offset-2"
+                          href="https://doi.org/10.3390/foods14132313"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Источник HPLC: Foods 2025, 14(13), 2313
+                        </a>
+                      )}
                     </details>
 
                     <div className="space-y-1.5">
