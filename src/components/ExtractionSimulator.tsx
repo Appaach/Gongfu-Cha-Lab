@@ -4137,9 +4137,12 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                 </div>
 
                 <div className="text-right sm:border-l sm:border-stone-100 sm:pl-4">
-                  <div className="text-xs text-stone-400">Интенсивность аромата</div>
-                  <div className="text-xl font-bold font-mono text-amber-700">
-                    {currentSteepData.volatilesIntensity} / 100
+                  <div className="text-xs text-stone-400">Ароматический профиль</div>
+                  <div className="text-sm font-semibold text-amber-800">
+                    {currentSteepData.aromaBasis === 'chemical' ? `${currentSteepData.volatilesIntensity} / 100` : 'Типовые ноты сорта'}
+                  </div>
+                  <div className="text-[10px] text-stone-400">
+                    {currentSteepData.aromaBasis === 'chemical' ? 'химическая модель' : 'не рассчитывается по проливу'}
                   </div>
                 </div>
               </div>
@@ -4237,6 +4240,9 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                     </div>
                     <p className="text-[10px] leading-relaxed text-stone-400">
                       * Расчётная сумма отслеживаемых веществ, а не лабораторное измерение TDS. Выход отслеживаемых веществ не равен общему выходу сухого экстракта и не является результатом испытания ISO 9768.
+                    </p>
+                    <p className="text-[10px] leading-relaxed text-stone-500">
+                      Статус параметров: {currentSteepData.modelConfidence === 'high' ? 'высокая полнота калибровки' : currentSteepData.modelConfidence === 'medium' ? 'частичная калибровка' : 'типовые оценочные параметры'}. Сенсорные баллы пока не калиброваны на дегустационной панели.
                     </p>
 
                     <div className="space-y-1.5">
@@ -4356,13 +4362,13 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                   {/* Aroma */}
                   <div className="min-w-0">
                     <div className="flex justify-between text-xs mb-1 min-w-0 gap-2">
-                      <span className="font-medium text-stone-700 break-words min-w-0">Ароматическая диффузия («Ча Сян»)</span>
-                      <span className="font-mono font-bold text-orange-700 shrink-0">{currentSteepData.sensoryScores.aroma}</span>
+                      <span className="font-medium text-stone-700 break-words min-w-0">Аромат (типовой профиль, без динамического расчёта)</span>
+                      <span className="font-mono font-bold text-orange-700 shrink-0">{currentSteepData.aromaBasis === 'chemical' ? currentSteepData.sensoryScores.aroma : '—'}</span>
                     </div>
                     <div className="w-full h-2 bg-stone-100 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-orange-500 rounded-full transition-all duration-300"
-                        style={{ width: `${(currentSteepData.sensoryScores.aroma / 10) * 100}%` }}
+                        style={{ width: currentSteepData.aromaBasis === 'chemical' ? `${(currentSteepData.sensoryScores.aroma / 10) * 100}%` : '0%' }}
                       />
                     </div>
                   </div>
