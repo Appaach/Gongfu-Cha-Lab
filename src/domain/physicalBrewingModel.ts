@@ -903,7 +903,8 @@ export function optimizePhysicalSchedule(
   const durations = Array.from({ length: count }, (_, index) => {
     const userValue = input.userDurations?.[index];
     if (userValue !== null && userValue !== undefined && userValue > 0) {
-      return clamp(Math.round(userValue), durationMin, durationMax);
+      // Preserve valid explicit user values; candidate-search bounds apply only to auto values.
+      return clamp(Math.round(userValue), 1, 3600);
     }
     return defaultDurationForStage(tea, method, index);
   });
@@ -913,7 +914,9 @@ export function optimizePhysicalSchedule(
     if (userValue !== null && userValue !== undefined && userValue > 0) {
       return clamp(Math.round(userValue), 40, 100);
     }
-    return clamp(Math.round(simulatedValue), tea.tempRange[0], tea.tempRange[1]);
+    return input.optimizeTemperatures
+      ? clamp(Math.round(simulatedValue), tea.tempRange[0], tea.tempRange[1])
+      : clamp(Math.round(simulatedValue), 40, 100);
   });
 
   const fixedDuration = durations.map((_, index) =>
