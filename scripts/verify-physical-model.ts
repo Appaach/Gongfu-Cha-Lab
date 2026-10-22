@@ -104,4 +104,23 @@ assert.equal(optimized.durations[2], 19, 'Explicit user durations must stay fixe
 assert.equal(optimized.temperaturesC[1], 78, 'Explicit user temperatures must stay fixed');
 assert.ok(optimized.durations.every((seconds) => seconds > 0 && seconds <= 300));
 
+const lockedBaseTemp = optimizePhysicalSchedule({
+  simulation: {
+    tea,
+    leafMassGrams: 5,
+    waterVolumeMl: 100,
+    waterTempC: 95,
+    perSteepTempsC: [95, 95, 95],
+    requestedSteepsCount: 3,
+    waterHardnessLevel: 'optimal',
+    vesselMaterial: 'porcelain',
+    brewingMethod: 'gongfu',
+    optimizationGoal: 'balanced',
+    zeroInfusion: { enabled: false, durationSec: 0, temperatureC: 95, waterVolumeMl: 100 },
+  },
+  optimizeTemperatures: false,
+});
+assert.ok(lockedBaseTemp.temperaturesC.every((temperature) => temperature === 95),
+  'With dynamic temperature mode off, the user-selected base temperature must remain unchanged');
+
 console.log('Physical brewing model checks passed.');
