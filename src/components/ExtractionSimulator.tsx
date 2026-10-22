@@ -1246,8 +1246,16 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     ? simulationResults[simulationResults.length - 1].cumulativeExtractionYieldPercent 
     : 0;
 
-  const totalCaffeineExtracted = simulationResults.reduce((acc, curr) => acc + (curr.caffeineConcentration * (waterVolume / 100)), 0).toFixed(1);
-  const totalTheanineExtracted = simulationResults.reduce((acc, curr) => acc + (curr.theanineConcentration * (waterVolume / 100)), 0).toFixed(1);
+  // Sum only the material present in actually drinkable output volumes. This avoids
+  // recounting carried-over solutes at every refill in Liu Gen and cup brewing.
+  const totalCaffeineExtracted = simulationResults.reduce(
+    (acc, curr) => acc + curr.caffeineConcentration * ((curr.drinkableVolumeMl ?? waterVolume) / 100),
+    0,
+  ).toFixed(1);
+  const totalTheanineExtracted = simulationResults.reduce(
+    (acc, curr) => acc + curr.theanineConcentration * ((curr.drinkableVolumeMl ?? waterVolume) / 100),
+    0,
+  ).toFixed(1);
 
   // Full sequence for chart visualization including Steep #0 (Rinse) when rinse is enabled
   const chartSteepsData = useMemo(() => {
