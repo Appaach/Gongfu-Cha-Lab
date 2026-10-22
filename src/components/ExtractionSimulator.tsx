@@ -278,6 +278,11 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
   const [isGoalDropdownOpen, setIsGoalDropdownOpen] = useState(false);
   const [isVintageDropdownOpen, setIsVintageDropdownOpen] = useState(false);
   const [customRinseTime, setCustomRinseTime] = useState<number | null>(null);
+  const [zeroInfusionOverride, setZeroInfusionOverride] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setZeroInfusionOverride(null);
+  }, [selectedTea.id]);
 
   // Dynamic current year (e.g. 2026, 2027) for vintage aging calculations
   const currentYear = useMemo(() => new Date().getFullYear(), []);
@@ -1036,6 +1041,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     waterVolumeMl: waterVolume,
     optimizationGoal,
     customDurationSec: customRinseTime,
+    enabledOverride: zeroInfusionOverride,
     customTemperatureC: appSettings.useDynamicTemperatures
       ? dynamicTemperatures.rinseTempC
       : customRinseTemp,
@@ -1050,6 +1056,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     optimizationGoal,
     customRinseTime,
     customRinseTemp,
+    zeroInfusionOverride,
     appSettings.useDynamicTemperatures,
     dynamicTemperatures,
   ]);
@@ -3699,6 +3706,20 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
 
                 {/* Header Controls for Custom Steeps */}
                 <div className="flex flex-wrap items-center gap-2">
+                  <label className="inline-flex items-center gap-2 cursor-pointer select-none text-xs font-medium text-stone-700 bg-stone-50 hover:bg-stone-100 border border-stone-200 px-3 py-1.5 rounded-xl transition-colors shadow-2xs">
+                    <input
+                      type="checkbox"
+                      checked={isRinseEnabled}
+                      onChange={(e) => {
+                        const enabled = e.target.checked;
+                        if (enabled && customRinseTime !== null && customRinseTime <= 0) setCustomRinseTime(null);
+                        setZeroInfusionOverride(enabled);
+                      }}
+                      className="rounded border-stone-300 text-amber-800 focus:ring-amber-800 h-3.5 w-3.5 accent-amber-800 cursor-pointer"
+                    />
+                    <span>Нулевой пролив</span>
+                  </label>
+
                   <label className="inline-flex items-center gap-2 cursor-pointer select-none text-xs font-medium text-stone-700 bg-stone-50 hover:bg-stone-100 border border-stone-200 px-3 py-1.5 rounded-xl transition-colors shadow-2xs">
                     <input
                       type="checkbox"
