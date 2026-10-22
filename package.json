@@ -12,7 +12,8 @@
     "cap:assets": "capacitor-assets generate --android",
     "cap:sync": "cap sync android",
     "build:android": "npm run build && npx cap sync android",
-    "build:android:full": "npm run build && (npx capacitor-assets generate --android || true) && npx cap sync android"
+    "build:android:full": "npm run build && (npx capacitor-assets generate --android || true) && npx cap sync android",
+    "test:physics": "tsx scripts/verify-physical-model.ts"
   },
   "dependencies": {
     "@capacitor/core": "^7.0.0",
