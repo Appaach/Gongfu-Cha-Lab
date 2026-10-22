@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
-import { TrendingUp } from 'lucide-react';
+import { Activity, Clock3, FlaskConical, Thermometer, TrendingUp, Waves } from 'lucide-react';
 import { BrewingMethod, SteepKineticData } from '../types';
-import { generateSmoothBezierPath, ContinuousInfusionPoint } from '../domain/extractionChartCalculations';
+import { ContinuousInfusionPoint, generateSmoothBezierPath } from '../domain/extractionChartCalculations';
 
 export interface ExtractionChartsProps {
   brewingMethod: BrewingMethod;
@@ -23,6 +23,21 @@ export interface ExtractionChartsProps {
   setShowChartTemperature: (val: boolean) => void;
 }
 
+type CompoundSeries = {
+  id: 'theanine' | 'caffeine' | 'catechins' | 'polysaccharides';
+  label: string;
+  color: string;
+  visible: boolean;
+  toggle: (visible: boolean) => void;
+  values: number[];
+};
+
+const CHART = { width: 920, height: 312, left: 62, right: 28, top: 22, bottom: 48 };
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+const fmt = (value: number, digits = 1) => Number(value.toFixed(digits)).toLocaleString('ru-RU', { maximumFractionDigits: digits });
+const makePath = (values: { x: number; y: number }[]) => generateSmoothBezierPath(values);
+const stageIndex = (row: SteepKineticData) => row.steepNumber === 0 ? -1 : row.steepNumber - 1;
+
 export const ExtractionCharts: React.FC<ExtractionChartsProps> = ({
   brewingMethod,
   steepsCount,
@@ -42,629 +57,303 @@ export const ExtractionCharts: React.FC<ExtractionChartsProps> = ({
   showChartTemperature,
   setShowChartTemperature,
 }) => {
-  // Grandpa Cup Chart Paths
-  const lazyCupPaths = useMemo(() => {
-    if (lazyCupTimeline.length === 0) return null;
-    const svgW = 650;
-    const svgH = 200;
-    const pLeft = 45;
-    const pRight = 35;
-    const pTop = 20;
-    const pBottom = 35;
-    const cW = svgW - pLeft - pRight;
-    const cH = svgH - pTop - pBottom;
+  const isCup = brewingMethod === 'grandpa_cup';
+  const series: CompoundSeries[] = [
+    { id: 'theanine', label: 'L-теанин', color: '#0f9276', visible: showChartTheanine, toggle: setShowChartTheanine, values: chartSteepsData.map((row) => row.theanineConcentration) },
+    { id: 'caffeine', label: 'Кофеин', color: '#4778d8', visible: showChartCaffeine, toggle: setShowChartCaffeine, values: chartSteepsData.map((row) => row.caffeineConcentration) },
+    { id: 'catechins', label: 'Катехины', color: '#d45370', visible: showChartCatechins, toggle: setShowChartCatechins, values: chartSteepsData.map((row) => row.catechinsConcentration) },
+    { id: 'polysaccharides', label: 'Полисахариды', color: '#8a63bf', visible: showChartPolysaccharides, toggle: setShowChartPolysaccharides, values: chartSteepsData.map((row) => row.polysaccharidesConcentration) },
+  ];
+  const activeSeries = series.filter((item) => item.visible);
 
-    const activeValues: number[] = [];
-    if (showChartTheanine) activeValues.push(...lazyCupTimeline.map((pt) => pt.theanine));
-    if (showChartCaffeine) activeValues.push(...lazyCupTimeline.map((pt) => pt.caffeine));
-    if (showChartCatechins) activeValues.push(...lazyCupTimeline.map((pt) => pt.catechins));
-    if (showChartPolysaccharides) activeValues.push(...lazyCupTimeline.map((pt) => pt.polysaccharides));
-
-    const maxVal = Math.max(15, activeValues.length > 0 ? Math.max(...activeValues) : 15) * 1.15;
-    const totalMins = lazyCupTimeline[lazyCupTimeline.length - 1]?.minute || 12;
-
-    const getLx = (m: number) => pLeft + (m / totalMins) * cW;
-    const getLy = (v: number) => pTop + cH - (v / maxVal) * cH;
-    const getTempY = (tC: number) => pTop + cH - ((tC - 20) / 80) * cH;
-
-    const thPts = lazyCupTimeline.map((pt) => ({ x: getLx(pt.minute), y: getLy(pt.theanine) }));
-    const cafPts = lazyCupTimeline.map((pt) => ({ x: getLx(pt.minute), y: getLy(pt.caffeine) }));
-    const catPts = lazyCupTimeline.map((pt) => ({ x: getLx(pt.minute), y: getLy(pt.catechins) }));
-    const polyPts = lazyCupTimeline.map((pt) => ({ x: getLx(pt.minute), y: getLy(pt.polysaccharides) }));
-    const tempPts = lazyCupTimeline.map((pt) => ({ x: getLx(pt.minute), y: getTempY(pt.tempC) }));
-
+  const discrete = useMemo(() => {
+    const plotWidth = CHART.width - CHART.left - CHART.right;
+    const plotHeight = CHART.height - CHART.top - CHART.bottom;
+    const count = chartSteepsData.length;
+    const values = activeSeries.flatMap((item) => item.values).filter(Number.isFinite);
+    const maxValue = Math.max(5, Math.ceil(Math.max(1, ...values) / 5) * 5);
+    const x = (index: number) => CHART.left + (count <= 1 ? plotWidth / 2 : (index / (count - 1)) * plotWidth);
+    const y = (value: number) => CHART.top + plotHeight - (clamp(value, 0, maxValue) / maxValue) * plotHeight;
     return {
-      svgW,
-      svgH,
-      pLeft,
-      pRight,
-      pTop,
-      pBottom,
-      cW,
-      cH,
-      maxVal,
-      totalMins,
-      getLx,
-      getLy,
-      getTempY,
-      thPath: generateSmoothBezierPath(thPts),
-      cafPath: generateSmoothBezierPath(cafPts),
-      catPath: generateSmoothBezierPath(catPts),
-      polyPath: generateSmoothBezierPath(polyPts),
-      tempPath: generateSmoothBezierPath(tempPts),
+      plotHeight,
+      maxValue,
+      x,
+      y,
+      grid: Array.from({ length: 5 }, (_, index) => {
+        const value = (maxValue / 4) * index;
+        return { value, y: y(value) };
+      }),
+      lines: activeSeries.map((item) => ({
+        ...item,
+        path: makePath(item.values.map((value, index) => ({ x: x(index), y: y(value) }))),
+        points: item.values.map((value, index) => ({ x: x(index), y: y(value), value, index })),
+      })),
     };
-  }, [
-    lazyCupTimeline,
-    showChartTheanine,
-    showChartCaffeine,
-    showChartCatechins,
-    showChartPolysaccharides,
-  ]);
+  }, [chartSteepsData, activeSeries]);
 
-  // Gongfu Chart Dimensions and Scales
-  const svgWidth = Math.max(650, chartSteepsData.length * 60 + 80);
-  const svgHeight = 230;
-  const padding = { top: 25, right: 35, bottom: 46, left: 45 };
-  const chartW = svgWidth - padding.left - padding.right;
-  const chartH = svgHeight - padding.top - padding.bottom;
-
-  const maxConcentration = useMemo(() => {
-    let max = 1;
-    chartSteepsData.forEach((d) => {
-      if (showChartTheanine) max = Math.max(max, d.theanineConcentration);
-      if (showChartCaffeine) max = Math.max(max, d.caffeineConcentration);
-      if (showChartCatechins) max = Math.max(max, d.catechinsConcentration);
-      if (showChartPolysaccharides) max = Math.max(max, d.polysaccharidesConcentration);
+  const cup = useMemo(() => {
+    if (!isCup || lazyCupTimeline.length === 0) return null;
+    const plotWidth = CHART.width - CHART.left - CHART.right;
+    const plotHeight = CHART.height - CHART.top - CHART.bottom;
+    const maxMinute = Math.max(1, lazyCupTimeline[lazyCupTimeline.length - 1]?.minute ?? 1);
+    const values = activeSeries.flatMap((item) => lazyCupTimeline.map((point) => {
+      if (item.id === 'theanine') return point.theanine;
+      if (item.id === 'caffeine') return point.caffeine;
+      if (item.id === 'catechins') return point.catechins;
+      return point.polysaccharides;
+    })).filter(Number.isFinite);
+    const maxValue = Math.max(5, Math.ceil(Math.max(1, ...values) / 5) * 5);
+    const x = (minute: number) => CHART.left + (clamp(minute, 0, maxMinute) / maxMinute) * plotWidth;
+    const y = (value: number) => CHART.top + plotHeight - (clamp(value, 0, maxValue) / maxValue) * plotHeight;
+    const lines = activeSeries.map((item) => {
+      const lineValues = lazyCupTimeline.map((point) => {
+        if (item.id === 'theanine') return point.theanine;
+        if (item.id === 'caffeine') return point.caffeine;
+        if (item.id === 'catechins') return point.catechins;
+        return point.polysaccharides;
+      });
+      return {
+        ...item,
+        path: makePath(lineValues.map((value, index) => ({ x: x(lazyCupTimeline[index].minute), y: y(value) }))),
+      };
     });
-    return Math.max(1, Math.ceil(max * 1.15));
-  }, [
-    chartSteepsData,
-    showChartTheanine,
-    showChartCaffeine,
-    showChartCatechins,
-    showChartPolysaccharides,
-  ]);
-
-  const getX = (index: number) => {
-    if (chartSteepsData.length <= 1) return padding.left + chartW / 2;
-    return padding.left + (index / (chartSteepsData.length - 1)) * chartW;
-  };
-
-  const getY = (val: number) => {
-    return padding.top + chartH - (val / maxConcentration) * chartH;
-  };
-
-  const { theaninePath, caffeinePath, catechinsPath, polysaccharidesPath } = useMemo(() => {
-    const theanineCoords = chartSteepsData.map((d, i) => ({ x: getX(i), y: getY(d.theanineConcentration) }));
-    const caffeineCoords = chartSteepsData.map((d, i) => ({ x: getX(i), y: getY(d.caffeineConcentration) }));
-    const catechinsCoords = chartSteepsData.map((d, i) => ({ x: getX(i), y: getY(d.catechinsConcentration) }));
-    const polysaccharidesCoords = chartSteepsData.map((d, i) => ({ x: getX(i), y: getY(d.polysaccharidesConcentration) }));
-
+    const step = maxMinute > 9 ? 2 : maxMinute > 4 ? 1 : 0.5;
+    const xTicks: number[] = [];
+    for (let minute = 0; minute < maxMinute; minute += step) xTicks.push(Number(minute.toFixed(2)));
+    if (xTicks[xTicks.length - 1] !== maxMinute) xTicks.push(maxMinute);
     return {
-      theaninePath: generateSmoothBezierPath(theanineCoords),
-      caffeinePath: generateSmoothBezierPath(caffeineCoords),
-      catechinsPath: generateSmoothBezierPath(catechinsCoords),
-      polysaccharidesPath: generateSmoothBezierPath(polysaccharidesCoords),
+      maxMinute,
+      maxValue,
+      x,
+      grid: Array.from({ length: 5 }, (_, index) => {
+        const value = (maxValue / 4) * index;
+        return { value, y: y(value) };
+      }),
+      lines,
+      markers: lazyCupTimeline.filter((point) => point.label || point.isRefill),
+      xTicks,
     };
-  }, [chartSteepsData, maxConcentration, chartW, chartH]);
+  }, [isCup, lazyCupTimeline, activeSeries]);
 
-  if (brewingMethod === 'grandpa_cup' && lazyCupPaths) {
-    return (
-      <div className="bg-white border border-stone-200 rounded-2xl p-5 sm:p-6 shadow-xs space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-stone-100 pb-3">
-          <div>
-            <h4 className="font-bold text-stone-900 text-base flex items-center space-x-2 font-serif">
-              <TrendingUp className="w-4 h-4 text-amber-700" />
-              <span>«Ленивый» метод (Бэй Пао Фа): График экстракции и остывания во времени</span>
-            </h4>
-            <p className="text-xs text-stone-500">
-              Оценочная динамика концентраций L-теанина, кофеина, катехинов и остывания по закону Ньютона с доливами
-            </p>
-          </div>
+  const temperature = useMemo(() => {
+    if (!isCup || !showChartTemperature || lazyCupTimeline.length === 0) return null;
+    const height = 204;
+    const top = 18;
+    const bottom = 36;
+    const plotWidth = CHART.width - CHART.left - CHART.right;
+    const plotHeight = height - top - bottom;
+    const maxMinute = Math.max(1, lazyCupTimeline[lazyCupTimeline.length - 1]?.minute ?? 1);
+    const maxTemp = Math.max(100, Math.ceil(Math.max(...lazyCupTimeline.map((point) => point.tempC)) / 10) * 10);
+    const x = (minute: number) => CHART.left + (clamp(minute, 0, maxMinute) / maxMinute) * plotWidth;
+    const y = (temp: number) => top + plotHeight - ((clamp(temp, 20, maxTemp) - 20) / (maxTemp - 20)) * plotHeight;
+    return {
+      height,
+      top,
+      bottom,
+      maxMinute,
+      x,
+      path: makePath(lazyCupTimeline.map((point) => ({ x: x(point.minute), y: y(point.tempC) }))),
+      markers: lazyCupTimeline.filter((point) => point.label || point.isRefill),
+      grid: [20, 40, 60, 80, 100].map((value) => ({ value, y: y(value) })),
+      xTicks: cup?.xTicks ?? [],
+    };
+  }, [isCup, showChartTemperature, lazyCupTimeline, cup]);
 
-          {/* Interactive Legend & Compound Line Visibility Toggles */}
-          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-            <button
-              type="button"
-              onClick={() => setShowChartTheanine(!showChartTheanine)}
-              className={`flex items-center space-x-1 px-2 py-1 rounded-md border text-[11px] font-medium transition-all cursor-pointer ${
-                showChartTheanine
-                  ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-bold'
-                  : 'bg-stone-100 border-stone-200 text-stone-400 line-through'
-              }`}
-              title="Скрыть/показать кривую L-Теанина"
-            >
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
-              <span>L-Теанин</span>
-            </button>
+  const hasData = isCup ? Boolean(cup) : chartSteepsData.length > 0;
+  const maxConcentration = isCup ? cup?.maxValue ?? 0 : discrete.maxValue;
+  const selectedRow = chartSteepsData.find((row) => stageIndex(row) === selectedSteepIndex);
 
-            <button
-              type="button"
-              onClick={() => setShowChartCaffeine(!showChartCaffeine)}
-              className={`flex items-center space-x-1 px-2 py-1 rounded-md border text-[11px] font-medium transition-all cursor-pointer ${
-                showChartCaffeine
-                  ? 'bg-blue-50 border-blue-300 text-blue-950 font-bold'
-                  : 'bg-stone-100 border-stone-200 text-stone-400 line-through'
-              }`}
-              title="Скрыть/показать кривую Кофеина"
-            >
-              <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
-              <span>Кофеин</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowChartCatechins(!showChartCatechins)}
-              className={`flex items-center space-x-1 px-2 py-1 rounded-md border text-[11px] font-medium transition-all cursor-pointer ${
-                showChartCatechins
-                  ? 'bg-rose-50 border-rose-300 text-rose-950 font-bold'
-                  : 'bg-stone-100 border-stone-200 text-stone-400 line-through'
-              }`}
-              title="Скрыть/показать кривую Катехинов"
-            >
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-600"></span>
-              <span>Катехины</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowChartPolysaccharides(!showChartPolysaccharides)}
-              className={`flex items-center space-x-1 px-2 py-1 rounded-md border text-[11px] font-medium transition-all cursor-pointer ${
-                showChartPolysaccharides
-                  ? 'bg-purple-50 border-purple-300 text-purple-950 font-bold'
-                  : 'bg-stone-100 border-stone-200 text-stone-400 line-through'
-              }`}
-              title="Скрыть/показать кривую Полисахаридов"
-            >
-              <span className="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
-              <span>Полисахариды</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setShowChartTemperature(!showChartTemperature)}
-              className={`flex items-center space-x-1 px-2 py-1 rounded-md border text-[11px] font-medium transition-all cursor-pointer ${
-                showChartTemperature
-                  ? 'bg-amber-50 border-amber-300 text-amber-950 font-bold'
-                  : 'bg-stone-100 border-stone-200 text-stone-400 line-through'
-              }`}
-              title="Скрыть/показать кривую Температуры остывания"
-            >
-              <span className="w-2.5 h-0.5 bg-amber-600 font-bold"></span>
-              <span>Температура °C</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Continuous Timeline SVG Chart */}
-        <div className="w-full overflow-x-auto pb-2 border border-stone-100 rounded-xl p-2 bg-stone-50/50">
-          <svg
-            viewBox={`0 0 ${lazyCupPaths.svgW} ${lazyCupPaths.svgH}`}
-            style={{ width: `${lazyCupPaths.svgW}px`, minWidth: '100%', height: `${lazyCupPaths.svgH}px` }}
-            className="select-none"
-          >
-            {/* Grid lines */}
-            {[0, 0.25, 0.5, 0.75, 1].map((ratioVal, i) => {
-              const y = lazyCupPaths.pTop + lazyCupPaths.cH * (1 - ratioVal);
-              const valLabel = Math.round(lazyCupPaths.maxVal * ratioVal);
-              return (
-                <g key={i}>
-                  <line
-                    x1={lazyCupPaths.pLeft}
-                    y1={y}
-                    x2={lazyCupPaths.svgW - lazyCupPaths.pRight}
-                    y2={y}
-                    stroke="#e7e5e4"
-                    strokeDasharray="3 3"
-                  />
-                  <text
-                    x={lazyCupPaths.pLeft - 6}
-                    y={y + 3}
-                    fontSize="9"
-                    fill="#78716c"
-                    textAnchor="end"
-                    fontFamily="monospace"
-                  >
-                    {valLabel}
-                  </text>
-                </g>
-              );
-            })}
-
-            {/* Minute Markers */}
-            {Array.from({ length: Math.floor(lazyCupPaths.totalMins) + 1 }).map((_, m) => {
-              const x = lazyCupPaths.getLx(m);
-              return (
-                <g key={m}>
-                  <line
-                    x1={x}
-                    y1={lazyCupPaths.pTop}
-                    x2={x}
-                    y2={lazyCupPaths.pTop + lazyCupPaths.cH}
-                    stroke="var(--color-chart-grid)"
-                    strokeWidth={1}
-                  />
-                  <text
-                    x={x}
-                    y={lazyCupPaths.pTop + lazyCupPaths.cH + 16}
-                    fontSize="9.5"
-                    fill="var(--color-chart-text)"
-                    textAnchor="middle"
-                    fontFamily="monospace"
-                  >
-                    {m} мин
-                  </text>
-                </g>
-              );
-            })}
-
-            {/* Refill event vertical lines */}
-            {lazyCupTimeline
-              .filter((pt) => pt.isRefill || pt.minute === 2.0)
-              .map((pt, i) => {
-                const x = lazyCupPaths.getLx(pt.minute);
-                const isSip = pt.minute === 2.0;
-                return (
-                  <g key={i}>
-                    <line
-                      x1={x}
-                      y1={lazyCupPaths.pTop}
-                      x2={x}
-                      y2={lazyCupPaths.pTop + lazyCupPaths.cH}
-                      stroke={isSip ? '#10b981' : '#d97706'}
-                      strokeWidth={isSip ? 1.5 : 2}
-                      strokeDasharray={isSip ? '2 2' : '4 3'}
-                    />
-                    {pt.label && (
-                      <text
-                        x={x}
-                        y={lazyCupPaths.pTop - 4}
-                        fontSize="8.5"
-                        fontWeight="bold"
-                        fill={isSip ? '#047857' : '#92400e'}
-                        textAnchor="middle"
-                      >
-                        {pt.label}
-                      </text>
-                    )}
-                  </g>
-                );
-              })}
-
-            {/* Compound Curves */}
-            {showChartTheanine && (
-              <path d={lazyCupPaths.thPath} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" />
-            )}
-            {showChartCaffeine && (
-              <path d={lazyCupPaths.cafPath} fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" />
-            )}
-            {showChartCatechins && (
-              <path d={lazyCupPaths.catPath} fill="none" stroke="#e11d48" strokeWidth="2.5" strokeLinecap="round" />
-            )}
-            {showChartPolysaccharides && (
-              <path d={lazyCupPaths.polyPath} fill="none" stroke="#9333ea" strokeWidth="2.5" strokeLinecap="round" />
-            )}
-            {showChartTemperature && (
-              <path d={lazyCupPaths.tempPath} fill="none" stroke="#d97706" strokeWidth="2" strokeDasharray="4 3" />
-            )}
-          </svg>
-        </div>
-      </div>
-    );
-  }
-
-  // Gongfu Multi-curve Chart
   return (
-    <div className="bg-white border border-stone-200 rounded-2xl p-6 shadow-xs space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <div>
-          <h4 className="font-bold text-stone-900 text-base flex flex-wrap items-center gap-2 font-serif">
-            <span className="flex items-center space-x-2">
-              <TrendingUp className="w-4 h-4 text-amber-700" />
-              <span>
-                Кинетические кривые экстракции ({steepsCount}{' '}
-                {steepsCount === 1 ? 'пролив' : steepsCount < 5 ? 'пролива' : 'проливов'})
-              </span>
-            </span>
-            <span className="text-[10px] font-mono px-2 py-0.5 bg-amber-100/80 text-amber-900 border border-amber-200/80 rounded-full font-semibold">
-              Двухфракционная кинетика + Аррениус (оценка)
-            </span>
-          </h4>
-          <p className="text-xs text-stone-500">
-            Оценочные концентрации соединений в каждом проливе (мг / 100 мл); параметры конкретной партии не считаются лабораторно измеренными
-          </p>
+    <section className="tea-chart-panel overflow-hidden rounded-[1.6rem] border border-stone-200 bg-white shadow-sm">
+      <header className="flex flex-col gap-4 border-b border-stone-100 bg-gradient-to-br from-stone-50 via-white to-emerald-50/40 px-4 py-5 sm:px-6 sm:py-6">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-900 text-emerald-50 shadow-sm">
+              <Activity className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-base font-bold tracking-tight text-stone-900 sm:text-lg">{isCup ? 'Настой во времени' : 'Профиль экстракции'}</h3>
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-800">модельная оценка</span>
+              </div>
+              <p className="mt-1 max-w-2xl text-xs leading-relaxed text-stone-500 sm:text-sm">
+                {isCup ? 'Изменение концентраций и остывание между доливами. Температура вынесена на отдельную шкалу.' : 'Сравнение концентраций по проливам в мг на 100 мл. Нулевой пролив показывается только там, где он назначен профилем чая.'}
+              </p>
+            </div>
+          </div>
+          <div className="hidden shrink-0 items-center gap-1.5 rounded-xl border border-stone-200 bg-white/80 px-3 py-2 text-xs text-stone-600 md:flex">
+            <FlaskConical className="h-4 w-4 text-emerald-800" />
+            <span>{steepsCount} проливов</span>
+          </div>
         </div>
 
-        {/* Legend */}
-        <div className="flex flex-wrap items-center gap-2 text-[11px]">
-          <button
-            type="button"
-            onClick={() => setShowChartTheanine(!showChartTheanine)}
-            className={`flex items-center space-x-1 px-2 py-1 rounded-md border text-[11px] font-medium transition-all cursor-pointer ${
-              showChartTheanine
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-bold'
-                : 'bg-stone-100 border-stone-200 text-stone-400 line-through'
-            }`}
-            title="Скрыть/показать кривую L-Теанина"
-          >
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
-            <span>L-Теанин</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowChartCaffeine(!showChartCaffeine)}
-            className={`flex items-center space-x-1 px-2 py-1 rounded-md border text-[11px] font-medium transition-all cursor-pointer ${
-              showChartCaffeine
-                ? 'bg-blue-50 border-blue-300 text-blue-950 font-bold'
-                : 'bg-stone-100 border-stone-200 text-stone-400 line-through'
-            }`}
-            title="Скрыть/показать кривую Кофеина"
-          >
-            <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
-            <span>Кофеин</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowChartCatechins(!showChartCatechins)}
-            className={`flex items-center space-x-1 px-2 py-1 rounded-md border text-[11px] font-medium transition-all cursor-pointer ${
-              showChartCatechins
-                ? 'bg-rose-50 border-rose-300 text-rose-950 font-bold'
-                : 'bg-stone-100 border-stone-200 text-stone-400 line-through'
-            }`}
-            title="Скрыть/показать кривую Катехинов"
-          >
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-600"></span>
-            <span>Катехины</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowChartPolysaccharides(!showChartPolysaccharides)}
-            className={`flex items-center space-x-1 px-2 py-1 rounded-md border text-[11px] font-medium transition-all cursor-pointer ${
-              showChartPolysaccharides
-                ? 'bg-purple-50 border-purple-300 text-purple-950 font-bold'
-                : 'bg-stone-100 border-stone-200 text-stone-400 line-through'
-            }`}
-            title="Скрыть/показать кривую Полисахаридов"
-          >
-            <span className="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
-            <span>Полисахариды</span>
-          </button>
-
-          {adaptiveCustomBrewing && adaptiveCustomBrewing.userSteepsCount > 0 && (
-            <>
-              <div className="w-px h-3.5 bg-stone-300 mx-0.5"></div>
-              <div className="flex items-center space-x-1">
-                <span className="w-2 h-2 rounded-full bg-amber-800"></span>
-                <span className="text-amber-950 font-bold">Ваш факт</span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-                <span className="text-amber-800 font-bold">Адаптировано</span>
-              </div>
-            </>
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Отображаемые вещества">
+          {series.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              aria-pressed={item.visible}
+              onClick={() => item.toggle(!item.visible)}
+              className={'inline-flex min-h-9 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ' + (item.visible ? 'bg-white text-stone-900 shadow-sm' : 'border-stone-200 bg-stone-100/70 text-stone-500 opacity-75')}
+              style={{ borderColor: item.visible ? item.color : undefined }}
+            >
+              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.visible ? item.color : '#a8a29e' }} />
+              {item.label}
+            </button>
+          ))}
+          {isCup && (
+            <button
+              type="button"
+              aria-pressed={showChartTemperature}
+              onClick={() => setShowChartTemperature(!showChartTemperature)}
+              className={'inline-flex min-h-9 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 ' + (showChartTemperature ? 'border-amber-300 bg-amber-50 text-amber-950 shadow-sm' : 'border-stone-200 bg-stone-100/70 text-stone-500')}
+            >
+              <Thermometer className="h-3.5 w-3.5" /> Температура
+            </button>
           )}
         </div>
-      </div>
+      </header>
 
-      {/* SVG Multi-curve Chart */}
-      <div className="w-full overflow-x-auto pb-2 border border-stone-100 rounded-xl p-1 bg-stone-50/50">
-        <svg
-          viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-          style={{ width: `${svgWidth}px`, minWidth: '100%', height: `${svgHeight}px` }}
-          className="select-none"
-        >
-          {/* Grid lines */}
-          {[0, 0.25, 0.5, 0.75, 1].map((ratioVal, i) => {
-            const y = padding.top + chartH * (1 - ratioVal);
-            const valLabel = Math.round(maxConcentration * ratioVal);
-            return (
-              <g key={i}>
-                <line
-                  x1={padding.left}
-                  y1={y}
-                  x2={svgWidth - padding.right}
-                  y2={y}
-                  stroke="var(--color-chart-grid)"
-                  strokeDasharray="3 3"
-                />
-                <text
-                  x={padding.left - 6}
-                  y={y + 3}
-                  fontSize="9"
-                  fill="var(--color-chart-text)"
-                  textAnchor="end"
-                  fontFamily="monospace"
-                >
-                  {valLabel}
-                </text>
-              </g>
-            );
-          })}
+      {!hasData ? (
+        <div className="flex min-h-56 flex-col items-center justify-center gap-3 px-6 py-12 text-center">
+          <Waves className="h-8 w-8 text-stone-300" />
+          <p className="text-sm font-semibold text-stone-700">Пока нет данных для графика</p>
+          <p className="max-w-md text-xs leading-relaxed text-stone-500">Измените параметры заваривания, чтобы пересчитать профиль экстракции.</p>
+        </div>
+      ) : (
+        <div className="space-y-5 px-3 py-4 sm:px-5 sm:py-5">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="rounded-2xl border border-stone-200 bg-stone-50/80 px-3 py-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.13em] text-stone-500">Активные кривые</div>
+              <div className="mt-1 flex items-baseline gap-2"><span className="text-xl font-bold tracking-tight text-stone-900">{activeSeries.length}</span><span className="text-[11px] text-stone-500">из 4 показаны</span></div>
+            </div>
+            <div className="rounded-2xl border border-stone-200 bg-stone-50/80 px-3 py-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.13em] text-stone-500">Макс. концентрация</div>
+              <div className="mt-1 flex items-baseline gap-2"><span className="text-xl font-bold tracking-tight text-stone-900">{fmt(maxConcentration, 0)}</span><span className="text-[11px] text-stone-500">мг / 100 мл</span></div>
+            </div>
+            <div className="col-span-2 rounded-2xl border border-stone-200 bg-stone-50/80 px-3 py-3 sm:col-span-1">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.13em] text-stone-500">Выбранный этап</div>
+              <div className="mt-1 flex items-baseline gap-2"><span className="text-xl font-bold tracking-tight text-stone-900">{selectedRow ? (selectedRow.steepNumber === 0 ? '#0' : '#' + selectedRow.steepNumber) : '—'}</span><span className="text-[11px] text-stone-500">{selectedRow ? String(selectedRow.timeSec) + ' с' : 'выберите точку'}</span></div>
+            </div>
+          </div>
 
-          {/* X Axis Steeps & Vertical Grid Lines */}
-          {chartSteepsData.map((d, i) => {
-            const x = getX(i);
-            const isRinsePoint = d.steepNumber === 0;
-            const isSelected = isRinsePoint
-              ? selectedSteepIndex === -1
-              : d.steepNumber - 1 === selectedSteepIndex;
-            const stripeWidth = Math.min(
-              9,
-              Math.max(5, Math.round((chartW / Math.max(1, chartSteepsData.length - 1)) * 0.125))
-            );
-            return (
-              <g
-                key={i}
-                className="cursor-pointer"
-                onClick={() => onSelectSteepIndex(isRinsePoint ? -1 : d.steepNumber - 1)}
-              >
-                {/* Vertical highlight stripe for the selected steep */}
-                {isSelected && (
-                  <rect
-                    x={x - stripeWidth / 2}
-                    y={padding.top}
-                    width={stripeWidth}
-                    height={chartH}
-                    fill="rgba(148, 163, 184, 0.2)"
-                    stroke="rgba(100, 116, 139, 0.35)"
-                    strokeWidth={1}
-                    rx={2}
-                  />
-                )}
-                <line
-                  x1={x}
-                  y1={padding.top}
-                  x2={x}
-                  y2={padding.top + chartH}
-                  stroke={isSelected ? 'var(--color-accent-solid)' : 'var(--color-chart-grid)'}
-                  strokeWidth={isSelected ? 1.5 : 1}
-                  strokeDasharray={isSelected ? '3 3' : undefined}
-                />
-                <text
-                  x={x}
-                  y={padding.top + chartH + 16}
-                  fontSize="10"
-                  fontWeight={isSelected ? 'bold' : 'normal'}
-                  fill={isSelected ? 'var(--color-text-primary)' : 'var(--color-chart-text)'}
-                  textAnchor="middle"
-                >
-                  {isRinsePoint ? `#0 (${d.timeSec}с)` : `#${d.steepNumber} (${d.timeSec}с)`}
-                </text>
-                {d.isCustomUserTime && (
-                  <text
-                    x={x}
-                    y={padding.top + chartH + 27}
-                    fontSize="8.5"
-                    fontWeight="bold"
-                    fill="var(--color-accent-text)"
-                    textAnchor="middle"
-                  >
-                    факт
-                  </text>
-                )}
-                {d.isAdaptedReference && (
-                  <text
-                    x={x}
-                    y={padding.top + chartH + 27}
-                    fontSize="8.5"
-                    fontWeight="bold"
-                    fill="var(--color-accent-text)"
-                    textAnchor="middle"
-                  >
-                    адапт
-                  </text>
-                )}
-              </g>
-            );
-          })}
+          {activeSeries.length === 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">Включите хотя бы одно вещество в легенде, чтобы отобразить его кривую.</div>}
 
-          {/* Smooth Continuous Spline Data curves */}
-          {showChartTheanine && (
-            <path
-              d={theaninePath}
-              fill="none"
-              stroke="#10b981"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          )}
-          {showChartCaffeine && (
-            <path
-              d={caffeinePath}
-              fill="none"
-              stroke="#2563eb"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          )}
-          {showChartCatechins && (
-            <path
-              d={catechinsPath}
-              fill="none"
-              stroke="#e11d48"
-              strokeWidth="3.0"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          )}
-          {showChartPolysaccharides && (
-            <path
-              d={polysaccharidesPath}
-              fill="none"
-              stroke="#9333ea"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+          <div className="rounded-2xl border border-stone-200 bg-white p-1.5 sm:p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-2 pt-2">
+              <div>
+                <div className="text-sm font-bold text-stone-900">{isCup ? 'Концентрация в чашке' : 'Концентрация по проливам'}</div>
+                <div className="mt-0.5 text-[11px] text-stone-500">{isCup ? 'Динамика во время заваривания и доливов' : 'Каждая точка — расчётный конец отдельного пролива'}</div>
+              </div>
+              <span className="rounded-lg bg-stone-100 px-2 py-1 font-mono text-[10px] text-stone-600">мг / 100 мл</span>
+            </div>
+
+            <div className="w-full overflow-x-auto">
+              <svg viewBox={'0 0 ' + CHART.width + ' ' + CHART.height} className="tea-chart-svg block h-auto w-full min-w-[640px]" role="img" aria-label={isCup ? 'График изменения концентрации во времени' : 'График концентрации по проливам'}>
+                <defs>
+                  <linearGradient id="tea-chart-selection" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stopColor="#0f766e" stopOpacity="0.10" />
+                    <stop offset="100%" stopColor="#0f766e" stopOpacity="0.015" />
+                  </linearGradient>
+                </defs>
+
+                {(isCup ? cup?.grid ?? [] : discrete.grid).map((tick, index) => (
+                  <g key={'y-grid-' + index}>
+                    <line x1={CHART.left} x2={CHART.width - CHART.right} y1={tick.y} y2={tick.y} stroke="#e7e5e4" strokeDasharray={index === 0 ? undefined : '4 5'} strokeWidth={index === 0 ? 1.25 : 1} />
+                    <text x={CHART.left - 12} y={tick.y + 4} textAnchor="end" fontSize="11" fontWeight="500" fill="#78716c">{fmt(tick.value, 0)}</text>
+                  </g>
+                ))}
+
+                {isCup && cup ? (
+                  <>
+                    {cup.markers.map((point, index) => (
+                      <g key={'event-' + point.sec + '-' + index}>
+                        <line x1={cup.x(point.minute)} x2={cup.x(point.minute)} y1={CHART.top} y2={CHART.height - CHART.bottom} stroke="#d97706" strokeOpacity={point.label ? 0.55 : 0.27} strokeDasharray="4 5" />
+                        {point.label && <text x={cup.x(point.minute)} y={CHART.top - 4} textAnchor="middle" fontSize="10" fontWeight="700" fill="#92400e">{point.label}</text>}
+                      </g>
+                    ))}
+                    {cup.lines.map((line) => <path key={line.id} d={line.path} fill="none" stroke={line.color} strokeWidth={line.id === 'catechins' ? 3.2 : 2.7} strokeLinecap="round" strokeLinejoin="round" />)}
+                    {cup.xTicks.map((minute) => (
+                      <g key={'x-tick-' + minute}>
+                        <line x1={cup.x(minute)} x2={cup.x(minute)} y1={CHART.height - CHART.bottom} y2={CHART.height - CHART.bottom + 5} stroke="#a8a29e" />
+                        <text x={cup.x(minute)} y={CHART.height - 15} textAnchor="middle" fontSize="11" fill="#78716c">{fmt(minute, minute % 1 === 0 ? 0 : 1)} мин</text>
+                      </g>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    {chartSteepsData.map((row, index) => {
+                      const x = discrete.x(index);
+                      const selected = stageIndex(row) === selectedSteepIndex;
+                      return (
+                        <g key={'stage-' + row.steepNumber}>
+                          {selected && <rect x={x - 20} y={CHART.top} width={40} height={discrete.plotHeight} rx={10} fill="url(#tea-chart-selection)" />}
+                          <line x1={x} x2={x} y1={CHART.top} y2={CHART.height - CHART.bottom} stroke={selected ? '#0f766e' : '#e7e5e4'} strokeOpacity={selected ? 0.65 : 0.45} strokeDasharray={selected ? '3 4' : undefined} />
+                          <text x={x} y={CHART.height - 27} textAnchor="middle" fontSize="12" fontWeight={selected ? '700' : '500'} fill={selected ? '#0f766e' : '#78716c'}>{row.steepNumber === 0 ? '#0' : '#' + row.steepNumber}</text>
+                          <text x={x} y={CHART.height - 10} textAnchor="middle" fontSize="10" fill="#a8a29e">{fmt(row.timeSec, 0)} с</text>
+                        </g>
+                      );
+                    })}
+                    {discrete.lines.map((line) => (
+                      <g key={line.id}>
+                        <path d={line.path} fill="none" stroke={line.color} strokeWidth={line.id === 'catechins' ? 3.2 : 2.7} strokeLinecap="round" strokeLinejoin="round" />
+                        {line.points.map((point) => {
+                          const row = chartSteepsData[point.index];
+                          const selected = stageIndex(row) === selectedSteepIndex;
+                          return (
+                            <g key={line.id + '-' + point.index} className="tea-chart-point" role="button" tabIndex={0} aria-label={line.label + ', пролив ' + row.steepNumber + ', ' + fmt(point.value) + ' мг на 100 мл'}
+                              onClick={() => onSelectSteepIndex(stageIndex(row))}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  onSelectSteepIndex(stageIndex(row));
+                                }
+                              }}>
+                              <title>{line.label + ': ' + fmt(point.value) + ' мг / 100 мл'}</title>
+                              <circle cx={point.x} cy={point.y} r={selected ? 5.7 : 3.9} fill={line.color} stroke="#ffffff" strokeWidth={selected ? 2.5 : 1.5} />
+                              <circle cx={point.x} cy={point.y} r={11} fill="transparent" />
+                            </g>
+                          );
+                        })}
+                      </g>
+                    ))}
+                  </>
+                )}
+                <text x={CHART.left} y={13} fontSize="10" fontWeight="700" letterSpacing="1.2" fill="#a8a29e">МГ / 100 МЛ</text>
+              </svg>
+            </div>
+          </div>
+
+          {isCup && temperature && (
+            <div className="rounded-2xl border border-stone-200 bg-white p-1.5 sm:p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-2 pt-2">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-50 text-amber-800"><Thermometer className="h-4 w-4" /></div>
+                  <div><div className="text-sm font-bold text-stone-900">Остывание настоя</div><div className="text-[11px] text-stone-500">Отдельная температурная шкала без смешения единиц</div></div>
+                </div>
+                <span className="rounded-lg bg-amber-50 px-2 py-1 font-mono text-[10px] text-amber-900">°C</span>
+              </div>
+              <div className="w-full overflow-x-auto">
+                <svg viewBox={'0 0 ' + CHART.width + ' ' + temperature.height} className="tea-chart-svg block h-auto w-full min-w-[640px]" role="img" aria-label="График остывания настоя во времени">
+                  {temperature.grid.map((tick) => <g key={'temperature-' + tick.value}><line x1={CHART.left} x2={CHART.width - CHART.right} y1={tick.y} y2={tick.y} stroke="#e7e5e4" strokeDasharray="4 5" /><text x={CHART.left - 12} y={tick.y + 4} textAnchor="end" fontSize="11" fill="#78716c">{tick.value}</text></g>)}
+                  {temperature.markers.map((point, index) => <line key={'temp-event-' + point.sec + '-' + index} x1={temperature.x(point.minute)} x2={temperature.x(point.minute)} y1={temperature.top} y2={temperature.height - temperature.bottom} stroke="#d97706" strokeOpacity={point.label ? 0.55 : 0.25} strokeDasharray="4 5" />)}
+                  <path d={temperature.path} fill="none" stroke="#d97706" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                  {temperature.xTicks.map((minute) => <text key={'temp-x-' + minute} x={temperature.x(minute)} y={temperature.height - 12} textAnchor="middle" fontSize="11" fill="#78716c">{fmt(minute, minute % 1 === 0 ? 0 : 1)} мин</text>)}
+                </svg>
+              </div>
+            </div>
           )}
 
-          {/* Data points for current steeps */}
-          {chartSteepsData.map((d, i) => {
-            const x = getX(i);
-            const isRinsePoint = d.steepNumber === 0;
-            const isSelected = isRinsePoint
-              ? selectedSteepIndex === -1
-              : d.steepNumber - 1 === selectedSteepIndex;
-            return (
-              <g
-                key={i}
-                className="cursor-pointer"
-                onClick={() => onSelectSteepIndex(isRinsePoint ? -1 : d.steepNumber - 1)}
-              >
-                <rect x={x - 18} y={padding.top} width="36" height={chartH} fill="transparent" />
-                {showChartTheanine && (
-                  <circle
-                    cx={x}
-                    cy={getY(d.theanineConcentration)}
-                    r={isSelected ? 5.5 : 3.5}
-                    fill="#10b981"
-                    stroke="#fff"
-                    strokeWidth="1.5"
-                  />
-                )}
-                {showChartCaffeine && (
-                  <circle
-                    cx={x}
-                    cy={getY(d.caffeineConcentration)}
-                    r={isSelected ? 5.5 : 3.5}
-                    fill="#2563eb"
-                    stroke="#fff"
-                    strokeWidth="1.5"
-                  />
-                )}
-                {showChartCatechins && (
-                  <circle
-                    cx={x}
-                    cy={getY(d.catechinsConcentration)}
-                    r={isSelected ? 6 : 4}
-                    fill="#e11d48"
-                    stroke="#fff"
-                    strokeWidth="1.5"
-                  />
-                )}
-                {showChartPolysaccharides && (
-                  <circle
-                    cx={x}
-                    cy={getY(d.polysaccharidesConcentration)}
-                    r={isSelected ? 5.5 : 3.5}
-                    fill="#9333ea"
-                    stroke="#fff"
-                    strokeWidth="1.5"
-                  />
-                )}
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-      <p className="text-[11px] text-stone-500 italic">
-        * Кликните по точке любого пролива на графике или по кнопке пролива выше, чтобы увидеть детальный профиль чашки.
-      </p>
-    </div>
+          <footer className="flex flex-col gap-2 rounded-2xl border border-emerald-100 bg-emerald-50/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-2">
+              <FlaskConical className="mt-0.5 h-4 w-4 shrink-0 text-emerald-800" />
+              <p className="max-w-3xl text-[11px] leading-relaxed text-stone-600">Кривые рассчитаны физической моделью с типовыми параметрами, если нет измерений для конкретного чая. Они помогают сравнить сценарии заваривания, но не заменяют лабораторный анализ.</p>
+            </div>
+            {adaptiveCustomBrewing && adaptiveCustomBrewing.userSteepsCount > 0 && <span className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-[11px] font-semibold text-emerald-900"><Clock3 className="h-3.5 w-3.5" />{adaptiveCustomBrewing.userSteepsCount} ручн.</span>}
+            <span className="hidden shrink-0 items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-stone-400 lg:inline-flex"><TrendingUp className="h-3.5 w-3.5" /> live model</span>
+          </footer>
+        </div>
+      )}
+    </section>
   );
 };
