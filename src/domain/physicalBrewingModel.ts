@@ -798,6 +798,7 @@ export interface PhysicalScheduleOptimizationInput {
 
 export interface PhysicalScheduleOptimizationResult {
   durations: number[];
+  baselineDurations: number[];
   temperaturesC: number[];
   objectiveScore: number;
   optimizedDurationIndexes: number[];
@@ -908,6 +909,9 @@ export function optimizePhysicalSchedule(
     }
     return defaultDurationForStage(tea, method, index);
   });
+  const baselineDurations = Array.from({ length: count }, (_, index) =>
+    defaultDurationForStage(tea, method, index),
+  );
   const temperatures = Array.from({ length: count }, (_, index) => {
     const userValue = input.userTemperaturesC?.[index];
     const simulatedValue = simulation.perSteepTempsC?.[index] ?? baseTemp;
@@ -1006,6 +1010,7 @@ export function optimizePhysicalSchedule(
 
   return {
     durations,
+    baselineDurations,
     temperaturesC: temperatures,
     objectiveScore: round(bestScore, 3),
     optimizedDurationIndexes,
@@ -1043,9 +1048,11 @@ export function resolveZeroInfusionOptions(args: {
         ? true
         : profile?.enabled !== undefined
           ? profile.enabled
-          : policy === 'optional'
-            ? (profile.enabled ?? rinse.required)
-            : rinse.required;
+          : policy === 'recommended'
+            ? true
+            : policy === 'optional'
+              ? false
+              : rinse.required;
   return {
     enabled: enabledByPolicy && durationSec > 0,
     durationSec: clamp(durationSec, 0, 3600),
