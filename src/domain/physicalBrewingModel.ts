@@ -196,15 +196,17 @@ function createInitialPools(tea: TeaVariety, leafMassGrams: number): InitialPool
   const mass = Math.max(0.1, leafMassGrams);
 
   const initialMg = (key: TrackedTeaCompound, fallbackMgPerG: number): number => {
-    const parameter = profile?.[key];
-    const total = parameter?.initialMgPerG ?? fallbackMgPerG;
-    const extractableFraction = parameter?.extractableFraction ?? 1;
-    return Math.max(0, total) * mass * clamp(extractableFraction, 0, 1);
+    const total = profile?.[key]?.initialMgPerG ?? fallbackMgPerG;
+    // Return total compound mass here; extractableFraction is applied exactly once in addPool.
+    return Math.max(0, total) * mass;
   };
 
   const addPool = (key: PoolKey, totalMg: number, sourceKey: TrackedTeaCompound): void => {
     const parameter = profile?.[sourceKey];
-    const availableFraction = clamp(parameter?.extractableFraction ?? 1, 0, 1);
+    const aggregateCatechinFraction = key === 'egc' || key === 'egcg'
+      ? profile?.catechins?.extractableFraction
+      : undefined;
+    const availableFraction = clamp(parameter?.extractableFraction ?? aggregateCatechinFraction ?? 1, 0, 1);
     const availableMg = Math.max(0, totalMg) * availableFraction;
     const fastFraction = defaultFastFraction(tea);
     pool[key] = {
@@ -223,17 +225,16 @@ function createInitialPools(tea: TeaVariety, leafMassGrams: number): InitialPool
   let egcMg: number;
   let egcgMg: number;
   if (egcParam?.initialMgPerG !== undefined && egcgParam?.initialMgPerG !== undefined) {
-    egcMg = Math.max(0, egcParam.initialMgPerG) * mass * clamp(egcParam.extractableFraction ?? profile?.catechins?.extractableFraction ?? 1, 0, 1);
-    egcgMg = Math.max(0, egcgParam.initialMgPerG) * mass * clamp(egcgParam.extractableFraction ?? profile?.catechins?.extractableFraction ?? 1, 0, 1);
+    egcMg = Math.max(0, egcParam.initialMgPerG) * mass;
+    egcgMg = Math.max(0, egcgParam.initialMgPerG) * mass;
   } else if (egcParam?.initialMgPerG !== undefined) {
-    egcMg = Math.min(catechinTotalMg, Math.max(0, egcParam.initialMgPerG) * mass) * clamp(egcParam.extractableFraction ?? profile?.catechins?.extractableFraction ?? 1, 0, 1);
+    egcMg = Math.max(0, egcParam.initialMgPerG) * mass;
     egcgMg = Math.max(0, catechinTotalMg - egcMg);
   } else if (egcgParam?.initialMgPerG !== undefined) {
     egcgMg = Math.max(0, catechinTotalMg - Math.max(0, egcgParam.initialMgPerG) * mass);
-    egcgMg *= clamp(profile?.catechins?.extractableFraction ?? 1, 0, 1);
-    egcgMg = Math.max(0, egcgMg);
     egcgMg = Math.min(catechinTotalMg, egcgMg);
     egcgMg = Math.max(0, catechinTotalMg - egcgMg);
+    egcMg = Math.max(0, catechinTotalMg - egcgMg);
   } else {
     egcMg = catechinTotalMg * catechinSplitRatio(tea);
     egcgMg = catechinTotalMg - egcMg;
