@@ -196,7 +196,7 @@ export interface SteepKineticData {
   polysaccharidesConcentration: number; // mg/100ml
   volatilesIntensity: number; // score 0-100
   tdsPpm: number; // Total Dissolved Solids in mg/L (ppm)
-  cumulativeExtractionYieldPercent: number; // % of total dry leaf mass extracted so far
+  cumulativeExtractionYieldPercent: number; // estimated mass of tracked compounds extracted, as % of dry leaf mass; not total extract yield
   theanineToCatechinsRatio: number; // Umami-to-astringency balance index
   egcConcentration?: number; // mg/100ml non-esterified sweet catechin (EGC)
   egcgConcentration?: number; // mg/100ml gallated astringent catechin (EGCG/ECG)
