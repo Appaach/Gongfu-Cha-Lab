@@ -1154,14 +1154,17 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
   const teaRinseInfo = useMemo(() => {
     return {
       ...baseTeaRinseInfo,
-      seconds: customRinseTime !== null ? customRinseTime : baseTeaRinseInfo.seconds,
-      tempC: effectiveRinseTemp,
+      // The shared simulation is the source of truth for whether #0 exists and its actual settings.
+      required: physicalSimulation.zeroInfusionData !== null,
+      seconds: physicalSimulation.zeroInfusionData?.timeSec
+        ?? (customRinseTime !== null ? customRinseTime : baseTeaRinseInfo.seconds),
+      tempC: physicalSimulation.zeroInfusionData?.waterTempC ?? effectiveRinseTemp,
       isCustomUserTime: customRinseTime !== null,
       isCustomTemp: appSettings.useDynamicTemperatures
         ? dynamicTemperatures.isCustomRinseTemp
         : customRinseTemp !== null
     };
-  }, [baseTeaRinseInfo, customRinseTime, effectiveRinseTemp, appSettings.useDynamicTemperatures, dynamicTemperatures, customRinseTemp]);
+  }, [baseTeaRinseInfo, customRinseTime, effectiveRinseTemp, appSettings.useDynamicTemperatures, dynamicTemperatures, customRinseTemp, physicalSimulation]);
 
   const isRinseEnabled = teaRinseInfo.required;
 
