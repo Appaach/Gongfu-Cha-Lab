@@ -4139,7 +4139,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                 <div className="text-right sm:border-l sm:border-stone-100 sm:pl-4">
                   <div className="text-xs text-stone-400">Ароматический профиль</div>
                   <div className="text-sm font-semibold text-amber-800">
-                    {currentSteepData.aromaBasis === 'chemical' ? `${currentSteepData.volatilesIntensity} / 100` : 'Типовые ноты сорта'}
+                    {currentSteepData.aromaBasis === 'chemical' ? `${currentSteepData.volatilesIntensity} / 100` : currentSteepData.aromaBasis === 'archetype' ? 'Типовые ноты сорта' : 'Не рассчитывается'}
                   </div>
                   <div className="text-[10px] text-stone-400">
                     {currentSteepData.aromaBasis === 'chemical' ? 'химическая модель' : 'не рассчитывается по проливу'}
@@ -4214,7 +4214,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                       <div>
                         <div className="text-[11px] text-stone-500">Индекс баланса (теанин / катехины)</div>
                         <div className="text-base font-bold font-mono text-emerald-800 mt-0.5">
-                          {currentSteepData.theanineToCatechinsRatio} <span className="text-xs font-normal text-stone-500">{currentSteepData.theanineToCatechinsRatio > 0.25 ? '(Умами+)' : '(Танины+)'}</span>
+                          {currentSteepData.theanineToCatechinsRatio}
                         </div>
                       </div>
 
