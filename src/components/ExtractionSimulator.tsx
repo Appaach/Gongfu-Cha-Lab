@@ -56,7 +56,7 @@ import {
   optimizeBrewingParametersMulti,
   calculateDynamicSteepTemperatures
 } from '../utils/extractionKinetics';
-import { simulatePhysicalBrewing, resolveZeroInfusionOptions, optimizePhysicalSchedule } from '../domain/physicalBrewingModel';
+import { simulatePhysicalBrewing, resolveZeroInfusionOptions, optimizePhysicalSchedule, optimizePhysicalBrewingParameters } from '../domain/physicalBrewingModel';
 import { loadAppSettings } from '../utils/appSettings';
 import { 
   matchTeaSearch, 
@@ -882,8 +882,18 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     setRootFraction(0.333);
   };
 
-  // Dynamic Multi-Parameter Optimization (Single unified solver)
-  const activeOptimization = useMemo(() => {
+  // Custom Steeps Timing Mode ("Своё время") State - double click edit mode toggle
+  const [isManualTimeEditMode, setIsManualTimeEditMode] = useState<boolean>(false);
+  const [editingSteepIndex, setEditingSteepIndex] = useState<number | null>(null);
+  const [customSteepTimes, setCustomSteepTimes] = useState<(number | null)[]>([]);
+
+  // Custom Steeps Dynamic Water Temperature ("Своя температура") State
+  const [customSteepTemps, setCustomSteepTemps] = useState<(number | null)[]>([]);
+  const [customRinseTemp, setCustomRinseTemp] = useState<number | null>(null);
+
+  // Keep the legacy solver's constraint diagnostics, but no longer use its recommendations
+  // as the final values. The shared physical engine performs the actual parameter search.
+  const legacyOptimization = useMemo(() => {
     return optimizeBrewingParametersMulti(
       selectedTea,
       {
@@ -915,22 +925,83 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     vesselMaterial
   ]);
 
-  // Derived active brewing parameters (Always live and in sync with optimizer)
+  const physicalParameterOptimization = useMemo(() => {
+    const seed = {
+      waterVolumeMl: legacyOptimization.recommendedWaterVolume,
+      leafMassGrams: legacyOptimization.recommendedLeafMass,
+      waterTempC: legacyOptimization.recommendedWaterTemp,
+      steepsCount: legacyOptimization.recommendedSteepCount,
+    };
+    const zeroInfusion = resolveZeroInfusionOptions({
+      tea: selectedTea,
+      waterTempC: seed.waterTempC,
+      waterVolumeMl: seed.waterVolumeMl,
+      optimizationGoal,
+      customDurationSec: customRinseTime,
+      customTemperatureC: customRinseTemp,
+      isCustomTime: customRinseTime !== null,
+      isCustomTemperature: customRinseTemp !== null,
+    });
+    return optimizePhysicalBrewingParameters({
+      tea: selectedTea,
+      seed,
+      fixed: {
+        waterVolumeMl: fixVolume ? fixedVolumeVal : null,
+        leafMassGrams: fixMass ? fixedMassVal : null,
+        waterTempC: fixTemp ? fixedTempVal : null,
+        steepsCount: fixSteeps ? fixedSteepsVal : null,
+      },
+      brewingMethod,
+      optimizationGoal,
+      waterHardnessLevel: waterHardness,
+      vesselMaterial,
+      rootFraction,
+      zeroInfusion,
+      userDurations: customSteepTimes,
+      userTemperaturesC: appSettings.useDynamicTemperatures ? customSteepTemps : [],
+      optimizeBaseTemperature: !appSettings.useDynamicTemperatures,
+      targetSteepIndex: selectedSteepIndex,
+    });
+  }, [
+    selectedTea,
+    legacyOptimization,
+    fixVolume,
+    fixedVolumeVal,
+    fixMass,
+    fixedMassVal,
+    fixTemp,
+    fixedTempVal,
+    fixSteeps,
+    fixedSteepsVal,
+    waterHardness,
+    vesselMaterial,
+    optimizationGoal,
+    brewingMethod,
+    rootFraction,
+    customRinseTime,
+    customRinseTemp,
+    customSteepTimes,
+    customSteepTemps,
+    selectedSteepIndex,
+    appSettings.useDynamicTemperatures,
+  ]);
+
+  const activeOptimization = useMemo(() => ({
+    ...legacyOptimization,
+    recommendedWaterVolume: physicalParameterOptimization.waterVolumeMl,
+    recommendedLeafMass: physicalParameterOptimization.leafMassGrams,
+    recommendedWaterTemp: physicalParameterOptimization.waterTempC,
+    recommendedSteepCount: physicalParameterOptimization.steepsCount,
+    recommendedRatio: physicalParameterOptimization.ratio,
+  }), [legacyOptimization, physicalParameterOptimization]);
+
+  // Derived active brewing parameters (Always live and in sync with physical optimizer)
   const waterVolume = activeOptimization.recommendedWaterVolume;
   const leafMass = activeOptimization.recommendedLeafMass;
   const waterTemp = activeOptimization.recommendedWaterTemp;
   const steepsCount = activeOptimization.recommendedSteepCount;
   const ratio = activeOptimization.recommendedRatio;
   const fixedCount = (fixVolume ? 1 : 0) + (fixMass ? 1 : 0) + (fixTemp ? 1 : 0) + (fixSteeps ? 1 : 0);
-
-  // Custom Steeps Timing Mode ("Своё время") State - double click edit mode toggle
-  const [isManualTimeEditMode, setIsManualTimeEditMode] = useState<boolean>(false);
-  const [editingSteepIndex, setEditingSteepIndex] = useState<number | null>(null);
-  const [customSteepTimes, setCustomSteepTimes] = useState<(number | null)[]>([]);
-
-  // Custom Steeps Dynamic Water Temperature ("Своя температура") State
-  const [customSteepTemps, setCustomSteepTemps] = useState<(number | null)[]>([]);
-  const [customRinseTemp, setCustomRinseTemp] = useState<number | null>(null);
 
   // Dynamic temperature schedule computed across all steeps & rinse
   const dynamicTemperatures = useMemo(() => {
