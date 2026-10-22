@@ -38,22 +38,39 @@ function assertMassBalance(result: ReturnType<typeof simulatePhysicalBrewing>) {
   assert.ok(result.massBalance.removedFromSystemMg >= 0);
 }
 
-const manualRinseOn = resolveZeroInfusionOptions({
+const greenRinsePolicy = resolveZeroInfusionOptions({
   tea,
   waterTempC: 80,
   waterVolumeMl: 100,
-  enabledOverride: true,
+  optimizationGoal: 'white_debitter',
 });
-assert.equal(manualRinseOn.enabled, true, 'Explicitly enabling a rinse should make it available even for teas without a default rinse');
-assert.ok(manualRinseOn.durationSec > 0, 'Manual enable should receive an editable, explicitly estimated seed duration');
+assert.equal(greenRinsePolicy.enabled, false,
+  'A flavor goal must not add a zero infusion to a tea whose profile does not require it');
+assert.equal(greenRinsePolicy.durationSec, 0,
+  'Non-rinse teas should have no stage #0 by default');
 
-const manualRinseOff = resolveZeroInfusionOptions({
-  tea,
-  waterTempC: 80,
+const rinseTeaCandidate = GENERIC_TEA_ARCHETYPES.find((item) => item.type === 'shou_puerh' || item.type === 'heicha');
+if (!rinseTeaCandidate) {
+  throw new Error('A generic dark-fermented tea archetype must exist for rinse verification');
+}
+const rinseTea = rinseTeaCandidate as NonNullable<typeof rinseTeaCandidate>;
+const mandatoryRinse = resolveZeroInfusionOptions({
+  tea: rinseTea,
+  waterTempC: 100,
   waterVolumeMl: 100,
-  enabledOverride: false,
 });
-assert.equal(manualRinseOff.enabled, false, 'Explicitly disabling a rinse should override the tea archetype recommendation');
+assert.equal(mandatoryRinse.enabled, true,
+  'Teas with a required zero-infusion profile should always include stage #0');
+assert.ok(mandatoryRinse.durationSec > 0,
+  'A mandatory zero infusion must have a positive default duration');
+const mandatoryRinseEvenWithZeroUserTime = resolveZeroInfusionOptions({
+  tea: rinseTea,
+  waterTempC: 100,
+  waterVolumeMl: 100,
+  customDurationSec: 0,
+});
+assert.equal(mandatoryRinseEvenWithZeroUserTime.enabled, true,
+  'A non-positive custom duration must not suppress a mandatory zero infusion');
 
 const base = simulate();
 assert.equal(base.steeps.length, 3);
