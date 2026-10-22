@@ -279,14 +279,31 @@ function createInitialPools(tea: TeaVariety, leafMassGrams: number): InitialPool
     };
   }
 
-  const allSources = KEYS.map((key) => {
-    const parameter = profile?.[key] ?? (key === 'egc' || key === 'egcg' ? profile?.catechins : undefined);
-    return parameter?.sourceStatus ?? tea.physicsProfile?.sourceStatus ?? 'estimated';
+  const measuredSourceParameters = KEYS.map((key) => {
+    const parameter = profile?.[key]
+      ?? (key === 'egc' || key === 'egcg' ? profile?.catechins : undefined);
+    const hasRequiredValues = parameter?.initialMgPerG !== undefined
+      && parameter?.rateAt85CPerSec !== undefined
+      && parameter?.activationEnergyKJMol !== undefined;
+    return {
+      status: parameter?.sourceStatus ?? 'estimated',
+      hasRequiredValues,
+    };
   });
-  const fullyMeasured = allSources.every((status) => status === 'measured');
-  const confidence = tea.physicsProfile?.validationStatus === 'validated'
-    ? (fullyMeasured ? 'high' : 'medium')
-    : 'low';
+  const fullyMeasured = measuredSourceParameters.every((item) =>
+    item.status === 'measured' && item.hasRequiredValues,
+  );
+  const fullyCalibrated = measuredSourceParameters.every((item) =>
+    (item.status === 'measured' || item.status === 'calibrated') && item.hasRequiredValues,
+  );
+  const profileStatus = tea.physicsProfile?.validationStatus;
+  const confidence: 'low' | 'medium' | 'high' =
+    profileStatus === 'validated' && fullyMeasured
+      ? 'high'
+      : (profileStatus === 'calibrated' || profileStatus === 'validated') && fullyCalibrated
+        ? 'medium'
+        : 'low';
+
 
   return {
     pools: pool,
