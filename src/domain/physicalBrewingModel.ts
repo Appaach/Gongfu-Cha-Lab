@@ -279,13 +279,16 @@ function createInitialPools(tea: TeaVariety, leafMassGrams: number): InitialPool
   }
 
   const measuredSourceParameters = KEYS.map((key) => {
-    const parameter = profile?.[key]
+    const specificParameter = profile?.[key];
+    const usesAggregateCatechinFallback = (key === 'egc' || key === 'egcg') && specificParameter === undefined;
+    const parameter = specificParameter
       ?? (key === 'egc' || key === 'egcg' ? profile?.catechins : undefined);
-    const hasRequiredValues = parameter?.initialMgPerG !== undefined
+    const hasRequiredValues = !usesAggregateCatechinFallback
+      && parameter?.initialMgPerG !== undefined
       && parameter?.rateAt85CPerSec !== undefined
       && parameter?.activationEnergyKJMol !== undefined;
     return {
-      status: parameter?.sourceStatus ?? 'estimated',
+      status: usesAggregateCatechinFallback ? 'estimated' : parameter?.sourceStatus ?? 'estimated',
       hasRequiredValues,
     };
   });
