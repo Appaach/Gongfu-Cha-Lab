@@ -877,7 +877,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     setVesselMaterial('porcelain');
     setSelectedSteepIndex(0);
     setCustomRinseTime(null);
-    setZeroInfusionOverride(null);
+    setCustomRinseTemp(null);
     setBrewingMethod('gongfu');
     setRootFraction(0.333);
   };
