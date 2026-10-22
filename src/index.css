@@ -708,3 +708,347 @@ svg circle[stroke="#e7e5e4"] {
     border-radius: 19px !important;
   }
 }
+
+
+/* ==========================================================================
+   GONGFU LAB 2.0 — RECIPE DASHBOARD / BOTANICAL DATA VISUALIZATION
+   Scoped to the simulator; other app screens and theme settings remain intact.
+   ========================================================================== */
+.tea-lab-shell {
+  --tea-forest: #173e32;
+  --tea-forest-mid: #245443;
+  --tea-moss: #83956d;
+  --tea-porcelain: #fffdf7;
+  --tea-radius-hero: 28px;
+  padding: clamp(0.65rem, 1.8vw, 1.25rem);
+  border: 1px solid color-mix(in srgb, var(--color-border), var(--color-accent) 8%);
+  border-radius: 30px;
+  background:
+    radial-gradient(ellipse at 0% 0%, color-mix(in srgb, #d4dfcc, transparent 48%), transparent 42%),
+    radial-gradient(ellipse at 100% 8%, color-mix(in srgb, #e7d5ac, transparent 62%), transparent 34%),
+    linear-gradient(155deg, color-mix(in srgb, var(--color-app-bg), #ffffff 24%), var(--color-app-bg) 58%);
+}
+
+.tea-lab-hero {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(330px, 0.9fr);
+  gap: clamp(1rem, 2.4vw, 2rem);
+  overflow: hidden;
+  padding: clamp(1.1rem, 2.6vw, 2rem);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--tea-radius-hero);
+  color: #fbfbf5;
+  background:
+    radial-gradient(ellipse at 90% 0%, rgba(199, 177, 116, 0.25), transparent 42%),
+    radial-gradient(ellipse at 5% 110%, rgba(120, 154, 111, 0.22), transparent 45%),
+    linear-gradient(124deg, #14372d 0%, #1e4d3c 52%, #42634b 100%);
+  box-shadow: 0 22px 50px rgba(17, 48, 37, 0.2), 0 3px 8px rgba(17, 48, 37, 0.08);
+}
+
+.tea-lab-hero::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  right: -7.5rem;
+  bottom: -11rem;
+  width: 26rem;
+  aspect-ratio: 1;
+  border: 1px solid rgba(248, 241, 215, 0.12);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(248, 241, 215, 0.08), transparent 66%);
+  box-shadow: 0 0 0 2.5rem rgba(248, 241, 215, 0.025), 0 0 0 5rem rgba(248, 241, 215, 0.018);
+  pointer-events: none;
+}
+
+.tea-lab-hero-content {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  align-self: center;
+}
+
+.tea-lab-hero-eyebrow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.48rem;
+  color: rgba(250, 250, 240, 0.78);
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+}
+
+.tea-lab-hero-mark {
+  display: inline-grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border: 1px solid rgba(247, 241, 218, 0.3);
+  border-radius: 0.7rem;
+  color: #eee4b8;
+  background: rgba(255, 255, 255, 0.09);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.tea-lab-live-dot {
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 50%;
+  background: #9ee0a4;
+  box-shadow: 0 0 0 4px rgba(158, 224, 164, 0.13);
+  margin-left: 0.2rem;
+}
+
+.tea-lab-live-label {
+  letter-spacing: 0.09em;
+}
+
+.tea-lab-hero-title {
+  margin: 1rem 0 0;
+  color: #fffdf5;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.85rem, 3.8vw, 3.15rem);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1.04;
+  text-wrap: balance;
+}
+
+.tea-lab-hero-subtitle {
+  margin: 0.7rem 0 0;
+  color: rgba(250, 250, 240, 0.76);
+  font-size: clamp(0.78rem, 1vw, 0.9rem);
+  line-height: 1.6;
+}
+
+.tea-lab-hero-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 1.15rem;
+}
+
+.tea-lab-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.8rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.21);
+  border-radius: 999px;
+  color: #f9f6e9;
+  background: rgba(255, 255, 255, 0.085);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.3;
+  backdrop-filter: blur(10px);
+}
+
+.tea-lab-hero-badge-rinse {
+  border-color: rgba(237, 216, 149, 0.46);
+  color: #fff0bd;
+  background: rgba(194, 159, 70, 0.15);
+}
+
+.tea-lab-hero-badge-muted {
+  color: rgba(250, 250, 240, 0.78);
+}
+
+.tea-lab-hero-badge-model {
+  border-color: rgba(160, 210, 177, 0.34);
+  color: #cbead1;
+}
+
+.tea-lab-hero-metrics {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  align-content: center;
+}
+
+.tea-lab-hero-metric {
+  display: flex;
+  min-width: 0;
+  min-height: 7rem;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.17);
+  border-radius: 17px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.055));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(9px);
+}
+
+.tea-lab-hero-metric > span {
+  color: rgba(250, 250, 240, 0.7);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.tea-lab-hero-metric strong {
+  color: #fffef7;
+  font-size: clamp(1.25rem, 2.2vw, 1.9rem);
+  font-weight: 750;
+  letter-spacing: -0.04em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.tea-lab-hero-metric strong small {
+  color: rgba(250, 250, 240, 0.78);
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.tea-lab-hero-metric em {
+  color: rgba(250, 250, 240, 0.58);
+  font-size: 0.62rem;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.tea-lab-hero-insight {
+  z-index: 1;
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.8rem 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 15px;
+  color: rgba(250, 250, 240, 0.87);
+  background: rgba(6, 28, 21, 0.18);
+  font-size: 0.72rem;
+  line-height: 1.55;
+}
+
+.tea-lab-hero-insight svg {
+  margin-top: 0.1rem;
+  color: #e6d79e;
+}
+
+.tea-lab-shell .tea-lab-toolbar {
+  gap: 0.85rem !important;
+  border-radius: 20px !important;
+  background: color-mix(in srgb, var(--color-card-bg), #d6e0cf 19%) !important;
+  box-shadow: 0 5px 20px rgba(24, 39, 29, 0.035) !important;
+}
+
+.tea-lab-shell .tea-lab-config-panel,
+.tea-lab-shell .tea-lab-brew-panel,
+.tea-lab-shell .tea-chart-panel {
+  border-radius: 24px !important;
+  box-shadow: 0 14px 36px rgba(24, 39, 29, 0.065), 0 2px 5px rgba(24, 39, 29, 0.025) !important;
+}
+
+.tea-lab-shell .tea-chart-panel {
+  overflow: hidden;
+}
+
+.tea-lab-shell .tea-chart-panel > header {
+  padding: 1.1rem clamp(1rem, 2vw, 1.6rem) !important;
+}
+
+.tea-lab-shell .tea-chart-panel .tea-chart-svg {
+  border-radius: 15px;
+}
+
+.tea-lab-shell .tea-step-card {
+  min-height: 6.15rem;
+}
+
+.tea-lab-shell .tea-step-card:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px rgba(20, 54, 40, 0.13);
+}
+
+[data-theme='dark'] .tea-lab-shell {
+  background:
+    radial-gradient(ellipse at 0% 0%, rgba(38, 74, 56, 0.2), transparent 40%),
+    linear-gradient(155deg, #151d18, #111713 62%);
+  border-color: rgba(180, 196, 174, 0.13);
+}
+
+[data-theme='dark'] .tea-lab-shell .tea-lab-toolbar {
+  background: color-mix(in srgb, var(--color-card-bg), #42634b 14%) !important;
+}
+
+[data-theme='dark'] .tea-lab-shell .tea-lab-config-panel,
+[data-theme='dark'] .tea-lab-shell .tea-lab-brew-panel,
+[data-theme='dark'] .tea-lab-shell .tea-chart-panel {
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.23) !important;
+}
+
+@media (max-width: 900px) {
+  .tea-lab-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tea-lab-hero-content {
+    align-self: stretch;
+  }
+
+  .tea-lab-hero-insight {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .tea-lab-shell {
+    padding: 0.55rem;
+    border-radius: 23px;
+  }
+
+  .tea-lab-hero {
+    gap: 1.05rem;
+    padding: 1rem;
+    border-radius: 21px;
+  }
+
+  .tea-lab-hero-title {
+    margin-top: 0.75rem;
+  }
+
+  .tea-lab-hero-eyebrow {
+    font-size: 0.58rem;
+  }
+
+  .tea-lab-hero-metric {
+    min-height: 6rem;
+    padding: 0.7rem 0.75rem;
+    border-radius: 14px;
+  }
+
+  .tea-lab-hero-metric strong {
+    font-size: 1.35rem;
+  }
+
+  .tea-lab-hero-insight {
+    font-size: 0.68rem;
+  }
+
+  .tea-lab-shell .tea-chart-panel > header {
+    padding: 0.9rem !important;
+  }
+
+  .tea-lab-shell .tea-chart-panel .tea-chart-svg {
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tea-lab-shell *,
+  .tea-lab-shell *::before,
+  .tea-lab-shell *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
