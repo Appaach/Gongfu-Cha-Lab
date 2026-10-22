@@ -4195,21 +4195,21 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                     {/* Scientific Metrics Badge Row (TDS, Dry residue, Extraction yield, Exposure, Temp) */}
                     <div className={`grid grid-cols-2 sm:grid-cols-4 ${appSettings.useDynamicTemperatures ? 'lg:grid-cols-5' : ''} gap-3 bg-stone-50/80 p-3.5 rounded-xl border border-stone-200`}>
                       <div>
-                        <div className="text-[11px] text-stone-500">TDS (Сухой остаток)</div>
+                        <div className="text-[11px] text-stone-500">Оценка растворённых веществ*</div>
                         <div className="text-base font-bold font-mono text-stone-900 mt-0.5">
                           {currentSteepData.tdsPpm} <span className="text-xs font-normal text-stone-500">ppm (мг/л)</span>
                         </div>
                       </div>
 
                       <div>
-                        <div className="text-[11px] text-stone-500">Выход экстракта (ISO 9768)</div>
+                        <div className="text-[11px] text-stone-500">Выход отслеживаемых веществ</div>
                         <div className="text-base font-bold font-mono text-amber-800 mt-0.5">
                           {currentSteepData.cumulativeExtractionYieldPercent}% <span className="text-xs font-normal text-stone-500">листа</span>
                         </div>
                       </div>
 
                       <div>
-                        <div className="text-[11px] text-stone-500">Индекс баланса (Теанин / Танины)</div>
+                        <div className="text-[11px] text-stone-500">Индекс баланса (теанин / катехины)</div>
                         <div className="text-base font-bold font-mono text-emerald-800 mt-0.5">
                           {currentSteepData.theanineToCatechinsRatio} <span className="text-xs font-normal text-stone-500">{currentSteepData.theanineToCatechinsRatio > 0.25 ? '(Умами+)' : '(Танины+)'}</span>
                         </div>
