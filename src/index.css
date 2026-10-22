@@ -545,3 +545,166 @@ svg circle[stroke="#e7e5e4"] {
     print-color-adjust: exact !important;
   }
 }
+
+
+/* ==========================================================================
+   GONGFU LAB — REFINED SIMULATOR SURFACES
+   Semantic variables keep the new visual system aligned with every theme.
+   ========================================================================== */
+.tea-lab-shell {
+  --tea-radius-lg: 24px;
+  --tea-radius-md: 17px;
+  --tea-panel-shadow: 0 12px 34px rgba(24, 24, 27, 0.055), 0 2px 5px rgba(24, 24, 27, 0.025);
+  color: var(--color-text-primary);
+  isolation: isolate;
+}
+
+.tea-lab-shell > .tea-lab-toolbar {
+  position: relative;
+  border-radius: var(--tea-radius-lg) !important;
+  border-color: color-mix(in srgb, var(--color-border), var(--color-accent) 14%) !important;
+  background: linear-gradient(125deg,
+    color-mix(in srgb, var(--color-card-bg), var(--color-accent) 7%),
+    var(--color-card-bg) 48%,
+    color-mix(in srgb, var(--color-card-bg), #0f9276 5%)) !important;
+  box-shadow: var(--tea-panel-shadow) !important;
+  padding: 0.95rem 1.1rem !important;
+}
+
+.tea-lab-workspace {
+  align-items: start;
+  gap: clamp(1rem, 2vw, 1.65rem) !important;
+}
+
+.tea-lab-config-panel,
+.tea-lab-brew-panel {
+  border-radius: var(--tea-radius-lg) !important;
+  border-color: var(--color-border) !important;
+  background: var(--color-card-bg) !important;
+  box-shadow: var(--tea-panel-shadow) !important;
+}
+
+.tea-lab-config-panel {
+  position: relative;
+  padding: clamp(1rem, 1.8vw, 1.45rem) !important;
+}
+
+.tea-lab-config-panel > div,
+.tea-lab-config-panel section {
+  border-radius: var(--tea-radius-md);
+}
+
+.tea-lab-brew-panel {
+  padding: clamp(1rem, 2vw, 1.6rem) !important;
+}
+
+.tea-lab-results-column {
+  min-width: 0;
+}
+
+.tea-lab-shell button {
+  transition-property: background-color, border-color, color, box-shadow, transform;
+  transition-duration: 160ms;
+}
+
+.tea-lab-shell button:focus-visible,
+.tea-lab-shell input:focus-visible,
+.tea-lab-shell select:focus-visible,
+.tea-lab-shell textarea:focus-visible {
+  outline: 2px solid var(--color-accent) !important;
+  outline-offset: 2px;
+}
+
+.tea-lab-shell .tea-step-card {
+  border-radius: 16px !important;
+  transition: transform 150ms ease, box-shadow 150ms ease, border-color 150ms ease;
+}
+
+.tea-lab-shell .tea-step-card:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(24, 24, 27, 0.09);
+}
+
+.tea-lab-shell .tea-step-card:focus-visible {
+  outline: 2px solid var(--color-accent) !important;
+  outline-offset: 3px;
+}
+
+.tea-lab-shell .tea-chart-panel {
+  border-color: var(--color-border) !important;
+  background: var(--color-card-bg) !important;
+  box-shadow: var(--tea-panel-shadow);
+}
+
+.tea-lab-shell .tea-chart-panel > header {
+  background: linear-gradient(125deg,
+    color-mix(in srgb, var(--color-card-bg), var(--color-accent) 7%),
+    var(--color-card-bg) 52%,
+    color-mix(in srgb, var(--color-card-bg), #0f9276 6%)) !important;
+  border-color: var(--color-border) !important;
+}
+
+.tea-lab-shell .tea-chart-svg {
+  max-width: 100%;
+  overflow: visible;
+}
+
+.tea-lab-shell .tea-chart-point {
+  cursor: pointer;
+  outline: none;
+}
+
+.tea-lab-shell .tea-chart-point:focus-visible circle:first-of-type {
+  stroke: var(--color-accent) !important;
+  stroke-width: 3 !important;
+}
+
+.tea-lab-shell .tea-chart-panel button[aria-pressed="true"] {
+  box-shadow: 0 2px 7px rgba(24, 24, 27, 0.08);
+}
+
+.tea-lab-shell .tea-chart-panel footer {
+  background: color-mix(in srgb, var(--color-card-bg), #0f9276 5%) !important;
+  border-color: color-mix(in srgb, var(--color-border), #0f9276 22%) !important;
+}
+
+[data-theme='dark'] .tea-lab-shell {
+  --tea-panel-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+}
+
+[data-theme='dark'] .tea-lab-shell > .tea-lab-toolbar {
+  background: linear-gradient(125deg,
+    color-mix(in srgb, var(--color-card-bg), var(--color-accent) 16%),
+    var(--color-card-bg) 55%,
+    color-mix(in srgb, var(--color-card-bg), #0f9276 10%)) !important;
+}
+
+[data-theme='dark'] .tea-lab-shell .tea-chart-panel > header {
+  background: linear-gradient(125deg,
+    color-mix(in srgb, var(--color-card-bg), var(--color-accent) 15%),
+    var(--color-card-bg) 55%,
+    color-mix(in srgb, var(--color-card-bg), #0f9276 10%)) !important;
+}
+
+[data-theme='dark'] .tea-lab-shell .tea-step-card:not(:disabled):hover {
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.26);
+}
+
+@media (max-width: 640px) {
+  .tea-lab-shell {
+    --tea-radius-lg: 19px;
+    --tea-radius-md: 14px;
+  }
+
+  .tea-lab-shell > .tea-lab-toolbar {
+    padding: 0.75rem !important;
+  }
+
+  .tea-lab-workspace {
+    gap: 1rem !important;
+  }
+
+  .tea-lab-shell .tea-chart-panel {
+    border-radius: 19px !important;
+  }
+}
