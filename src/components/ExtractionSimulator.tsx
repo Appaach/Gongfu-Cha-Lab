@@ -1266,8 +1266,10 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
       waterVolume,
       steepsCount,
       cycleDurationSec: physicalSchedule.durations[0] || 180,
+      retainedRootFraction: rootFraction,
+      coolingTimeConstantSec: VESSEL_MATERIALS.find((vessel) => vessel.id === vesselMaterial)?.thermalProfile?.timeConstantSecAt100Ml ?? 280,
     });
-  }, [brewingMethod, simulationResults, waterTemp, waterVolume, steepsCount, physicalSchedule.durations]);
+  }, [brewingMethod, simulationResults, waterTemp, waterVolume, steepsCount, physicalSchedule.durations, rootFraction, vesselMaterial]);
 
   return (
     <div className="space-y-6">
