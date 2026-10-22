@@ -1174,6 +1174,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     brewingMethod,
     rootFraction,
     zeroInfusionOptions,
+    customSteepTimes,
     appSettings.useDynamicTemperatures,
     dynamicTemperatures,
   ]);
@@ -3656,7 +3657,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
             <div className="pt-2 border-t border-stone-100 text-xs space-y-2 text-stone-600">
               <div className="flex justify-between">
                 <span>Суммарный выход экстракта (ISO 9768):</span>
-                <span className="font-mono font-bold text-amber-900">{lastSteepYield}% от сухой массы</span>
+                <span className="font-mono font-bold text-amber-900">{lastSteepYield}% отслеживаемых веществ от массы листа</span>
               </div>
               <div className="flex justify-between">
                 <span>Суммарно извлечено кофеина:</span>
