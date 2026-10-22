@@ -1265,7 +1265,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
   return (
     <div className="tea-lab-shell space-y-6">
       {/* Top Utility Bar: Base Selector (Generic, Popular Teas, Favorites, Blending Studio) */}
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white p-3 sm:px-4 rounded-xl border border-stone-200 shadow-xs">
+      <div className="tea-lab-toolbar flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white p-3 sm:px-4 rounded-xl border border-stone-200 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <span className="text-xs font-bold text-stone-800 shrink-0">База сортов:</span>
           <div className="grid grid-cols-2 gap-0.5 rounded-lg bg-stone-100 p-1 border border-stone-200">
@@ -2440,9 +2440,9 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
       </div>
 
       {/* Main Controls & Simulation Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <div className="tea-lab-workspace grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Left Column: Unified Brewing Parameters & Scientific Optimizer (4 cols) */}
-        <div className="lg:col-span-4 space-y-5 bg-white border border-stone-200 rounded-2xl p-5 sm:p-6 shadow-xs">
+        <div className="tea-lab-config-panel lg:col-span-4 space-y-5 bg-white border border-stone-200 rounded-2xl p-5 sm:p-6 shadow-xs">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-stone-100 pb-3">
             <div className="flex items-center space-x-2">
@@ -3673,9 +3673,9 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
         </div>
 
         {/* Right Column: 1. UNIFIED STEEPS + CUP DEEP DIVE WINDOW -> 2. KINETIC CURVES AT VERY BOTTOM */}
-        <div className="lg:col-span-8 space-y-6">
+        <div className="tea-lab-results-column lg:col-span-8 space-y-6">
           {/* 1. SINGLE UNIFIED CARD: STEEPS, TIMINGS & DETAILED CHEMICAL PROFILE */}
-          <div className="bg-white border border-stone-200 rounded-2xl p-5 sm:p-6 shadow-xs space-y-6">
+          <div className="tea-lab-brew-panel bg-white border border-stone-200 rounded-2xl p-5 sm:p-6 shadow-xs space-y-6">
             {/* Window Top Header & Steeps Selector */}
             <div className="space-y-4 border-b border-stone-100 pb-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
