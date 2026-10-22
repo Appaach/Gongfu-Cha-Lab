@@ -220,7 +220,8 @@ export interface SteepKineticData {
   waterTempC?: number; // Actual water temperature used for this steep (°C)
   isCustomTemp?: boolean; // Temperature was manually set by the user for this steep
   brewingMethod?: BrewingMethod;
-  retainedRootVolumeMl?: number; // Volume of root liquor left from previous steep
+  retainedRootVolumeMl?: number; // Free root liquor remaining, excluding liquid held by leaves
+  retainedLiquidVolumeMl?: number; // Total liquid remaining in the vessel, including liquid held by wet leaves
   freshWaterAddedMl?: number; // Volume of fresh water poured
   rootCarryoverSolutesMg?: number; // Solutes carried over from previous steep root
   /** Confidence/provenance metadata emitted by the current physical simulator. */
