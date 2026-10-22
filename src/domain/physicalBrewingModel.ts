@@ -64,6 +64,8 @@ export interface PhysicalMassBalance {
   remainingInLeafMg: number;
   remainingInLiquidMg: number;
   removedFromSystemMg: number;
+  discardedFromSystemMg: number;
+  consumedFromSystemMg: number;
   extractedFromLeafMg: number;
   balanceErrorMg: number;
 }
@@ -93,6 +95,8 @@ interface StageState {
   wetTimeSec: number;
   extractedFromLeafMg: number;
   removedFromSystemMg: number;
+  discardedFromSystemMg: number;
+  consumedFromSystemMg: number;
 }
 
 const KEYS: PoolKey[] = ['theanine', 'caffeine', 'egc', 'egcg', 'polysaccharides'];
@@ -563,6 +567,8 @@ function runPhysicalSimulation(input: PhysicalBrewingInput): PhysicalBrewingResu
     wetTimeSec: 0,
     extractedFromLeafMg: 0,
     removedFromSystemMg: 0,
+    discardedFromSystemMg: 0,
+    consumedFromSystemMg: 0,
   };
   const notes: string[] = [
     'Начальные запасы и кинетические параметры не измерены для индивидуальной партии; используются типовые оценочные значения.',
@@ -664,7 +670,13 @@ function runPhysicalSimulation(input: PhysicalBrewingInput): PhysicalBrewingResu
       removedMass[key] = preDrainMass[key] * (1 - retainedRatio);
       state.liquidMassMg[key] = preDrainMass[key] * retainedRatio;
     }
-    state.removedFromSystemMg += sumVector(removedMass);
+    const removedMassTotal = sumVector(removedMass);
+    state.removedFromSystemMg += removedMassTotal;
+    if (args.isZero) {
+      state.discardedFromSystemMg += removedMassTotal;
+    } else {
+      state.consumedFromSystemMg += removedMassTotal;
+    }
     state.liquidVolumeMl = targetRetainedVolume;
 
     const rootFreeVolume = Math.max(0, targetRetainedVolume - leafHeld);
@@ -677,7 +689,7 @@ function runPhysicalSimulation(input: PhysicalBrewingInput): PhysicalBrewingResu
       liquidVolumeMl: preDrainVolume,
       liquidMass: preDrainMass,
       freshWaterAddedMl: addedWaterMl,
-      drinkableVolumeMl: removedVolume,
+      drinkableVolumeMl: args.isZero && (args.disposition ?? 'discard') !== 'retain' ? 0 : removedVolume,
       retainedRootVolumeMl: method === 'gongfu' ? 0 : rootFreeVolume,
       carryoverMassMg: carriedMassMg,
       extractedThisStage: freshExtracted,
@@ -749,6 +761,8 @@ function runPhysicalSimulation(input: PhysicalBrewingInput): PhysicalBrewingResu
     remainingInLeafMg,
     remainingInLiquidMg,
     removedFromSystemMg,
+    discardedFromSystemMg: state.discardedFromSystemMg,
+    consumedFromSystemMg: state.consumedFromSystemMg,
     extractedFromLeafMg: state.extractedFromLeafMg,
     balanceErrorMg,
   };
