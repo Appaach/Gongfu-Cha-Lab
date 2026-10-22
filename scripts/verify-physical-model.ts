@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { GENERIC_TEA_ARCHETYPES } from '../src/data/teaData';
 import { optimizePhysicalSchedule, resolveZeroInfusionOptions, simulatePhysicalBrewing } from '../src/domain/physicalBrewingModel';
 
-const tea = GENERIC_TEA_ARCHETYPES.find((item) => item.type === 'green');
-if (!tea) {
+const teaCandidate = GENERIC_TEA_ARCHETYPES.find((item) => item.type === 'green');
+if (!teaCandidate) {
   throw new Error('A generic green tea archetype must exist for model verification');
 }
+const tea = teaCandidate as NonNullable<typeof teaCandidate>;
 
 function simulate(overrides: Partial<Parameters<typeof simulatePhysicalBrewing>[0]> = {}) {
   return simulatePhysicalBrewing({
