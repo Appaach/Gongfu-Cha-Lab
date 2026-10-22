@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { GENERIC_TEA_ARCHETYPES } from '../src/data/teaData';
-import { optimizePhysicalSchedule, simulatePhysicalBrewing } from '../src/domain/physicalBrewingModel';
+import { optimizePhysicalSchedule, resolveZeroInfusionOptions, simulatePhysicalBrewing } from '../src/domain/physicalBrewingModel';
 
 const tea = GENERIC_TEA_ARCHETYPES.find((item) => item.type === 'green');
 assert.ok(tea, 'A generic green tea archetype must exist');
@@ -34,6 +34,23 @@ function assertMassBalance(result: ReturnType<typeof simulatePhysicalBrewing>) {
   assert.ok(result.massBalance.remainingInLiquidMg >= 0);
   assert.ok(result.massBalance.removedFromSystemMg >= 0);
 }
+
+const manualRinseOn = resolveZeroInfusionOptions({
+  tea,
+  waterTempC: 80,
+  waterVolumeMl: 100,
+  enabledOverride: true,
+});
+assert.equal(manualRinseOn.enabled, true, 'Explicitly enabling a rinse should make it available even for teas without a default rinse');
+assert.ok(manualRinseOn.durationSec > 0, 'Manual enable should receive an editable, explicitly estimated seed duration');
+
+const manualRinseOff = resolveZeroInfusionOptions({
+  tea,
+  waterTempC: 80,
+  waterVolumeMl: 100,
+  enabledOverride: false,
+});
+assert.equal(manualRinseOff.enabled, false, 'Explicitly disabling a rinse should override the tea archetype recommendation');
 
 const base = simulate();
 assert.equal(base.steeps.length, 3);
