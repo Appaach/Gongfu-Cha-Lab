@@ -1337,6 +1337,77 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
 
   return (
     <div className="tea-lab-shell space-y-6">
+      {/* A compact live-recipe dashboard replaces the old plain title + metric strip. */}
+      <section className="tea-lab-hero" aria-label="Текущий рецепт заваривания">
+        <div className="tea-lab-hero-content">
+          <div className="tea-lab-hero-eyebrow">
+            <span className="tea-lab-hero-mark"><Leaf className="w-4 h-4" /></span>
+            <span>GONGFU CHA LAB</span>
+            <span className="tea-lab-live-dot" aria-hidden="true" />
+            <span className="tea-lab-live-label">LIVE · ФИЗИЧЕСКАЯ МОДЕЛЬ</span>
+          </div>
+          <h1 className="tea-lab-hero-title">{selectedTea.nameRu}</h1>
+          <p className="tea-lab-hero-subtitle">
+            {selectedTea.typeNameRu}
+            {selectedTea.origin ? ` · ${selectedTea.origin}` : ''}
+            {selectedTea.cultivar ? ` · ${selectedTea.cultivar}` : ''}
+          </p>
+          <div className="tea-lab-hero-badges">
+            <span className="tea-lab-hero-badge">
+              {brewingMethod === 'grandpa_cup'
+                ? 'Бэй Пао Фа · кружка'
+                : brewingMethod === 'liu_gen'
+                  ? 'Лю Гэнь · оставление корня'
+                  : 'Гунфу ча · полный слив'}
+            </span>
+            <span className={`tea-lab-hero-badge ${isRinseEnabled ? 'tea-lab-hero-badge-rinse' : 'tea-lab-hero-badge-muted'}`}>
+              {isRinseEnabled
+                ? `Нулевой пролив #0 · обязателен · ${teaRinseInfo.seconds} с`
+                : 'Без нулевого пролива · не требуется'}
+            </span>
+            <span className="tea-lab-hero-badge tea-lab-hero-badge-model">
+              {physicalSimulation.modelConfidence === 'high'
+                ? 'Полная калибровка'
+                : physicalSimulation.modelConfidence === 'medium'
+                  ? 'Частичная калибровка'
+                  : 'Оценочные параметры'}
+            </span>
+          </div>
+        </div>
+
+        <div className="tea-lab-hero-metrics" aria-label="Основные параметры рецепта">
+          <div className="tea-lab-hero-metric">
+            <span>Лист</span>
+            <strong>{Number(leafMass.toFixed(1))}<small> г</small></strong>
+            <em>сухая масса</em>
+          </div>
+          <div className="tea-lab-hero-metric">
+            <span>Вода</span>
+            <strong>{waterVolume}<small> мл</small></strong>
+            <em>соотношение 1 : {ratio}</em>
+          </div>
+          <div className="tea-lab-hero-metric">
+            <span>{appSettings.useDynamicTemperatures ? 'Температура · диапазон' : 'Температура воды'}</span>
+            <strong>
+              {appSettings.useDynamicTemperatures
+                ? `${Math.min(...physicalSchedule.temperaturesC)}–${Math.max(...physicalSchedule.temperaturesC)}`
+                : waterTemp}<small> °C</small>
+            </strong>
+            <em>{appSettings.useDynamicTemperatures ? 'индивидуально по проливам' : 'единая для проливов'}</em>
+          </div>
+          <div className="tea-lab-hero-metric">
+            <span>План</span>
+            <strong>{steepsCount}<small> проливов</small></strong>
+            <em>подбор по вкусовой цели</em>
+          </div>
+        </div>
+
+        <div className="tea-lab-hero-insight">
+          <Sparkles className="w-4 h-4 shrink-0" />
+          <span>{physicalParameterOptimization.summaryRu}</span>
+        </div>
+      </section>
+
       {/* Top Utility Bar: Base Selector (Generic, Popular Teas, Favorites, Blending Studio) */}
       <div className="tea-lab-toolbar flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white p-3 sm:px-4 rounded-xl border border-stone-200 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
