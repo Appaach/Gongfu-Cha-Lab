@@ -107,6 +107,8 @@ export type TrackedTeaCompound =
 
 export interface TeaPhysicsProfile {
   compounds?: Partial<Record<TrackedTeaCompound, CompoundPhysicsParameter>>;
+  /** Optional experimentally calibrated multipliers relative to optimal water, keyed by compound and hardness class. */
+  waterResponseByHardness?: Partial<Record<TrackedTeaCompound, Partial<Record<WaterHardnessLevel, number>>>>;
   /** Fraction of available material assigned to the faster kinetic pool. */
   fastExtractionFraction?: number;
   /** Estimated/experimentally measured liquid retention per gram of dry leaf. */
