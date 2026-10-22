@@ -410,6 +410,7 @@ function createSteepRow(args: {
   freshWaterAddedMl: number;
   drinkableVolumeMl: number;
   retainedRootVolumeMl: number;
+  retainedLiquidVolumeMl: number;
   carryoverMassMg: number;
   extractedThisStage: MassVector;
   cumulativeExtractedMg: number;
@@ -488,6 +489,7 @@ function createSteepRow(args: {
     isCustomTemp: args.isCustomTemp,
     brewingMethod: args.brewingMethod,
     retainedRootVolumeMl: args.retainedRootVolumeMl > 0 ? round(args.retainedRootVolumeMl, 2) : undefined,
+    retainedLiquidVolumeMl: round(args.retainedLiquidVolumeMl, 2),
     freshWaterAddedMl: round(args.freshWaterAddedMl, 2),
     rootCarryoverSolutesMg: args.carryoverMassMg > 0 ? round(args.carryoverMassMg, 2) : undefined,
     modelConfidence: args.modelConfidence,
@@ -691,6 +693,7 @@ function runPhysicalSimulation(input: PhysicalBrewingInput): PhysicalBrewingResu
       freshWaterAddedMl: addedWaterMl,
       drinkableVolumeMl: args.isZero && (args.disposition ?? 'discard') !== 'retain' ? 0 : removedVolume,
       retainedRootVolumeMl: method === 'gongfu' ? 0 : rootFreeVolume,
+      retainedLiquidVolumeMl: targetRetainedVolume,
       carryoverMassMg: carriedMassMg,
       extractedThisStage: freshExtracted,
       cumulativeExtractedMg,
