@@ -70,7 +70,7 @@ export const SteepBubbleCard = memo(function SteepBubbleCard({
   if (isEditing) {
     return (
       <div
-        className="group relative min-h-[92px] rounded-xl border p-2 flex flex-col justify-between text-left transition-all shadow-xs ring-2 ring-amber-800 border-amber-800 bg-amber-50/95"
+        className="tea-step-card group relative min-h-[92px] rounded-xl border p-2 flex flex-col justify-between text-left transition-all shadow-xs ring-2 ring-amber-800 border-amber-800 bg-amber-50/95"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-1 w-full">
@@ -139,7 +139,7 @@ export const SteepBubbleCard = memo(function SteepBubbleCard({
         }
       }}
       title={isManualModeActive ? "Клик для выбора, двойной клик для ввода времени, удержание для таймера" : "Клик для выбора, удержание для таймера"}
-      className={`group relative min-h-[92px] rounded-xl p-2.5 flex flex-col justify-between text-left transition-all cursor-pointer select-none shadow-2xs ${
+      className={`tea-step-card group relative min-h-[92px] rounded-xl p-2.5 flex flex-col justify-between text-left transition-all cursor-pointer select-none shadow-2xs ${
         isSelected
           ? 'border-2 border-amber-800 ring-2 ring-amber-800 bg-amber-50/90 shadow-xs'
           : isCustom
