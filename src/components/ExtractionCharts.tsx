@@ -58,13 +58,23 @@ export const ExtractionCharts: React.FC<ExtractionChartsProps> = ({
   setShowChartTemperature,
 }) => {
   const isCup = brewingMethod === 'grandpa_cup';
-  const series: CompoundSeries[] = [
+  const series = useMemo<CompoundSeries[]>(() => [
     { id: 'theanine', label: 'L-теанин', color: '#0f9276', visible: showChartTheanine, toggle: setShowChartTheanine, values: chartSteepsData.map((row) => row.theanineConcentration) },
     { id: 'caffeine', label: 'Кофеин', color: '#4778d8', visible: showChartCaffeine, toggle: setShowChartCaffeine, values: chartSteepsData.map((row) => row.caffeineConcentration) },
     { id: 'catechins', label: 'Катехины', color: '#d45370', visible: showChartCatechins, toggle: setShowChartCatechins, values: chartSteepsData.map((row) => row.catechinsConcentration) },
     { id: 'polysaccharides', label: 'Полисахариды', color: '#8a63bf', visible: showChartPolysaccharides, toggle: setShowChartPolysaccharides, values: chartSteepsData.map((row) => row.polysaccharidesConcentration) },
-  ];
-  const activeSeries = series.filter((item) => item.visible);
+  ], [
+    chartSteepsData,
+    showChartTheanine,
+    setShowChartTheanine,
+    showChartCaffeine,
+    setShowChartCaffeine,
+    showChartCatechins,
+    setShowChartCatechins,
+    showChartPolysaccharides,
+    setShowChartPolysaccharides,
+  ]);
+  const activeSeries = useMemo(() => series.filter((item) => item.visible), [series]);
 
   const discrete = useMemo(() => {
     const plotWidth = CHART.width - CHART.left - CHART.right;
