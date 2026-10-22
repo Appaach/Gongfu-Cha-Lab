@@ -1386,18 +1386,13 @@ export function resolveZeroInfusionOptions(args: {
   const rinse = getTeaRinseInfo(args.tea, effectiveTemp, args.optimizationGoal);
   const profile = args.tea.zeroInfusionProfile;
 
-  // The tea profile is authoritative when present; otherwise use the tea-specific
-  // rule/archetype returned by getTeaRinseInfo. "optional" does not auto-insert #0:
-  // the UI intentionally has no override checkbox.
-  const profileEligibility = profile?.enabled !== undefined
-    ? profile.enabled
-    : profile?.policy === 'disabled'
-      ? false
-      : profile?.policy === 'enabled' || profile?.policy === 'recommended'
-        ? true
-        : profile?.policy === 'optional'
-          ? false
-          : rinse.required;
+  // The tea-specific rule is the minimum requirement: a rinse needed by this tea
+  // cannot be switched off by a conflicting optional/disabled profile. A profile may
+  // add a rinse for a tea that otherwise does not require one.
+  const profileRequestsRinse = profile?.enabled === true
+    || profile?.policy === 'enabled'
+    || profile?.policy === 'recommended';
+  const profileEligibility = rinse.required || profileRequestsRinse;
 
   // User-edited duration/temperature can tune an included rinse, but cannot add one to
   // teas that do not need it or suppress a required rinse by setting its time to zero.
