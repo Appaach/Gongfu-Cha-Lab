@@ -1265,9 +1265,9 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
       waterTemp,
       waterVolume,
       steepsCount,
-      cycleDurationSec: effectiveDurations[0] || 180,
+      cycleDurationSec: physicalSchedule.durations[0] || 180,
     });
-  }, [brewingMethod, simulationResults, waterTemp, waterVolume, steepsCount, effectiveDurations]);
+  }, [brewingMethod, simulationResults, waterTemp, waterVolume, steepsCount, physicalSchedule.durations]);
 
   return (
     <div className="space-y-6">
@@ -4413,7 +4413,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
           teaMass={leafMass}
           waterVolume={waterVolume}
           steepsCount={steepsCount}
-          steepSchedule={effectiveDurations}
+          steepSchedule={physicalSchedule.durations}
           rinseSeconds={customRinseTime !== null ? customRinseTime : teaRinseInfo.seconds}
           isRinseEnabled={teaRinseInfo.required}
           brewingMethod={brewingMethod}
