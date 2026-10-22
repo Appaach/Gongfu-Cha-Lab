@@ -1126,9 +1126,21 @@ export function resolveZeroInfusionOptions(args: {
   const rinse = getTeaRinseInfo(args.tea, effectiveTemp, args.optimizationGoal);
   const profile = args.tea.zeroInfusionProfile;
 
-  // Eligibility is not a user-facing toggle: the tea/archetype rule decides whether #0 exists.
-  // User-edited duration/temperature can adjust a required rinse, but cannot add one to a tea
-  // whose profile says it is not needed, or suppress a required rinse by setting time to zero.
+  // The tea profile is authoritative when present; otherwise use the tea-specific
+  // rule/archetype returned by getTeaRinseInfo. "optional" does not auto-insert #0:
+  // the UI intentionally has no override checkbox.
+  const profileEligibility = profile?.enabled !== undefined
+    ? profile.enabled
+    : profile?.policy === 'disabled'
+      ? false
+      : profile?.policy === 'enabled' || profile?.policy === 'recommended'
+        ? true
+        : profile?.policy === 'optional'
+          ? false
+          : rinse.required;
+
+  // User-edited duration/temperature can tune an included rinse, but cannot add one to
+  // teas that do not need it or suppress a required rinse by setting its time to zero.
   const requestedDuration = args.customDurationSec !== null
     && args.customDurationSec !== undefined
     && args.customDurationSec > 0
@@ -1137,12 +1149,12 @@ export function resolveZeroInfusionOptions(args: {
   const profileDuration = profile?.durationSec !== undefined && profile.durationSec > 0
     ? profile.durationSec
     : undefined;
-  const durationSec = rinse.required
+  const durationSec = profileEligibility
     ? requestedDuration ?? profileDuration ?? rinse.seconds
     : 0;
 
   return {
-    enabled: rinse.required && durationSec > 0,
+    enabled: profileEligibility && durationSec > 0,
     durationSec: clamp(durationSec, 0, 3600),
     temperatureC: clamp(
       args.customTemperatureC ?? profile?.temperatureC ?? rinse.tempC ?? args.waterTempC,
