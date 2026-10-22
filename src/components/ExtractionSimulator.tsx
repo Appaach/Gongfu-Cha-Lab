@@ -1275,7 +1275,8 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
       steepsCount,
       cycleDurationSec: physicalSchedule.durations[0] || 180,
       retainedRootFraction: rootFraction,
-      coolingTimeConstantSec: VESSEL_MATERIALS.find((vessel) => vessel.id === vesselMaterial)?.thermalProfile?.timeConstantSecAt100Ml ?? 280,
+      coolingTimeConstantSec: VESSEL_MATERIALS.find((vessel) => vessel.id === vesselMaterial)?.thermalProfile?.timeConstantSecAt100Ml
+        ?? 280 * (4.5 / Math.max(0.1, VESSEL_MATERIALS.find((vessel) => vessel.id === vesselMaterial)?.heatLossPerSteepC ?? 4.5)),
     });
   }, [brewingMethod, simulationResults, waterTemp, waterVolume, steepsCount, physicalSchedule.durations, rootFraction, vesselMaterial]);
 
