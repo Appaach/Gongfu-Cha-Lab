@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { GENERIC_TEA_ARCHETYPES } from '../src/data/teaData';
 import { optimizePhysicalSchedule, resolveZeroInfusionOptions, simulatePhysicalBrewing } from '../src/domain/physicalBrewingModel';
+import { TEA_ARCHETYPE_EXTRACTION_PRIORS, TEA_EXTRACTION_REFERENCE_DATA, TEA_EXTRACTION_REFERENCE_SOURCE } from '../src/data/teaExtractionCalibration';
 
 const teaCandidate = GENERIC_TEA_ARCHETYPES.find((item) => item.type === 'green');
 if (!teaCandidate) {
@@ -72,8 +73,22 @@ const mandatoryRinseEvenWithZeroUserTime = resolveZeroInfusionOptions({
 assert.equal(mandatoryRinseEvenWithZeroUserTime.enabled, true,
   'A non-positive custom duration must not suppress a mandatory zero infusion');
 
+const greenPrior = TEA_ARCHETYPE_EXTRACTION_PRIORS.green;
+assert.ok(greenPrior?.caffeine?.sourceCitation?.includes(TEA_EXTRACTION_REFERENCE_SOURCE.doi),
+  'The fitted caffeine prior should keep its published source citation');
+assert.ok(greenPrior?.theanine?.sourceCitation?.includes(TEA_EXTRACTION_REFERENCE_SOURCE.doi),
+  'The fitted theanine prior should keep its published source citation');
+assert.equal(TEA_EXTRACTION_REFERENCE_DATA.green.caffeine.length, 6,
+  'The calibration data should preserve all six temperature/time conditions');
+assert.equal(TEA_EXTRACTION_REFERENCE_DATA.puerh.theanine.length, 6,
+  'The calibration data should preserve the low-sample puerh group, too');
+
 const base = simulate();
 assert.equal(base.steeps.length, 3);
+assert.ok(
+  base.steeps[0].modelNotesRu?.some((note) => note.includes(TEA_EXTRACTION_REFERENCE_SOURCE.doi)),
+  'Results should expose the caffeine/theanine calibration source and scope',
+);
 assert.equal(base.zeroInfusionData, null);
 assertMassBalance(base);
 
