@@ -559,6 +559,7 @@ function createSteepRow(args: {
       ...(TEA_ARCHETYPE_EXTRACTION_PRIORS[args.tea.type]
         ? [
             'Для кофеина и L-теанина используются аппроксимированные архетипические параметры по опубликованным средним HPLC-данным: ' + TEA_EXTRACTION_REFERENCE_SOURCE.citation + ' (DOI: ' + TEA_EXTRACTION_REFERENCE_SOURCE.doi + ').',
+            'Исходные условия публикации: ' + TEA_EXTRACTION_REFERENCE_SOURCE.methodRu + '.',
             ...TEA_CALIBRATION_NOTES_RU,
             ...(calibrationFitNote ? [calibrationFitNote] : []),
           ]
