@@ -4235,6 +4235,9 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                         </div>
                       )}
                     </div>
+                    <p className="text-[10px] leading-relaxed text-stone-400">
+                      * Расчётная сумма отслеживаемых веществ, а не лабораторное измерение TDS. Выход отслеживаемых веществ не равен общему выходу сухого экстракта и не является результатом испытания ISO 9768.
+                    </p>
 
                     <div className="space-y-1.5">
                       <div className="text-[11px] font-medium text-stone-500">
