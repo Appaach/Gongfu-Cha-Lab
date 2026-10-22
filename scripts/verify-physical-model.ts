@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { GENERIC_TEA_ARCHETYPES } from '../src/data/teaData';
 import { optimizePhysicalSchedule, resolveZeroInfusionOptions, simulatePhysicalBrewing } from '../src/domain/physicalBrewingModel';
-import { TEA_ARCHETYPE_EXTRACTION_PRIORS, TEA_EXTRACTION_REFERENCE_DATA, TEA_EXTRACTION_REFERENCE_SOURCE } from '../src/data/teaExtractionCalibration';
+import {
+  TEA_ARCHETYPE_CALIBRATION_DIAGNOSTICS,
+  TEA_ARCHETYPE_EXTRACTION_PRIORS,
+  TEA_EXTRACTION_REFERENCE_DATA,
+  TEA_EXTRACTION_REFERENCE_SOURCE,
+} from '../src/data/teaExtractionCalibration';
 
 const teaCandidate = GENERIC_TEA_ARCHETYPES.find((item) => item.type === 'green');
 if (!teaCandidate) {
@@ -100,6 +105,17 @@ assert.equal(TEA_EXTRACTION_REFERENCE_DATA.green.caffeine.length, 6,
   'The calibration data should preserve all six temperature/time conditions');
 assert.equal(TEA_EXTRACTION_REFERENCE_DATA.puerh.theanine.length, 6,
   'The calibration data should preserve the low-sample puerh group, too');
+assert.ok(
+  TEA_ARCHETYPE_CALIBRATION_DIAGNOSTICS.green.rmseCaffeineMgPer200Ml >= 0
+  && TEA_ARCHETYPE_CALIBRATION_DIAGNOSTICS.green.rmseTheanineMgPer200Ml >= 0,
+  'Calibration diagnostics should report finite non-negative errors',
+);
+assert.ok(
+  TEA_ARCHETYPE_CALIBRATION_DIAGNOSTICS.white.rmseCaffeineMgPer200Ml < 5,
+  'White-tea caffeine fit should stay within its documented calibration tolerance',
+);
+assert.equal(TEA_ARCHETYPE_CALIBRATION_DIAGNOSTICS.puerh.conditionsCountPerCompound, 6,
+  'Fit diagnostics should report the six source conditions, independently of the small sample count');
 
 const base = simulate();
 assert.equal(base.steeps.length, 3);
