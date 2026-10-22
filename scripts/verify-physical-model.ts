@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { GENERIC_TEA_ARCHETYPES } from '../src/data/teaData';
-import { simulatePhysicalBrewing } from '../src/domain/physicalBrewingModel';
+import { optimizePhysicalSchedule, simulatePhysicalBrewing } from '../src/domain/physicalBrewingModel';
 
 const tea = GENERIC_TEA_ARCHETYPES.find((item) => item.type === 'green');
 assert.ok(tea, 'A generic green tea archetype must exist');
@@ -76,7 +76,32 @@ assertMassBalance(liuGen);
 
 const cup = simulate({ brewingMethod: 'grandpa_cup', rootFraction: 0.33 });
 assert.ok((cup.steeps[1].retainedRootVolumeMl ?? 0) > 0,
-  'Grandpa cup should retain liquid while the leaves remain in the cup');
+  'Grandpa cup should retain free root liquor while the leaves remain in the cup');
+assert.ok((cup.steeps[1].retainedLiquidVolumeMl ?? 0) > 0,
+  'Grandpa cup should expose the full retained liquid volume, including leaf-held liquid');
 assertMassBalance(cup);
+
+const optimized = optimizePhysicalSchedule({
+  simulation: {
+    tea,
+    leafMassGrams: 5,
+    waterVolumeMl: 100,
+    waterTempC: 85,
+    requestedSteepsCount: 3,
+    waterHardnessLevel: 'optimal',
+    vesselMaterial: 'porcelain',
+    brewingMethod: 'gongfu',
+    optimizationGoal: 'balanced',
+    zeroInfusion: { enabled: false, durationSec: 0, temperatureC: 85, waterVolumeMl: 100 },
+  },
+  userDurations: [11, null, 19],
+  userTemperaturesC: [null, 78, null],
+  optimizeTemperatures: true,
+});
+assert.equal(optimized.durations.length, 3);
+assert.equal(optimized.durations[0], 11, 'Explicit user durations must stay fixed');
+assert.equal(optimized.durations[2], 19, 'Explicit user durations must stay fixed');
+assert.equal(optimized.temperaturesC[1], 78, 'Explicit user temperatures must stay fixed');
+assert.ok(optimized.durations.every((seconds) => seconds > 0 && seconds <= 300));
 
 console.log('Physical brewing model checks passed.');
