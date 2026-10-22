@@ -98,8 +98,8 @@ const disabledProfileRinse = resolveZeroInfusionOptions({
   waterTempC: 100,
   waterVolumeMl: 100,
 });
-assert.equal(disabledProfileRinse.enabled, false,
-  'An explicit disabled profile should override archetype-based rinse heuristics');
+assert.equal(disabledProfileRinse.enabled, true,
+  'A profile setting must not suppress a zero infusion required by the tea itself');
 
 const greenPrior = TEA_ARCHETYPE_EXTRACTION_PRIORS.green;
 assert.ok(greenPrior?.caffeine?.sourceCitation?.includes(TEA_EXTRACTION_REFERENCE_SOURCE.doi),
