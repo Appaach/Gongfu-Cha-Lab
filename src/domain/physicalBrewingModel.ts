@@ -1124,6 +1124,252 @@ export function simulatePhysicalBrewing(input: PhysicalBrewingInput): PhysicalBr
   return runPhysicalSimulation(input);
 }
 
+
+export interface PhysicalParameterOptimizationInput {
+  tea: TeaVariety;
+  seed: {
+    waterVolumeMl: number;
+    leafMassGrams: number;
+    waterTempC: number;
+    steepsCount: number;
+  };
+  /** A numeric value fixes that parameter; null/undefined lets the optimizer search. */
+  fixed?: {
+    waterVolumeMl?: number | null;
+    leafMassGrams?: number | null;
+    waterTempC?: number | null;
+    steepsCount?: number | null;
+  };
+  brewingMethod?: BrewingMethod;
+  optimizationGoal?: OptimizationGoal;
+  waterHardnessLevel?: WaterHardnessLevel;
+  vesselMaterial?: VesselMaterialType;
+  rootFraction?: number;
+  zeroInfusion?: ZeroInfusionOptions;
+  /** Explicit times stay fixed at their indexes. */
+  userDurations?: (number | null)[];
+  /** Explicit temperatures stay fixed at their indexes. */
+  userTemperaturesC?: (number | null)[];
+  /** False when the UI uses a per-steep dynamic temperature schedule. */
+  optimizeBaseTemperature?: boolean;
+  targetSteepIndex?: number;
+}
+
+export interface PhysicalParameterOptimizationResult {
+  waterVolumeMl: number;
+  leafMassGrams: number;
+  waterTempC: number;
+  steepsCount: number;
+  ratio: number;
+  objectiveScore: number;
+  baselineScore: number;
+  optimizedParameters: ('waterVolumeMl' | 'leafMassGrams' | 'waterTempC' | 'steepsCount')[];
+  summaryRu: string;
+}
+
+function uniqueNumbers(values: number[], places = 1): number[] {
+  const scale = 10 ** places;
+  return [...new Set(values.map((value) => Math.round(value * scale) / scale))];
+}
+
+function parameterCandidates(
+  key: 'waterVolumeMl' | 'leafMassGrams' | 'waterTempC' | 'steepsCount',
+  current: number,
+  tea: TeaVariety,
+  seed: PhysicalParameterOptimizationInput['seed'],
+  minimumSteeps = 1,
+  optimizeBaseTemperature = true,
+): number[] {
+  if (key === 'waterVolumeMl') {
+    return uniqueNumbers([
+      current * 0.75,
+      current * 0.9,
+      current,
+      current * 1.1,
+      current * 1.25,
+      tea.defaultVolume,
+    ].map((value) => clamp(Math.round(value / 10) * 10, 30, 1000)), 0);
+  }
+  if (key === 'leafMassGrams') {
+    return uniqueNumbers([
+      current * 0.7,
+      current * 0.85,
+      current,
+      current * 1.15,
+      current * 1.3,
+      tea.defaultMass,
+    ].map((value) => clamp(Math.round(value * 2) / 2, 0.5, 40)), 1);
+  }
+  if (key === 'waterTempC') {
+    if (!optimizeBaseTemperature) return [clamp(current, 40, 100)];
+    const [minTemp, maxTemp] = tea.tempRange;
+    return uniqueNumbers([
+      current - 8,
+      current - 4,
+      current,
+      current + 4,
+      current + 8,
+      tea.optimalTemp,
+    ].map((value) => clamp(Math.round(value), Math.max(40, minTemp), Math.min(100, maxTemp))), 0);
+  }
+  return uniqueNumbers([
+    current - 2,
+    current - 1,
+    current,
+    current + 1,
+    current + 2,
+    tea.recommendedSteeps,
+  ].map((value) => clamp(Math.round(value), minimumSteeps, 20)), 0);
+}
+
+/**
+ * Outer coordinate descent for the main brew parameters. It evaluates the same
+ * physical extraction engine used by the live simulator, then lets the schedule
+ * optimizer refine individual steep times/temperatures for the selected recipe.
+ *
+ * Hard user locks are immutable. Water hardness, vessel, brew method, and root
+ * fraction are experimental conditions selected by the user, not variables to
+ * optimize away. Sensory utility is still an uncalibrated proxy.
+ */
+export function optimizePhysicalBrewingParameters(
+  input: PhysicalParameterOptimizationInput,
+): PhysicalParameterOptimizationResult {
+  const tea = input.tea;
+  const method = input.brewingMethod ?? 'gongfu';
+  const goal = input.optimizationGoal ?? 'balanced';
+  const fixed = input.fixed ?? {};
+  const userDurations = input.userDurations ?? [];
+  const userTemps = input.userTemperaturesC ?? [];
+  const targetSteepIndex = input.targetSteepIndex ?? 0;
+  const seed = {
+    waterVolumeMl: clamp(fixed.waterVolumeMl ?? input.seed.waterVolumeMl, 30, 1000),
+    leafMassGrams: clamp(fixed.leafMassGrams ?? input.seed.leafMassGrams, 0.5, 40),
+    waterTempC: clamp(fixed.waterTempC ?? input.seed.waterTempC, 40, 100),
+    steepsCount: clamp(Math.round(fixed.steepsCount ?? input.seed.steepsCount), 1, 20),
+  };
+  const values = { ...seed };
+  const minimumSteeps = Math.max(1, Math.min(20, userDurations.reduce(
+    (maxIndex, seconds, index) => seconds !== null && seconds !== undefined && seconds > 0
+      ? Math.max(maxIndex, index + 1)
+      : maxIndex,
+    1,
+  )));
+  const fixedKeys = new Set<keyof typeof values>();
+  (Object.keys(fixed) as (keyof typeof values)[]).forEach((key) => {
+    if (fixed[key] !== null && fixed[key] !== undefined) fixedKeys.add(key);
+  });
+  if (!input.optimizeBaseTemperature && !fixedKeys.has('waterTempC')) fixedKeys.add('waterTempC');
+
+  const makeDurations = (count: number) => Array.from({ length: count }, (_, index) => {
+    const explicit = userDurations[index];
+    return explicit !== null && explicit !== undefined && explicit > 0
+      ? clamp(explicit, 1, 3600)
+      : defaultDurationForStage(tea, method, index);
+  });
+  const makeTemperatures = (count: number, baseTemp: number) => Array.from({ length: count }, (_, index) => {
+    const explicit = userTemps[index];
+    return explicit !== null && explicit !== undefined && explicit > 0
+      ? clamp(explicit, 40, 100)
+      : baseTemp;
+  });
+
+  const ratioReference = clamp(input.seed.waterVolumeMl / Math.max(0.5, input.seed.leafMassGrams), 2, 300);
+  const evaluate = (candidate: typeof values): number => {
+    const count = Math.max(1, Math.round(candidate.steepsCount));
+    const durations = makeDurations(count);
+    const temperatures = makeTemperatures(count, candidate.waterTempC);
+    const zeroInfusion = input.zeroInfusion
+      ? {
+          ...input.zeroInfusion,
+          waterVolumeMl: tea.zeroInfusionProfile?.waterVolumeMl
+            ?? (input.zeroInfusion.enabled ? candidate.waterVolumeMl : candidate.waterVolumeMl),
+        }
+      : undefined;
+    const result = runPhysicalSimulation({
+      tea,
+      leafMassGrams: candidate.leafMassGrams,
+      waterVolumeMl: candidate.waterVolumeMl,
+      waterTempC: candidate.waterTempC,
+      durations,
+      requestedSteepsCount: count,
+      waterHardnessLevel: input.waterHardnessLevel,
+      vesselMaterial: input.vesselMaterial,
+      optimizationGoal: goal,
+      brewingMethod: method,
+      rootFraction: input.rootFraction,
+      perSteepTempsC: temperatures,
+      zeroInfusion,
+    });
+    const baseUtility = scheduleUtility(result, goal, targetSteepIndex);
+    const ratio = candidate.waterVolumeMl / Math.max(0.5, candidate.leafMassGrams);
+    // Regularize against extreme strength/dilution and avoid pushing all parameters
+    // to bounds simply because an uncalibrated sensory proxy rewards concentration.
+    const ratioPenalty = 0.85 * Math.abs(Math.log(Math.max(0.1, ratio) / ratioReference));
+    const massPenalty = 0.12 * Math.abs(Math.log(candidate.leafMassGrams / seed.leafMassGrams));
+    const volumePenalty = 0.1 * Math.abs(Math.log(candidate.waterVolumeMl / seed.waterVolumeMl));
+    const countPenalty = goal === 'max_longevity'
+      ? 0
+      : 0.025 * Math.abs(candidate.steepsCount - seed.steepsCount);
+    return baseUtility - ratioPenalty - massPenalty - volumePenalty - countPenalty;
+  };
+
+  const baselineScore = evaluate(values);
+  let bestScore = baselineScore;
+  const keys: (keyof typeof values)[] = [
+    'waterVolumeMl',
+    'leafMassGrams',
+    'waterTempC',
+    'steepsCount',
+  ];
+  // Two fast deterministic passes are sufficient for the UI; the schedule solver
+  // subsequently performs a local search over durations and (when enabled) temperatures.
+  for (let pass = 0; pass < 2; pass += 1) {
+    for (const key of keys) {
+      if (fixedKeys.has(key)) continue;
+      const candidates = parameterCandidates(
+        key,
+        values[key],
+        tea,
+        seed,
+        minimumSteeps,
+        input.optimizeBaseTemperature !== false,
+      );
+      let localValue = values[key];
+      let localScore = bestScore;
+      for (const candidateValue of candidates) {
+        const trial = { ...values, [key]: candidateValue };
+        if (key === 'steepsCount' && trial.steepsCount < minimumSteeps) continue;
+        const score = evaluate(trial);
+        if (score > localScore + 1e-6) {
+          localScore = score;
+          localValue = candidateValue;
+        }
+      }
+      values[key] = localValue;
+      bestScore = evaluate(values);
+    }
+  }
+
+  const optimizedParameters = keys.filter((key) =>
+    Math.abs(values[key] - seed[key]) > 1e-6 && !fixedKeys.has(key),
+  );
+  return {
+    ...values,
+    ratio: round(values.waterVolumeMl / Math.max(0.5, values.leafMassGrams), 1),
+    objectiveScore: round(bestScore, 3),
+    baselineScore: round(baselineScore, 3),
+    optimizedParameters,
+    summaryRu: optimizedParameters.length === 0
+      ? 'Параметры сохранены: доступные улучшения ограничены заданными вами условиями.'
+      : 'Физический подбор изменил: ' + optimizedParameters.map((key) => ({
+          waterVolumeMl: 'объём воды',
+          leafMassGrams: 'массу чая',
+          waterTempC: 'базовую температуру',
+          steepsCount: 'число проливов',
+        })[key]).join(', ') + '. Время и индивидуальные температуры дополнительно уточняются отдельным поиском расписания.',
+  };
+}
+
 export function resolveZeroInfusionOptions(args: {
   tea: TeaVariety;
   waterTempC: number;
