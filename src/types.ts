@@ -196,8 +196,8 @@ export interface SteepKineticData {
   caffeineConcentration: number; // mg/100ml
   catechinsConcentration: number; // mg/100ml
   polysaccharidesConcentration: number; // mg/100ml
-  volatilesIntensity: number; // score 0-100
-  tdsPpm: number; // Total Dissolved Solids in mg/L (ppm)
+  volatilesIntensity: number; // legacy compatibility field; only meaningful when aromaBasis is chemical
+  tdsPpm: number; // modeled tracked-solute proxy in mg/L; not a laboratory TDS measurement
   cumulativeExtractionYieldPercent: number; // estimated mass of tracked compounds extracted, as % of dry leaf mass; not total extract yield
   theanineToCatechinsRatio: number; // Umami-to-astringency balance index
   egcConcentration?: number; // mg/100ml non-esterified sweet catechin (EGC)
@@ -213,7 +213,7 @@ export interface SteepKineticData {
     bitterness: number; // 0-10
     astringency: number; // 0-10
     body: number; // 0-10
-    aroma: number; // 0-10
+    aroma: number; // 0-10 only when aromaBasis is chemical; otherwise informational placeholder
   };
   keyNotes: string;
   scientificReferenceRu: string;
