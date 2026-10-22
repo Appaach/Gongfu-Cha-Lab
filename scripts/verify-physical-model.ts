@@ -73,6 +73,24 @@ const mandatoryRinseEvenWithZeroUserTime = resolveZeroInfusionOptions({
 assert.equal(mandatoryRinseEvenWithZeroUserTime.enabled, true,
   'A non-positive custom duration must not suppress a mandatory zero infusion');
 
+const forcedProfileRinse = resolveZeroInfusionOptions({
+  tea: { ...tea, zeroInfusionProfile: { policy: 'enabled' } },
+  waterTempC: 85,
+  waterVolumeMl: 100,
+});
+assert.equal(forcedProfileRinse.enabled, true,
+  'An explicit enabled profile should force a zero infusion even for a delicate tea archetype');
+assert.equal(forcedProfileRinse.durationSec, 5,
+  'A required profile with no duration should receive an explicitly estimated safe starting value');
+
+const disabledProfileRinse = resolveZeroInfusionOptions({
+  tea: { ...rinseTea, zeroInfusionProfile: { policy: 'disabled' } },
+  waterTempC: 100,
+  waterVolumeMl: 100,
+});
+assert.equal(disabledProfileRinse.enabled, false,
+  'An explicit disabled profile should override archetype-based rinse heuristics');
+
 const greenPrior = TEA_ARCHETYPE_EXTRACTION_PRIORS.green;
 assert.ok(greenPrior?.caffeine?.sourceCitation?.includes(TEA_EXTRACTION_REFERENCE_SOURCE.doi),
   'The fitted caffeine prior should keep its published source citation');
