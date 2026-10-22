@@ -1057,7 +1057,7 @@ export function resolveZeroInfusionOptions(args: {
           : policy === 'recommended'
             ? true
             : policy === 'optional'
-              ? false
+              ? true
               : rinse.required;
   return {
     enabled: enabledByPolicy && durationSec > 0,
