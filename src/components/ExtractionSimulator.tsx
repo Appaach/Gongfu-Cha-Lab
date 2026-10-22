@@ -57,7 +57,7 @@ import {
   calculateAdaptiveCustomBrewing,
   calculateDynamicSteepTemperatures
 } from '../utils/extractionKinetics';
-import { simulatePhysicalBrewing, resolveZeroInfusionOptions } from '../domain/physicalBrewingModel';
+import { simulatePhysicalBrewing, resolveZeroInfusionOptions, optimizePhysicalSchedule } from '../domain/physicalBrewingModel';
 import { loadAppSettings } from '../utils/appSettings';
 import { 
   matchTeaSearch, 
@@ -1080,31 +1080,37 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     return selectedTea.type === 'shou_puerh' || selectedTea.type === 'heicha' ? 100 : waterTemp;
   }, [appSettings.useDynamicTemperatures, dynamicTemperatures, customRinseTemp, optimizationGoal, selectedTea, waterTemp]);
 
-  // Run one shared physical simulation. Steep #0 and the main steeps share the same
-  // leaf pools, liquid state, temperature model and mass balance.
-  const physicalSimulation = useMemo(() => {
-    const perSteepTemps = appSettings.useDynamicTemperatures
+  const zeroInfusionOptions = useMemo(() => resolveZeroInfusionOptions({
+    tea: selectedTea,
+    waterTempC: waterTemp,
+    waterVolumeMl: waterVolume,
+    optimizationGoal,
+    customDurationSec: customRinseTime,
+    customTemperatureC: appSettings.useDynamicTemperatures
+      ? dynamicTemperatures.rinseTempC
+      : customRinseTemp,
+    isCustomTime: customRinseTime !== null,
+    isCustomTemperature: appSettings.useDynamicTemperatures
+      ? dynamicTemperatures.isCustomRinseTemp
+      : customRinseTemp !== null,
+  }), [
+    selectedTea,
+    waterTemp,
+    waterVolume,
+    optimizationGoal,
+    customRinseTime,
+    customRinseTemp,
+    appSettings.useDynamicTemperatures,
+    dynamicTemperatures,
+  ]);
+
+  // Search a small, deterministic set of time/temperature candidates by running the
+  // same physical model. Explicitly edited times and temperatures are treated as fixed.
+  const physicalSchedule = useMemo(() => {
+    const initialTemperatures = appSettings.useDynamicTemperatures
       ? dynamicTemperatures.steepTempsC
       : Array(steepsCount).fill(waterTemp);
-    const customTempFlags = appSettings.useDynamicTemperatures
-      ? dynamicTemperatures.isCustomSteepTemp
-      : Array(steepsCount).fill(false);
-    const zeroInfusion = resolveZeroInfusionOptions({
-      tea: selectedTea,
-      waterTempC: waterTemp,
-      waterVolumeMl: waterVolume,
-      optimizationGoal,
-      customDurationSec: customRinseTime,
-      customTemperatureC: appSettings.useDynamicTemperatures
-        ? dynamicTemperatures.rinseTempC
-        : customRinseTemp,
-      isCustomTime: customRinseTime !== null,
-      isCustomTemperature: appSettings.useDynamicTemperatures
-        ? dynamicTemperatures.isCustomRinseTemp
-        : customRinseTemp !== null,
-    });
-
-    return simulatePhysicalBrewing({
+    const simulationInput = {
       tea: selectedTea,
       leafMassGrams: leafMass,
       waterVolumeMl: waterVolume,
@@ -1117,13 +1123,22 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
       optimizationGoal,
       brewingMethod,
       rootFraction,
-      perSteepTempsC: perSteepTemps,
-      customTempFlags,
+      perSteepTempsC: initialTemperatures,
+      customTempFlags: appSettings.useDynamicTemperatures
+        ? dynamicTemperatures.isCustomSteepTemp
+        : Array(steepsCount).fill(false),
       zeroInfusion: {
-        ...zeroInfusion,
-        waterVolumeMl: zeroInfusion.enabled ? zeroInfusion.waterVolumeMl : waterVolume,
-        disposition: zeroInfusion.disposition ?? 'discard',
+        ...zeroInfusionOptions,
+        waterVolumeMl: zeroInfusionOptions.enabled ? zeroInfusionOptions.waterVolumeMl : waterVolume,
+        disposition: zeroInfusionOptions.disposition ?? 'discard',
       },
+    };
+    return optimizePhysicalSchedule({
+      simulation: simulationInput,
+      userDurations: customSteepTimes,
+      userTemperaturesC: appSettings.useDynamicTemperatures ? customSteepTemps : [],
+      optimizeTemperatures: appSettings.useDynamicTemperatures,
+      targetSteepIndex: 1,
     });
   }, [
     selectedTea,
@@ -1138,8 +1153,47 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     optimizationGoal,
     brewingMethod,
     rootFraction,
-    customRinseTime,
-    customRinseTemp,
+    zeroInfusionOptions,
+    customSteepTimes,
+    customSteepTemps,
+    appSettings.useDynamicTemperatures,
+    dynamicTemperatures,
+  ]);
+
+  const physicalSimulation = useMemo(() => {
+    return simulatePhysicalBrewing({
+      tea: selectedTea,
+      leafMassGrams: leafMass,
+      waterVolumeMl: waterVolume,
+      waterTempC: waterTemp,
+      durations: physicalSchedule.durations,
+      requestedSteepsCount: steepsCount,
+      waterHardnessLevel: waterHardness,
+      vesselMaterial,
+      customFlags: effectiveCustomFlags,
+      optimizationGoal,
+      brewingMethod,
+      rootFraction,
+      perSteepTempsC: physicalSchedule.temperaturesC,
+      customTempFlags: appSettings.useDynamicTemperatures
+        ? dynamicTemperatures.isCustomSteepTemp
+        : Array(steepsCount).fill(false),
+      zeroInfusion: zeroInfusionOptions,
+    });
+  }, [
+    selectedTea,
+    leafMass,
+    waterVolume,
+    waterTemp,
+    physicalSchedule,
+    steepsCount,
+    waterHardness,
+    vesselMaterial,
+    effectiveCustomFlags,
+    optimizationGoal,
+    brewingMethod,
+    rootFraction,
+    zeroInfusionOptions,
     appSettings.useDynamicTemperatures,
     dynamicTemperatures,
   ]);
