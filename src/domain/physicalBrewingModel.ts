@@ -622,7 +622,22 @@ function runPhysicalSimulation(input: PhysicalBrewingInput): PhysicalBrewingResu
   ];
   if (thermal.sourceStatus !== 'measured') notes.push('Тепловые параметры посуды имеют статус ' + thermal.sourceStatus + '.');
 
-  const modelConfidence = initial.confidence;
+  const hardnessLevel = input.waterHardnessLevel ?? 'optimal';
+  const waterResponseProfile = tea.physicsProfile?.waterResponseByHardness;
+  const hasCompoundWaterResponse = KEYS.every((key) => {
+    const direct = waterResponseProfile?.[key]?.[hardnessLevel];
+    const aggregate = (key === 'egc' || key === 'egcg')
+      ? waterResponseProfile?.catechins?.[hardnessLevel]
+      : undefined;
+    return direct !== undefined || aggregate !== undefined;
+  });
+  const thermalCalibrated = thermal.sourceStatus === 'measured' || thermal.sourceStatus === 'calibrated';
+  const modelConfidence: 'low' | 'medium' | 'high' =
+    initial.confidence === 'high' && thermalCalibrated && hasCompoundWaterResponse
+      ? 'high'
+      : initial.confidence !== 'low' && thermalCalibrated && hasCompoundWaterResponse
+        ? 'medium'
+        : 'low';
   const hardnessMultipliers = hardnessMultipliersFor(tea, input.waterHardnessLevel);
   const fastFraction = initial.fastFraction;
   const leafRetentionMl = clamp(
