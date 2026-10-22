@@ -301,9 +301,13 @@ function createInitialPools(tea: TeaVariety, leafMassGrams: number): InitialPool
 function getThermalProfile(material?: VesselMaterialType) {
   const vessel = VESSEL_MATERIALS.find((item) => item.id === (material ?? 'porcelain')) ?? VESSEL_MATERIALS[0];
   const profile = vessel.thermalProfile;
+  // Until measured vessel profiles are available, preserve only the relative cooling
+  // ordering in the legacy heat-loss field; this is an estimated prior, not calibration.
+  const legacyHeatLoss = Math.max(0.1, vessel.heatLossPerSteepC || 4.5);
   return {
     effectiveHeatCapacityJPerK: profile?.effectiveHeatCapacityJPerK ?? 90,
-    timeConstantSecAt100Ml: profile?.timeConstantSecAt100Ml ?? 280,
+    timeConstantSecAt100Ml: profile?.timeConstantSecAt100Ml
+      ?? clamp(280 * (4.5 / legacyHeatLoss), 30, 3600),
     sourceStatus: profile?.sourceStatus ?? 'estimated',
   };
 }
@@ -575,7 +579,7 @@ function runPhysicalSimulation(input: PhysicalBrewingInput): PhysicalBrewingResu
   const notes: string[] = [
     'Начальные запасы и кинетические параметры не измерены для индивидуальной партии; используются типовые оценочные значения.',
     'Поправка по категории жёсткости воды является эвристикой, а не универсальным химическим законом.',
-    'Профили охлаждения посуды по умолчанию оценочные и требуют экспериментальной калибровки.',
+    'Профили охлаждения посуды оценочные: относительный порядок унаследован из legacy heatLossPerSteepC и требует экспериментальной калибровки.',
   ];
   if (thermal.sourceStatus !== 'measured') notes.push('Тепловые параметры посуды имеют статус ' + thermal.sourceStatus + '.');
 
@@ -1026,16 +1030,19 @@ export function resolveZeroInfusionOptions(args: {
   const rinse = getTeaRinseInfo(args.tea, effectiveTemp, args.optimizationGoal);
   const profile = args.tea.zeroInfusionProfile;
   const durationSec = args.customDurationSec ?? profile?.durationSec ?? rinse.seconds;
+  const hasExplicitDuration = args.customDurationSec !== null && args.customDurationSec !== undefined;
   const policy = profile?.policy;
-  const enabledByPolicy = policy === 'disabled'
-    ? false
-    : policy === 'enabled'
-      ? true
-      : profile?.enabled !== undefined
-        ? profile.enabled
-        : policy === 'optional'
-          ? (profile.enabled ?? rinse.required)
-          : rinse.required;
+  const enabledByPolicy = hasExplicitDuration
+    ? (args.customDurationSec ?? 0) > 0
+    : policy === 'disabled'
+      ? false
+      : policy === 'enabled'
+        ? true
+        : profile?.enabled !== undefined
+          ? profile.enabled
+          : policy === 'optional'
+            ? (profile.enabled ?? rinse.required)
+            : rinse.required;
   return {
     enabled: enabledByPolicy && durationSec > 0,
     durationSec: clamp(durationSec, 0, 3600),
