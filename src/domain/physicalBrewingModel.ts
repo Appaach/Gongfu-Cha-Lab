@@ -1077,6 +1077,8 @@ export function resolveZeroInfusionOptions(args: {
   customTemperatureC?: number | null;
   isCustomTime?: boolean;
   isCustomTemperature?: boolean;
+  /** Explicit UI toggle wins over preset policy and custom default duration. */
+  enabledOverride?: boolean | null;
 }): ZeroInfusionOptions {
   const effectiveTemp = args.customTemperatureC ?? args.waterTempC;
   const rinse = getTeaRinseInfo(args.tea, effectiveTemp, args.optimizationGoal);
@@ -1084,17 +1086,17 @@ export function resolveZeroInfusionOptions(args: {
   const durationSec = args.customDurationSec ?? profile?.durationSec ?? rinse.seconds;
   const hasExplicitDuration = args.customDurationSec !== null && args.customDurationSec !== undefined;
   const policy = profile?.policy;
-  const enabledByPolicy = hasExplicitDuration
-    ? (args.customDurationSec ?? 0) > 0
-    : policy === 'disabled'
-      ? false
-      : policy === 'enabled'
-        ? true
-        : profile?.enabled !== undefined
-          ? profile.enabled
-          : policy === 'recommended'
-            ? true
-            : policy === 'optional'
+  const enabledByPolicy = args.enabledOverride !== null && args.enabledOverride !== undefined
+    ? args.enabledOverride
+    : hasExplicitDuration
+      ? (args.customDurationSec ?? 0) > 0
+      : policy === 'disabled'
+        ? false
+        : policy === 'enabled'
+          ? true
+          : profile?.enabled !== undefined
+            ? profile.enabled
+            : policy === 'recommended' || policy === 'optional'
               ? true
               : rinse.required;
   return {
