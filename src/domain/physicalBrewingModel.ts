@@ -11,6 +11,11 @@ import {
   getTeaRinseInfo,
   VESSEL_MATERIALS,
 } from '../data/teaData';
+import {
+  TEA_ARCHETYPE_EXTRACTION_PRIORS,
+  TEA_CALIBRATION_NOTES_RU,
+  TEA_EXTRACTION_REFERENCE_SOURCE,
+} from '../data/teaExtractionCalibration';
 
 type PoolKey = 'theanine' | 'caffeine' | 'egc' | 'egcg' | 'polysaccharides';
 type PoolPair = { fast: number; slow: number };
@@ -192,6 +197,13 @@ function defaultFastFraction(tea: TeaVariety): number {
   }
 }
 
+function literaturePriorFor(tea: TeaVariety, key: TrackedTeaCompound) {
+  if (key === 'caffeine' || key === 'theanine') {
+    return TEA_ARCHETYPE_EXTRACTION_PRIORS[tea.type]?.[key];
+  }
+  return undefined;
+}
+
 function createInitialPools(tea: TeaVariety, leafMassGrams: number): InitialPools {
   const defaults = defaultPoolsPerGram(tea);
   const profile = tea.physicsProfile?.compounds;
@@ -199,17 +211,22 @@ function createInitialPools(tea: TeaVariety, leafMassGrams: number): InitialPool
   const mass = Math.max(0.1, leafMassGrams);
 
   const initialMg = (key: TrackedTeaCompound, fallbackMgPerG: number): number => {
-    const total = profile?.[key]?.initialMgPerG ?? fallbackMgPerG;
+    const total = profile?.[key]?.initialMgPerG ?? literaturePriorFor(tea, key)?.initialMgPerG ?? fallbackMgPerG;
     // Return total compound mass here; extractableFraction is applied exactly once in addPool.
     return Math.max(0, total) * mass;
   };
 
   const addPool = (key: PoolKey, totalMg: number, sourceKey: TrackedTeaCompound): void => {
     const parameter = profile?.[sourceKey];
+    const literaturePrior = literaturePriorFor(tea, sourceKey);
     const aggregateCatechinFraction = key === 'egc' || key === 'egcg'
       ? profile?.catechins?.extractableFraction
       : undefined;
-    const availableFraction = clamp(parameter?.extractableFraction ?? aggregateCatechinFraction ?? 1, 0, 1);
+    const availableFraction = clamp(
+      parameter?.extractableFraction ?? aggregateCatechinFraction ?? literaturePrior?.extractableFraction ?? 1,
+      0,
+      1,
+    );
     const availableMg = Math.max(0, totalMg) * availableFraction;
     const fastFraction = defaultFastFraction(tea);
     pool[key] = {
@@ -266,9 +283,10 @@ function createInitialPools(tea: TeaVariety, leafMassGrams: number): InitialPool
     const profileKey: TrackedTeaCompound = key === 'egc' || key === 'egcg' ? key : key;
     const specific = profile?.[profileKey];
     const aggregate = key === 'egc' || key === 'egcg' ? profile?.catechins : undefined;
+    const literaturePrior = literaturePriorFor(tea, profileKey);
     const fallback = fallbackKinetics[key];
-    let rate = specific?.rateAt85CPerSec ?? aggregate?.rateAt85CPerSec ?? fallback.rateAt85CPerSec;
-    let ea = specific?.activationEnergyKJMol ?? aggregate?.activationEnergyKJMol ?? fallback.activationEnergyKJMol;
+    let rate = specific?.rateAt85CPerSec ?? aggregate?.rateAt85CPerSec ?? literaturePrior?.rateAt85CPerSec ?? fallback.rateAt85CPerSec;
+    let ea = specific?.activationEnergyKJMol ?? aggregate?.activationEnergyKJMol ?? literaturePrior?.activationEnergyKJMol ?? fallback.activationEnergyKJMol;
     if ((key === 'egc' || key === 'egcg') && specific?.rateAt85CPerSec === undefined && aggregate?.rateAt85CPerSec !== undefined) {
       rate *= key === 'egc' ? 1.15 : 0.65;
     }
@@ -282,7 +300,8 @@ function createInitialPools(tea: TeaVariety, leafMassGrams: number): InitialPool
     const specificParameter = profile?.[key];
     const usesAggregateCatechinFallback = (key === 'egc' || key === 'egcg') && specificParameter === undefined;
     const parameter = specificParameter
-      ?? (key === 'egc' || key === 'egcg' ? profile?.catechins : undefined);
+      ?? (key === 'egc' || key === 'egcg' ? profile?.catechins : undefined)
+      ?? literaturePriorFor(tea, key);
     const hasRequiredValues = !usesAggregateCatechinFallback
       && parameter?.initialMgPerG !== undefined
       && parameter?.rateAt85CPerSec !== undefined
@@ -616,10 +635,14 @@ function runPhysicalSimulation(input: PhysicalBrewingInput): PhysicalBrewingResu
     consumedFromSystemMg: 0,
   };
   const notes: string[] = [
-    'Начальные запасы и кинетические параметры не измерены для индивидуальной партии; используются типовые оценочные значения.',
+    'Начальные запасы и кинетические параметры не измерены для индивидуальной партии; используются типовые параметры архетипа.',
     'Поправка на жёсткость применяется только при наличии профиля waterResponseByHardness для конкретного соединения; иначе прямой химический эффект воды не откалиброван.',
     'Профили охлаждения посуды оценочные: относительный порядок унаследован из legacy heatLossPerSteepC и требует экспериментальной калибровки.',
+    ...TEA_CALIBRATION_NOTES_RU,
   ];
+  if (TEA_ARCHETYPE_EXTRACTION_PRIORS[tea.type]) {
+    notes.push('Источник аппроксимации кофеина и L-теанина: ' + TEA_EXTRACTION_REFERENCE_SOURCE.citation + ' (DOI: ' + TEA_EXTRACTION_REFERENCE_SOURCE.doi + ').');
+  }
   if (thermal.sourceStatus !== 'measured') notes.push('Тепловые параметры посуды имеют статус ' + thermal.sourceStatus + '.');
 
   const hardnessLevel = input.waterHardnessLevel ?? 'optimal';
