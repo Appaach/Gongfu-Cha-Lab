@@ -278,12 +278,6 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
   const [isGoalDropdownOpen, setIsGoalDropdownOpen] = useState(false);
   const [isVintageDropdownOpen, setIsVintageDropdownOpen] = useState(false);
   const [customRinseTime, setCustomRinseTime] = useState<number | null>(null);
-  const [zeroInfusionOverride, setZeroInfusionOverride] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    setZeroInfusionOverride(null);
-  }, [selectedTea.id]);
-
   // Dynamic current year (e.g. 2026, 2027) for vintage aging calculations
   const currentYear = useMemo(() => new Date().getFullYear(), []);
 
@@ -529,7 +523,6 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     setSelectedTeaId(tea.id);
     setSelectedSteepIndex(0);
     setCustomRinseTime(null);
-    setZeroInfusionOverride(null);
 
     // Restore saved vintage year if tea is in favorites, else default
     const favEntry = favoriteEntries.find((f) => f.id === tea.id);
@@ -841,7 +834,6 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     setSelectedTeaId(compositeTea.id);
     setSelectedSteepIndex(0);
     setCustomRinseTime(null);
-    setZeroInfusionOverride(null);
     setRawVolumeStr(null);
     setRawMassStr(null);
     setRawTempStr(null);
@@ -1044,7 +1036,6 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     waterVolumeMl: waterVolume,
     optimizationGoal,
     customDurationSec: customRinseTime,
-    enabledOverride: zeroInfusionOverride,
     customTemperatureC: appSettings.useDynamicTemperatures
       ? dynamicTemperatures.rinseTempC
       : customRinseTemp,
@@ -1059,7 +1050,6 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     optimizationGoal,
     customRinseTime,
     customRinseTemp,
-    zeroInfusionOverride,
     appSettings.useDynamicTemperatures,
     dynamicTemperatures,
   ]);
@@ -1273,7 +1263,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
   }, [brewingMethod, simulationResults, waterTemp, waterVolume, steepsCount, physicalSchedule.durations, rootFraction, vesselMaterial]);
 
   return (
-    <div className="space-y-6">
+    <div className="tea-lab-shell space-y-6">
       {/* Top Utility Bar: Base Selector (Generic, Popular Teas, Favorites, Blending Studio) */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white p-3 sm:px-4 rounded-xl border border-stone-200 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
@@ -3667,7 +3657,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
           {appSettings.advancedMode && (
             <div className="pt-2 border-t border-stone-100 text-xs space-y-2 text-stone-600">
               <div className="flex justify-between">
-                <span>Суммарный выход экстракта (ISO 9768):</span>
+                <span>Суммарный выход отслеживаемых веществ:</span>
                 <span className="font-mono font-bold text-amber-900">{lastSteepYield}% отслеживаемых веществ от массы листа</span>
               </div>
               <div className="flex justify-between">
@@ -3709,20 +3699,6 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
 
                 {/* Header Controls for Custom Steeps */}
                 <div className="flex flex-wrap items-center gap-2">
-                  <label className="inline-flex items-center gap-2 cursor-pointer select-none text-xs font-medium text-stone-700 bg-stone-50 hover:bg-stone-100 border border-stone-200 px-3 py-1.5 rounded-xl transition-colors shadow-2xs">
-                    <input
-                      type="checkbox"
-                      checked={isRinseEnabled}
-                      onChange={(e) => {
-                        const enabled = e.target.checked;
-                        if (enabled && customRinseTime !== null && customRinseTime <= 0) setCustomRinseTime(null);
-                        setZeroInfusionOverride(enabled);
-                      }}
-                      className="rounded border-stone-300 text-amber-800 focus:ring-amber-800 h-3.5 w-3.5 accent-amber-800 cursor-pointer"
-                    />
-                    <span>Нулевой пролив</span>
-                  </label>
-
                   <label className="inline-flex items-center gap-2 cursor-pointer select-none text-xs font-medium text-stone-700 bg-stone-50 hover:bg-stone-100 border border-stone-200 px-3 py-1.5 rounded-xl transition-colors shadow-2xs">
                     <input
                       type="checkbox"
@@ -4229,7 +4205,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                       </div>
 
                       <div>
-                        <div className="text-[11px] text-stone-500">Выход отслеживаемых веществ</div>
+                        <div className="text-[11px] text-stone-500">Выход отслеживаемых веществ*</div>
                         <div className="text-base font-bold font-mono text-amber-800 mt-0.5">
                           {currentSteepData.cumulativeExtractionYieldPercent}% <span className="text-xs font-normal text-stone-500">листа</span>
                         </div>
