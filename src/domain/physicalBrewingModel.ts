@@ -776,6 +776,235 @@ function runPhysicalSimulation(input: PhysicalBrewingInput): PhysicalBrewingResu
   };
 }
 
+
+export interface PhysicalScheduleOptimizationInput {
+  simulation: PhysicalBrewingInput;
+  /** Non-null entries are explicit user times and must remain fixed. */
+  userDurations?: (number | null)[];
+  /** Non-null entries are explicit user temperatures and must remain fixed. */
+  userTemperaturesC?: (number | null)[];
+  /** Only optimize temperatures when the user chose the dynamic-temperature mode. */
+  optimizeTemperatures?: boolean;
+  /** Index of the target steep for the bright-peak goal. */
+  targetSteepIndex?: number;
+}
+
+export interface PhysicalScheduleOptimizationResult {
+  durations: number[];
+  temperaturesC: number[];
+  objectiveScore: number;
+  optimizedDurationIndexes: number[];
+  optimizedTemperatureIndexes: number[];
+  objectiveDescriptionRu: string;
+}
+
+function defaultDurationForStage(tea: TeaVariety, method: BrewingMethod, index: number): number {
+  if (method === 'grandpa_cup') {
+    return index === 0 ? 120 : Math.min(240, 75 + index * 20);
+  }
+  let initial: number;
+  let increment: number;
+  if (tea.type === 'green' || tea.type === 'yellow') {
+    initial = 7;
+    increment = 4;
+  } else if (tea.type === 'white') {
+    initial = tea.leafMorphology === 'compressed_cake' ? 10 : 8;
+    increment = 5;
+  } else if (tea.type === 'shou_puerh' || tea.type === 'heicha') {
+    initial = 8;
+    increment = 7;
+  } else if (tea.leafMorphology === 'tight_ball' || tea.leafMorphology === 'compressed_cake') {
+    initial = 9;
+    increment = 5;
+  } else {
+    initial = 6;
+    increment = 5;
+  }
+  const methodFactor = method === 'liu_gen' ? 1.2 : 1;
+  return Math.round(clamp((initial + index * increment) * methodFactor, 2, 300));
+}
+
+function scheduleUtility(result: PhysicalBrewingResult, goal: OptimizationGoal | undefined, targetIndex: number): number {
+  const rows = result.steeps;
+  if (rows.length === 0) return -Infinity;
+  const rowQuality = (row: SteepKineticData): number => {
+    const s = row.sensoryScores;
+    return s.umami + s.sweetness + 0.65 * s.body - 0.8 * s.bitterness - 0.9 * s.astringency;
+  };
+  const average = (values: number[]): number => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
+  const quality = rows.map(rowQuality);
+  const gentleTimePenalty = rows.reduce((sum, row) => sum + row.timeSec, 0) * 0.0005;
+
+  switch (goal) {
+    case 'max_longevity': {
+      const viableStages = quality.filter((value) => value >= 4.5).length;
+      const balance = average(quality.map((value) => -Math.abs(value - 7)));
+      return viableStages * 4 + balance - gentleTimePenalty;
+    }
+    case 'oil_tar':
+    case 'body_density':
+      return average(rows.map((row) =>
+        1.25 * row.sensoryScores.body
+        + 0.55 * row.sensoryScores.astringency
+        + 0.25 * row.sensoryScores.bitterness
+        + 0.25 * row.sensoryScores.sweetness
+      )) - gentleTimePenalty;
+    case 'white_debitter':
+      return average(rows.map((row) =>
+        0.65 * row.sensoryScores.umami
+        + 0.9 * row.sensoryScores.sweetness
+        + 0.45 * row.sensoryScores.body
+        - 1.15 * row.sensoryScores.bitterness
+        - 1.35 * row.sensoryScores.astringency
+      )) - gentleTimePenalty;
+    case 'aroma_peak': {
+      const target = rows[Math.min(rows.length - 1, Math.max(0, targetIndex))] ?? rows[0];
+      return 2 * rowQuality(target) + 0.2 * average(quality) - gentleTimePenalty;
+    }
+    case 'umami_sweetness':
+      return average(rows.map((row) =>
+        row.sensoryScores.umami
+        + row.sensoryScores.sweetness
+        + 0.25 * row.sensoryScores.body
+        - 0.45 * row.sensoryScores.bitterness
+        - 0.55 * row.sensoryScores.astringency
+      )) - gentleTimePenalty;
+    case 'balanced':
+    default:
+      return average(quality) - gentleTimePenalty;
+  }
+}
+
+/**
+ * Coordinate-search scheduler using the shared physical simulation as its objective.
+ * The search is intentionally small and deterministic for responsive UI updates.
+ * Taste scores are currently uncalibrated proxies, so this is a heuristic optimizer,
+ * not a validated model of human preference.
+ */
+export function optimizePhysicalSchedule(
+  input: PhysicalScheduleOptimizationInput,
+): PhysicalScheduleOptimizationResult {
+  const simulation = input.simulation;
+  const method = simulation.brewingMethod ?? 'gongfu';
+  const tea = simulation.tea;
+  const count = Math.max(1, Math.min(20, Math.round(
+    simulation.requestedSteepsCount ?? simulation.durations?.length ?? tea.recommendedSteeps ?? 8,
+  )));
+  const durationMin = method === 'grandpa_cup' ? 30 : 2;
+  const durationMax = method === 'grandpa_cup' ? 600 : 300;
+  const baseTemp = clamp(simulation.waterTempC, 40, 100);
+  const durations = Array.from({ length: count }, (_, index) => {
+    const userValue = input.userDurations?.[index];
+    if (userValue !== null && userValue !== undefined && userValue > 0) {
+      return clamp(Math.round(userValue), durationMin, durationMax);
+    }
+    return defaultDurationForStage(tea, method, index);
+  });
+  const temperatures = Array.from({ length: count }, (_, index) => {
+    const userValue = input.userTemperaturesC?.[index];
+    const simulatedValue = simulation.perSteepTempsC?.[index] ?? baseTemp;
+    if (userValue !== null && userValue !== undefined && userValue > 0) {
+      return clamp(Math.round(userValue), 40, 100);
+    }
+    return clamp(Math.round(simulatedValue), tea.tempRange[0], tea.tempRange[1]);
+  });
+
+  const fixedDuration = durations.map((_, index) =>
+    input.userDurations?.[index] !== null
+    && input.userDurations?.[index] !== undefined
+    && (input.userDurations?.[index] ?? 0) > 0,
+  );
+  const fixedTemperature = temperatures.map((_, index) =>
+    input.userTemperaturesC?.[index] !== null
+    && input.userTemperaturesC?.[index] !== undefined
+    && (input.userTemperaturesC?.[index] ?? 0) > 0,
+  );
+  const optimizedDurationIndexes: number[] = [];
+  const optimizedTemperatureIndexes: number[] = [];
+  const allowTemperatureOptimization = Boolean(input.optimizeTemperatures);
+
+  const evaluate = (candidateDurations: number[], candidateTemps: number[]) => {
+    const result = runPhysicalSimulation({
+      ...simulation,
+      durations: candidateDurations,
+      requestedSteepsCount: candidateDurations.length,
+      perSteepTempsC: candidateTemps,
+    });
+    return scheduleUtility(result, simulation.optimizationGoal, input.targetSteepIndex ?? 1);
+  };
+
+  let bestScore = evaluate(durations, temperatures);
+  const durationMultipliers = [0.6, 0.85, 1, 1.25, 1.6];
+  const passes = count <= 12 ? 2 : 1;
+
+  for (let pass = 0; pass < passes; pass += 1) {
+    for (let index = 0; index < count; index += 1) {
+      const timeCandidates = fixedDuration[index]
+        ? [durations[index]]
+        : [...new Set(durationMultipliers.map((multiplier) =>
+          clamp(Math.round(durations[index] * multiplier), durationMin, durationMax),
+        ))];
+
+      let tempCandidates = [temperatures[index]];
+      if (allowTemperatureOptimization && !fixedTemperature[index]) {
+        const [minTemp, maxTemp] = tea.tempRange;
+        tempCandidates = [...new Set([
+          clamp(temperatures[index] - 4, minTemp, maxTemp),
+          clamp(temperatures[index], minTemp, maxTemp),
+          clamp(temperatures[index] + 4, minTemp, maxTemp),
+        ])];
+      }
+
+      let localBestScore = bestScore;
+      let localBestTime = durations[index];
+      let localBestTemp = temperatures[index];
+      for (const candidateTime of timeCandidates) {
+        for (const candidateTemp of tempCandidates) {
+          const testDurations = [...durations];
+          const testTemps = [...temperatures];
+          testDurations[index] = candidateTime;
+          testTemps[index] = candidateTemp;
+          const score = evaluate(testDurations, testTemps);
+          if (score > localBestScore) {
+            localBestScore = score;
+            localBestTime = candidateTime;
+            localBestTemp = candidateTemp;
+          }
+        }
+      }
+      if (localBestTime !== durations[index] && !fixedDuration[index]) {
+        durations[index] = localBestTime;
+        if (!optimizedDurationIndexes.includes(index)) optimizedDurationIndexes.push(index);
+      }
+      if (localBestTemp !== temperatures[index] && allowTemperatureOptimization && !fixedTemperature[index]) {
+        temperatures[index] = localBestTemp;
+        if (!optimizedTemperatureIndexes.includes(index)) optimizedTemperatureIndexes.push(index);
+      }
+      bestScore = evaluate(durations, temperatures);
+    }
+  }
+
+  const goalLabels: Record<OptimizationGoal, string> = {
+    balanced: 'сбалансированный профиль',
+    umami_sweetness: 'умами и сладость',
+    body_density: 'плотность и тело настоя',
+    aroma_peak: 'яркая вкусовая кульминация (аромат отдельно не моделируется)',
+    max_longevity: 'продолжительность качественных проливов',
+    oil_tar: 'плотный, терпкий настой',
+    white_debitter: 'снижение прогнозируемой горечи и терпкости',
+  };
+
+  return {
+    durations,
+    temperaturesC: temperatures,
+    objectiveScore: round(bestScore, 3),
+    optimizedDurationIndexes,
+    optimizedTemperatureIndexes,
+    objectiveDescriptionRu: 'Подбор расписания под цель: ' + goalLabels[simulation.optimizationGoal ?? 'balanced']
+      + '. Физические ограничения сохранены; сенсорная функция цели пока не калибрована на дегустационных данных.',
+  };
+}
+
 export function simulatePhysicalBrewing(input: PhysicalBrewingInput): PhysicalBrewingResult {
   return runPhysicalSimulation(input);
 }
