@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { GENERIC_TEA_ARCHETYPES } from '../src/data/teaData';
-import { optimizePhysicalSchedule, resolveZeroInfusionOptions, simulatePhysicalBrewing } from '../src/domain/physicalBrewingModel';
+import {
+  optimizePhysicalBrewingParameters,
+  optimizePhysicalSchedule,
+  resolveZeroInfusionOptions,
+  simulatePhysicalBrewing,
+} from '../src/domain/physicalBrewingModel';
 import {
   TEA_ARCHETYPE_CALIBRATION_DIAGNOSTICS,
   TEA_ARCHETYPE_EXTRACTION_PRIORS,
@@ -201,6 +206,31 @@ assert.ok((cup.steeps[1].retainedRootVolumeMl ?? 0) > 0,
 assert.ok((cup.steeps[1].retainedLiquidVolumeMl ?? 0) > 0,
   'Grandpa cup should expose the full retained liquid volume, including leaf-held liquid');
 assertMassBalance(cup);
+
+const jointParameters = optimizePhysicalBrewingParameters({
+  tea,
+  seed: { waterVolumeMl: 100, leafMassGrams: 5, waterTempC: 85, steepsCount: 3 },
+  fixed: { waterVolumeMl: 100, leafMassGrams: 5, waterTempC: null, steepsCount: null },
+  brewingMethod: 'gongfu',
+  optimizationGoal: 'balanced',
+  waterHardnessLevel: 'optimal',
+  vesselMaterial: 'porcelain',
+  zeroInfusion: { enabled: false, durationSec: 0, temperatureC: 85, waterVolumeMl: 100 },
+  userDurations: [8, 10, 14],
+  optimizeBaseTemperature: true,
+  targetSteepIndex: 1,
+});
+assert.equal(jointParameters.waterVolumeMl, 100,
+  'The joint physical optimizer must not change a fixed water volume');
+assert.equal(jointParameters.leafMassGrams, 5,
+  'The joint physical optimizer must not change a fixed leaf mass');
+assert.ok(jointParameters.waterTempC >= 40 && jointParameters.waterTempC <= 100,
+  'The joint physical optimizer should keep water temperature within physical UI limits');
+assert.ok(jointParameters.steepsCount >= 3 && jointParameters.steepsCount <= 20,
+  'The joint physical optimizer should preserve explicit steep indexes and stay within limits');
+assert.equal(jointParameters.ratio, 20,
+  'The final recommended water-to-tea ratio should match the fixed physical inputs');
+assert.ok(Number.isFinite(jointParameters.objectiveScore));
 
 const optimized = optimizePhysicalSchedule({
   simulation: {
