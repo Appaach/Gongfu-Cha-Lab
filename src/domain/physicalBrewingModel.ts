@@ -1149,8 +1149,11 @@ export function resolveZeroInfusionOptions(args: {
   const profileDuration = profile?.durationSec !== undefined && profile.durationSec > 0
     ? profile.durationSec
     : undefined;
+  // If an explicit profile marks the rinse as required but has no duration, start with
+  // an editable 5-second placeholder. This is a UI-safe default, not a calibrated optimum.
+  const fallbackDuration = rinse.seconds > 0 ? rinse.seconds : profileEligibility ? 5 : 0;
   const durationSec = profileEligibility
-    ? requestedDuration ?? profileDuration ?? rinse.seconds
+    ? requestedDuration ?? profileDuration ?? fallbackDuration
     : 0;
 
   return {
