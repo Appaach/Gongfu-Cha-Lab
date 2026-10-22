@@ -69,6 +69,41 @@ assert.ok(
 assertMassBalance(cooler);
 assertMassBalance(hotter);
 
+// Without a calibrated per-compound response profile, the new physical model does not
+// apply the old universal hardness multiplier to every compound.
+const hardWaterWithoutProfile = simulate({ waterHardnessLevel: 'hard' });
+assert.equal(
+  hardWaterWithoutProfile.steeps[0].caffeineConcentration,
+  base.steeps[0].caffeineConcentration,
+  'Hardness should not silently act as a universal chemistry multiplier without calibration',
+);
+
+const waterCalibratedTea = {
+  ...tea,
+  physicsProfile: {
+    sourceStatus: 'calibrated' as const,
+    validationStatus: 'calibrated' as const,
+    compounds: {
+      caffeine: {
+        initialMgPerG: 30,
+        extractableFraction: 0.8,
+        rateAt85CPerSec: 0.02,
+        activationEnergyKJMol: 24.5,
+        sourceStatus: 'calibrated' as const,
+      },
+    },
+    waterResponseByHardness: {
+      caffeine: { soft: 0.8, optimal: 1, hard: 1.2 },
+    },
+  },
+};
+const calibratedSoftWater = simulate({ tea: waterCalibratedTea, waterHardnessLevel: 'soft' });
+const calibratedHardWater = simulate({ tea: waterCalibratedTea, waterHardnessLevel: 'hard' });
+assert.ok(
+  calibratedHardWater.steeps[0].caffeineConcentration > calibratedSoftWater.steeps[0].caffeineConcentration,
+  'A configured, compound-specific water-response profile should affect that compound',
+);
+
 const liuGen = simulate({ brewingMethod: 'liu_gen', rootFraction: 0.33 });
 assert.ok((liuGen.steeps[1].retainedRootVolumeMl ?? 0) > 0,
   'Liu Gen should retain free root liquor between stages');
