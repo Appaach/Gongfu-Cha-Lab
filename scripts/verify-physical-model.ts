@@ -3,7 +3,9 @@ import { GENERIC_TEA_ARCHETYPES } from '../src/data/teaData';
 import { optimizePhysicalSchedule, resolveZeroInfusionOptions, simulatePhysicalBrewing } from '../src/domain/physicalBrewingModel';
 
 const tea = GENERIC_TEA_ARCHETYPES.find((item) => item.type === 'green');
-assert.ok(tea, 'A generic green tea archetype must exist');
+if (!tea) {
+  throw new Error('A generic green tea archetype must exist for model verification');
+}
 
 function simulate(overrides: Partial<Parameters<typeof simulatePhysicalBrewing>[0]> = {}) {
   return simulatePhysicalBrewing({
