@@ -1147,7 +1147,11 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
       requestedSteepsCount: steepsCount,
       waterHardnessLevel: waterHardness,
       vesselMaterial,
-      customFlags: effectiveCustomFlags,
+      customFlags: physicalSchedule.durations.map((_, index) => ({
+        isCustomUserTime: customSteepTimes[index] !== null && customSteepTimes[index] !== undefined && (customSteepTimes[index] ?? 0) > 0,
+        isAdaptedReference: (customSteepTimes[index] === null || customSteepTimes[index] === undefined)
+          && physicalSchedule.optimizedDurationIndexes.includes(index),
+      })),
       optimizationGoal,
       brewingMethod,
       rootFraction,
@@ -1166,7 +1170,6 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     steepsCount,
     waterHardness,
     vesselMaterial,
-    effectiveCustomFlags,
     optimizationGoal,
     brewingMethod,
     rootFraction,
@@ -4424,7 +4427,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
         targetSeconds={
           timerSteepIndex === -1
             ? (customRinseTime ?? teaRinseInfo.seconds)
-            : (simulationResults[timerSteepIndex]?.timeSec ?? computedAdaptiveDurations[timerSteepIndex] ?? 10)
+            : (simulationResults[timerSteepIndex]?.timeSec ?? physicalSchedule.baselineDurations[timerSteepIndex] ?? 10)
         }
         steepNumber={timerSteepIndex === -1 ? -1 : timerSteepIndex + 1}
         teaName={selectedTea.nameRu}
