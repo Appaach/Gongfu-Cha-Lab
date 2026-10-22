@@ -77,6 +77,63 @@ export type TeaEffectCategory =
   | 'warmth_comfort' 
   | 'digest_detox';
 
+export type ParameterSourceStatus =
+  | 'measured'
+  | 'calibrated'
+  | 'archetype'
+  | 'estimated'
+  | 'missing';
+
+/** Optional, provenance-aware parameters for the physical extraction model. */
+export interface CompoundPhysicsParameter {
+  /** Initial measured/estimated quantity in mg per g of dry tea leaf. */
+  initialMgPerG?: number;
+  /** Fraction of the total compound pool available to the modeled extraction. */
+  extractableFraction?: number;
+  /** Effective first-order extraction rate at 85 °C, in s^-1. */
+  rateAt85CPerSec?: number;
+  /** Effective activation energy in kJ/mol. */
+  activationEnergyKJMol?: number;
+  sourceStatus?: ParameterSourceStatus;
+}
+
+export type TrackedTeaCompound =
+  | 'theanine'
+  | 'caffeine'
+  | 'catechins'
+  | 'egc'
+  | 'egcg'
+  | 'polysaccharides';
+
+export interface TeaPhysicsProfile {
+  compounds?: Partial<Record<TrackedTeaCompound, CompoundPhysicsParameter>>;
+  /** Fraction of available material assigned to the faster kinetic pool. */
+  fastExtractionFraction?: number;
+  /** Estimated/experimentally measured liquid retention per gram of dry leaf. */
+  leafLiquidRetentionMlPerG?: number;
+  sourceStatus?: ParameterSourceStatus;
+  validationStatus?: 'unvalidated' | 'estimated' | 'calibrated' | 'validated';
+}
+
+export interface ZeroInfusionProfile {
+  policy?: 'disabled' | 'optional' | 'recommended' | 'enabled';
+  enabled?: boolean;
+  durationSec?: number;
+  temperatureC?: number;
+  waterVolumeMl?: number;
+  disposition?: 'discard' | 'retain' | 'partial';
+  retainedVolumeMl?: number;
+  sourceStatus?: ParameterSourceStatus;
+}
+
+export interface VesselThermalProfile {
+  /** Effective heat capacity of the vessel in J/K, under stated calibration conditions. */
+  effectiveHeatCapacityJPerK?: number;
+  /** Effective cooling time constant in seconds at the reference fill volume. */
+  timeConstantSecAt100Ml?: number;
+  sourceStatus?: ParameterSourceStatus;
+}
+
 export interface TeaVariety {
   id: string;
   nameRu: string;
@@ -106,6 +163,10 @@ export interface TeaVariety {
   rinseRecommended?: boolean;
   rinseSeconds?: number;
   rinseNoteRu?: string;
+  /** Optional tea-specific physical parameters with explicit provenance. */
+  physicsProfile?: TeaPhysicsProfile;
+  /** Tea-specific zero-infusion defaults/policy. User settings override these defaults. */
+  zeroInfusionProfile?: ZeroInfusionProfile;
   vintageYear?: number;
   canAge?: boolean;
   isCustom?: boolean;
@@ -162,6 +223,14 @@ export interface SteepKineticData {
   retainedRootVolumeMl?: number; // Volume of root liquor left from previous steep
   freshWaterAddedMl?: number; // Volume of fresh water poured
   rootCarryoverSolutesMg?: number; // Solutes carried over from previous steep root
+  /** Confidence/provenance metadata emitted by the current physical simulator. */
+  modelConfidence?: 'low' | 'medium' | 'high';
+  aromaBasis?: 'archetype' | 'chemical' | 'not-modeled';
+  extractionYieldBasis?: 'tracked-compounds' | 'total-soluble-solids';
+  drinkableVolumeMl?: number;
+  trackedCompoundsExtractedMg?: number;
+  zeroInfusionDiscardedSolutesMg?: number;
+  modelNotesRu?: string[];
 }
 
 export type BrewingMethod = 'gongfu' | 'liu_gen' | 'grandpa_cup';
@@ -219,6 +288,8 @@ export interface VesselMaterialInfo {
   tanninAdsorptionFactor: number;
   bestForRu: string;
   scientificImpactRu: string;
+  /** Optional calibrated thermal parameters; absent values remain estimated by the model. */
+  thermalProfile?: VesselThermalProfile;
 }
 
 export type OptimizationGoal = 'balanced' | 'umami_sweetness' | 'body_density' | 'aroma_peak' | 'max_longevity' | 'oil_tar' | 'white_debitter';
