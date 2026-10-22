@@ -51,10 +51,15 @@ export interface ContinuousInfusionParams {
   waterVolume: number;
   steepsCount: number;
   cycleDurationSec: number;
+  retainedRootFraction?: number;
+  coolingTimeConstantSec?: number;
+  ambientTempC?: number;
 }
 
 /**
- * Continuous minute-by-minute timeline extraction dynamics simulation for «Ленивый» метод (Бэй Пао Фа / Grandpa Cup).
+ * Cup-timeline presentation derived from the shared physical simulation.
+ * Concentration between simulated stage endpoints is linearly interpolated for display;
+ * this function does not run a separate extraction-kinetics model.
  */
 export function calculateContinuousInfusionTimeline({
   simulationResults,
@@ -62,89 +67,106 @@ export function calculateContinuousInfusionTimeline({
   waterVolume,
   steepsCount,
   cycleDurationSec,
+  retainedRootFraction = 0.33,
+  coolingTimeConstantSec = 280,
+  ambientTempC = 22,
 }: ContinuousInfusionParams): ContinuousInfusionPoint[] {
   const points: ContinuousInfusionPoint[] = [];
-
-  const safeCycleDuration = Math.max(30, cycleDurationSec || 180);
-  const totalMinutes = Math.min(15, Math.max(8, (steepsCount * safeCycleDuration) / 60));
-
-  const base0 = simulationResults[0] || {
-    theanineConcentration: 12,
-    caffeineConcentration: 14,
-    catechinsConcentration: 18,
-    polysaccharidesConcentration: 10,
-    tdsPpm: 350,
-  };
+  const fallbackDuration = Math.max(30, cycleDurationSec || 180);
+  const cycleDurations = simulationResults.length > 0
+    ? simulationResults.slice(0, Math.max(1, steepsCount)).map((row) => Math.max(1, row.timeSec || fallbackDuration))
+    : [fallbackDuration];
+  const cycleStarts: number[] = [];
+  let totalDurationSec = 0;
+  for (const duration of cycleDurations) {
+    cycleStarts.push(totalDurationSec);
+    totalDurationSec += duration;
+  }
+  const safeTotalDurationSec = Math.min(900, Math.max(1, totalDurationSec));
+  const base0: SteepKineticData | undefined = simulationResults[0];
 
   let startTh = 0;
   let startCaf = 0;
   let startCat = 0;
   let startPoly = 0;
-
+  let startTds = 0;
   let prevCycleIndex = -1;
   let curTh = 0;
   let curCaf = 0;
   let curCat = 0;
   let curPoly = 0;
+  let curTds = 0;
 
-  for (let m = 0; m <= totalMinutes; m += 0.25) {
-    const sec = Math.round(m * 60);
-    const currentCycle = Math.floor(sec / Math.max(1, safeCycleDuration));
-    const timeInCycle = sec % Math.max(1, safeCycleDuration);
+  const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 
-    const cycleData = simulationResults[Math.min(currentCycle, simulationResults.length - 1)] || base0;
+  for (let sec = 0; sec <= safeTotalDurationSec; sec += 15) {
+    let currentCycle = 0;
+    for (let i = 1; i < cycleStarts.length; i += 1) {
+      if (sec >= cycleStarts[i]) currentCycle = i;
+      else break;
+    }
+    currentCycle = Math.min(currentCycle, Math.max(0, cycleDurations.length - 1));
+    const cycleStartSec = cycleStarts[currentCycle] ?? 0;
+    const cycleLengthSec = cycleDurations[currentCycle] ?? fallbackDuration;
+    const timeInCycle = Math.max(0, Math.min(cycleLengthSec, sec - cycleStartSec));
+    const cycleData = simulationResults[currentCycle] ?? base0;
+    if (!cycleData) continue;
+
     const targetTh = cycleData.theanineConcentration;
     const targetCaf = cycleData.caffeineConcentration;
     const targetCat = cycleData.catechinsConcentration;
     const targetPoly = cycleData.polysaccharidesConcentration;
+    const targetTds = cycleData.tdsPpm;
+    const isRefill = sec > 0 && currentCycle > prevCycleIndex;
 
-    const isRefill = sec > 0 && timeInCycle === 0;
-
-    // Handle cycle transition (refill event)
     if (currentCycle !== prevCycleIndex) {
       if (prevCycleIndex >= 0) {
-        // At refill moment: root liquor (1/3) remains diluted with fresh hot water (2/3)
-        startTh = curTh * 0.33;
-        startCaf = curCaf * 0.33;
-        startCat = curCat * 0.33;
-        startPoly = curPoly * 0.33;
+        const previous = simulationResults[prevCycleIndex] ?? base0;
+        const retainedMl = previous?.retainedLiquidVolumeMl;
+        const retainedRatio = retainedMl !== undefined
+          ? clamp01(retainedMl / Math.max(1, waterVolume))
+          : clamp01(retainedRootFraction);
+        startTh = curTh * retainedRatio;
+        startCaf = curCaf * retainedRatio;
+        startCat = curCat * retainedRatio;
+        startPoly = curPoly * retainedRatio;
+        startTds = curTds * retainedRatio;
       } else {
         startTh = 0;
         startCaf = 0;
         startCat = 0;
         startPoly = 0;
+        startTds = 0;
       }
       prevCycleIndex = currentCycle;
     }
 
-    const curTemp = Math.round(22 + (waterTemp - 22) * Math.exp(-0.0028 * timeInCycle));
+    const progress = clamp01(timeInCycle / Math.max(1, cycleLengthSec));
+    // Interpolate the concentration toward the model-calculated endpoint for this stage.
+    curTh = startTh + (targetTh - startTh) * progress;
+    curCaf = startCaf + (targetCaf - startCaf) * progress;
+    curCat = startCat + (targetCat - startCat) * progress;
+    curPoly = startPoly + (targetPoly - startPoly) * progress;
+    curTds = startTds + (targetTds - startTds) * progress;
 
-    // Continuous extraction progress: carryover concentration decays while fresh extraction from leaf pool develops
-    const kExt = 0.016;
-    const progress = 1 - Math.exp(-kExt * timeInCycle);
-    const decay = Math.exp(-kExt * timeInCycle);
-
-    curTh = startTh * decay + targetTh * progress;
-    curCaf = startCaf * decay + targetCaf * progress;
-    curCat = startCat * decay + targetCat * progress;
-    curPoly = startPoly * decay + targetPoly * progress;
-
-    const tds = Math.round((curTh + curCaf + curCat + curPoly) * 12.5);
+    const mixedTemp = cycleData.mixedTemperatureC ?? cycleData.waterTempC ?? waterTemp;
+    const tau = Math.max(15, coolingTimeConstantSec * Math.pow(Math.max(0.25, waterVolume / 100), 0.35));
+    const curTemp = ambientTempC + (mixedTemp - ambientTempC) * Math.exp(-timeInCycle / tau);
 
     let label: string | undefined;
-    if (m === 0) label = 'Заливка';
-    else if (m === 2.0) label = '✨ Первый глоток!';
-    else if (isRefill) label = `🫖 Долив #${currentCycle} (+${Math.round(waterVolume * 0.67)}мл)`;
+    if (sec === 0) label = 'Заливка';
+    else if (sec >= 120 && sec < 135) label = 'Первый глоток';
+    else if (isRefill && timeInCycle === 0) label = 'Долив #' + (currentCycle + 1);
 
     points.push({
-      minute: m,
+      minute: Math.round((sec / 60) * 100) / 100,
       sec,
-      tempC: curTemp,
+      tempC: Math.round(curTemp * 10) / 10,
       theanine: Math.round(curTh * 10) / 10,
       caffeine: Math.round(curCaf * 10) / 10,
       catechins: Math.round(curCat * 10) / 10,
       polysaccharides: Math.round(curPoly * 10) / 10,
-      tdsPpm: tds,
+      tdsPpm: Math.round(curTds),
       isRefill,
       label,
     });
