@@ -1092,47 +1092,38 @@ export function resolveZeroInfusionOptions(args: {
   customTemperatureC?: number | null;
   isCustomTime?: boolean;
   isCustomTemperature?: boolean;
-  /** Explicit UI toggle wins over preset policy and custom default duration. */
-  enabledOverride?: boolean | null;
 }): ZeroInfusionOptions {
   const effectiveTemp = args.customTemperatureC ?? args.waterTempC;
   const rinse = getTeaRinseInfo(args.tea, effectiveTemp, args.optimizationGoal);
   const profile = args.tea.zeroInfusionProfile;
-  const policy = profile?.policy;
-  const policyRequestsRinse = args.enabledOverride === true
-    || policy === 'enabled'
-    || policy === 'recommended'
-    || policy === 'optional'
-    || profile?.enabled === true
-    || rinse.required;
-  // An editable 5-second seed is used only when the user explicitly enables a rinse
-  // (or a profile requests one) but neither the tea nor the profile has a duration.
-  // It is a UI starting point, not an experimentally calibrated recommendation.
-  const defaultDurationSec = profile?.durationSec
-    ?? (rinse.seconds > 0 ? rinse.seconds : policyRequestsRinse ? 5 : 0);
-  const durationSec = args.customDurationSec ?? defaultDurationSec;
-  const hasExplicitDuration = args.customDurationSec !== null && args.customDurationSec !== undefined;
-  const enabledByPolicy = args.enabledOverride !== null && args.enabledOverride !== undefined
-    ? args.enabledOverride
-    : hasExplicitDuration
-      ? (args.customDurationSec ?? 0) > 0
-      : policy === 'disabled'
-        ? false
-        : policy === 'enabled'
-          ? true
-          : profile?.enabled !== undefined
-            ? profile.enabled
-            : policy === 'recommended' || policy === 'optional'
-              ? true
-              : rinse.required;
+
+  // Eligibility is not a user-facing toggle: the tea/archetype rule decides whether #0 exists.
+  // User-edited duration/temperature can adjust a required rinse, but cannot add one to a tea
+  // whose profile says it is not needed, or suppress a required rinse by setting time to zero.
+  const requestedDuration = args.customDurationSec !== null
+    && args.customDurationSec !== undefined
+    && args.customDurationSec > 0
+      ? args.customDurationSec
+      : undefined;
+  const profileDuration = profile?.durationSec !== undefined && profile.durationSec > 0
+    ? profile.durationSec
+    : undefined;
+  const durationSec = rinse.required
+    ? requestedDuration ?? profileDuration ?? rinse.seconds
+    : 0;
+
   return {
-    enabled: enabledByPolicy && durationSec > 0,
+    enabled: rinse.required && durationSec > 0,
     durationSec: clamp(durationSec, 0, 3600),
-    temperatureC: clamp(args.customTemperatureC ?? profile?.temperatureC ?? rinse.tempC ?? args.waterTempC, 40, 100),
+    temperatureC: clamp(
+      args.customTemperatureC ?? profile?.temperatureC ?? rinse.tempC ?? args.waterTempC,
+      40,
+      100,
+    ),
     waterVolumeMl: clamp(profile?.waterVolumeMl ?? args.waterVolumeMl, 10, 5000),
     disposition: profile?.disposition ?? 'discard',
     retainedVolumeMl: profile?.retainedVolumeMl,
-    isCustomTime: args.isCustomTime ?? (args.customDurationSec !== null && args.customDurationSec !== undefined),
+    isCustomTime: args.isCustomTime ?? requestedDuration !== undefined,
     isCustomTemperature: args.isCustomTemperature ?? (args.customTemperatureC !== null && args.customTemperatureC !== undefined),
   };
 }
