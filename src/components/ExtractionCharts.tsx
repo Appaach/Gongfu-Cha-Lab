@@ -367,7 +367,7 @@ export const ExtractionCharts: React.FC<ExtractionChartsProps> = ({
               </span>
             </span>
             <span className="text-[10px] font-mono px-2 py-0.5 bg-amber-100/80 text-amber-900 border border-amber-200/80 rounded-full font-semibold">
-              2-стадийная модель Шпиро–Пелега
+              Двухфракционная кинетика + Аррениус (оценка)
             </span>
           </h4>
           <p className="text-xs text-stone-500">
