@@ -10,7 +10,6 @@ import type {
 import {
   getTeaRinseInfo,
   VESSEL_MATERIALS,
-  WATER_HARDNESS_PRESETS,
 } from '../data/teaData';
 
 type PoolKey = 'theanine' | 'caffeine' | 'egc' | 'egcg' | 'polysaccharides';
@@ -386,7 +385,7 @@ function extractFromLeaf(
   ambientTempC: number,
   tau: number,
   hydrationFactor: number,
-  hardnessMultiplier: number,
+  hardnessMultipliers: Record<PoolKey, number>,
 ): MassVector {
   const extracted = emptyMassVector();
   for (const key of KEYS) {
@@ -397,7 +396,7 @@ function extractFromLeaf(
       ambientTempC,
       tau,
       hydrationFactor,
-      hardnessMultiplier,
+      hardnessMultipliers[key],
     );
     const fastK = totalK * 1.8;
     const slowK = totalK * 0.45;
@@ -565,9 +564,28 @@ function zeroRowWithoutExtraction(
   };
 }
 
-function hardnessMultiplierFor(level: WaterHardnessLevel | undefined): number {
-  const preset = WATER_HARDNESS_PRESETS.find((item) => item.level === (level ?? 'optimal'));
-  return clamp(preset?.extractionMultiplier ?? 1, 0.5, 1.5);
+function hardnessMultipliersFor(
+  tea: TeaVariety,
+  level: WaterHardnessLevel | undefined,
+): Record<PoolKey, number> {
+  const selectedLevel = level ?? 'optimal';
+  const response = tea.physicsProfile?.waterResponseByHardness;
+  const forCompound = (key: PoolKey): number => {
+    const direct = response?.[key]?.[selectedLevel];
+    const aggregate = (key === 'egc' || key === 'egcg')
+      ? response?.catechins?.[selectedLevel]
+      : undefined;
+    // No universal hardness coefficient is applied. A response is used only when
+    // an explicit compound-specific empirical profile exists.
+    return clamp(direct ?? aggregate ?? 1, 0.5, 1.5);
+  };
+  return {
+    theanine: forCompound('theanine'),
+    caffeine: forCompound('caffeine'),
+    egc: forCompound('egc'),
+    egcg: forCompound('egcg'),
+    polysaccharides: forCompound('polysaccharides'),
+  };
 }
 
 function runPhysicalSimulation(input: PhysicalBrewingInput): PhysicalBrewingResult {
@@ -596,13 +614,13 @@ function runPhysicalSimulation(input: PhysicalBrewingInput): PhysicalBrewingResu
   };
   const notes: string[] = [
     'Начальные запасы и кинетические параметры не измерены для индивидуальной партии; используются типовые оценочные значения.',
-    'Поправка по категории жёсткости воды является эвристикой, а не универсальным химическим законом.',
+    'Поправка на жёсткость применяется только при наличии профиля waterResponseByHardness для конкретного соединения; иначе прямой химический эффект воды не откалиброван.',
     'Профили охлаждения посуды оценочные: относительный порядок унаследован из legacy heatLossPerSteepC и требует экспериментальной калибровки.',
   ];
   if (thermal.sourceStatus !== 'measured') notes.push('Тепловые параметры посуды имеют статус ' + thermal.sourceStatus + '.');
 
   const modelConfidence = initial.confidence;
-  const hardnessMultiplier = hardnessMultiplierFor(input.waterHardnessLevel);
+  const hardnessMultipliers = hardnessMultipliersFor(tea, input.waterHardnessLevel);
   const fastFraction = initial.fastFraction;
   const leafRetentionMl = clamp(
     tea.physicsProfile?.leafLiquidRetentionMlPerG ?? 1.5,
@@ -658,7 +676,7 @@ function runPhysicalSimulation(input: PhysicalBrewingInput): PhysicalBrewingResu
       ambientTempC,
       tau,
       hydrationFactor,
-      hardnessMultiplier,
+      hardnessMultipliers,
     );
     const stageExtractedMg = sumVector(freshExtracted);
     state.extractedFromLeafMg += stageExtractedMg;
