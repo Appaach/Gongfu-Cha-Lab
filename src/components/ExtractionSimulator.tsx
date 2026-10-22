@@ -54,7 +54,6 @@ import {
 } from '../data/teaData';
 import { 
   optimizeBrewingParametersMulti,
-  calculateAdaptiveCustomBrewing,
   calculateDynamicSteepTemperatures
 } from '../utils/extractionKinetics';
 import { simulatePhysicalBrewing, resolveZeroInfusionOptions, optimizePhysicalSchedule } from '../domain/physicalBrewingModel';
@@ -922,9 +921,6 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
   const ratio = activeOptimization.recommendedRatio;
   const fixedCount = (fixVolume ? 1 : 0) + (fixMass ? 1 : 0) + (fixTemp ? 1 : 0) + (fixSteeps ? 1 : 0);
 
-  // Dynamic adaptive steep durations computed in real-time by kinetics model (always active)
-  const computedAdaptiveDurations = activeOptimization.recommendedDurations;
-
   // Custom Steeps Timing Mode ("Своё время") State - double click edit mode toggle
   const [isManualTimeEditMode, setIsManualTimeEditMode] = useState<boolean>(false);
   const [editingSteepIndex, setEditingSteepIndex] = useState<number | null>(null);
@@ -968,52 +964,6 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     if (customRinseTemp !== null) cnt++;
     return cnt;
   }, [customSteepTemps, customRinseTemp]);
-
-  // Adaptive Recalculation Engine for User-defined Steeps
-  const adaptiveCustomBrewing = useMemo(() => {
-    return calculateAdaptiveCustomBrewing(
-      selectedTea,
-      steepsCount,
-      waterTemp,
-      leafMass,
-      waterVolume,
-      waterHardness,
-      optimizationGoal,
-      customSteepTimes,
-      brewingMethod,
-      rootFraction,
-      customRinseTime,
-      selectedVintageYear
-    );
-  }, [
-    selectedTea,
-    steepsCount,
-    waterTemp,
-    leafMass,
-    waterVolume,
-    waterHardness,
-    optimizationGoal,
-    customSteepTimes,
-    brewingMethod,
-    rootFraction,
-    customRinseTime,
-    selectedVintageYear
-  ]);
-
-  // Effective durations and flags feeding into the chemical simulation
-  const effectiveDurations = useMemo(() => {
-    if (adaptiveCustomBrewing) {
-      return adaptiveCustomBrewing.combinedDurations;
-    }
-    return computedAdaptiveDurations;
-  }, [adaptiveCustomBrewing, computedAdaptiveDurations]);
-
-  const effectiveCustomFlags = useMemo(() => {
-    if (adaptiveCustomBrewing) {
-      return adaptiveCustomBrewing.customFlags;
-    }
-    return undefined;
-  }, [adaptiveCustomBrewing]);
 
   const handleSetCustomSteepTime = useCallback((steepIndex: number, timeSec: number | null) => {
     setCustomSteepTimes((prev) => {
@@ -1115,11 +1065,9 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
       leafMassGrams: leafMass,
       waterVolumeMl: waterVolume,
       waterTempC: waterTemp,
-      durations: effectiveDurations,
       requestedSteepsCount: steepsCount,
       waterHardnessLevel: waterHardness,
       vesselMaterial,
-      customFlags: effectiveCustomFlags,
       optimizationGoal,
       brewingMethod,
       rootFraction,
@@ -1145,11 +1093,9 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     leafMass,
     waterVolume,
     waterTemp,
-    effectiveDurations,
     steepsCount,
     waterHardness,
     vesselMaterial,
-    effectiveCustomFlags,
     optimizationGoal,
     brewingMethod,
     rootFraction,
@@ -1159,6 +1105,37 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     appSettings.useDynamicTemperatures,
     dynamicTemperatures,
   ]);
+
+  // UI annotations are derived from the new physical schedule, not the legacy adaptive model.
+  const adaptiveCustomBrewing = useMemo(() => {
+    const userSteepsCount = customSteepTimes.filter((value) => value !== null && value !== undefined && value > 0).length;
+    const steepStatus = physicalSchedule.durations.map((duration, index) => {
+      const baselineSec = physicalSchedule.baselineDurations[index] ?? duration;
+      const isUserFixed = customSteepTimes[index] !== null
+        && customSteepTimes[index] !== undefined
+        && (customSteepTimes[index] ?? 0) > 0;
+      return {
+        baselineSec,
+        deviationSec: duration - baselineSec,
+        isAdaptedReference: !isUserFixed && physicalSchedule.optimizedDurationIndexes.includes(index),
+      };
+    });
+    const rinseStatus = customRinseTime !== null
+      ? {
+          customRinseSec: customRinseTime,
+          refRinseSec: zeroInfusionOptions.durationSec,
+          deviationSec: customRinseTime - zeroInfusionOptions.durationSec,
+          impactDescriptionRu: 'Нулевой пролив и основные проливы рассчитываются в едином физическом состоянии.',
+        }
+      : undefined;
+    return {
+      userSteepsCount,
+      steepStatus,
+      rinseStatus,
+      summaryMessageRu: physicalSchedule.objectiveDescriptionRu,
+      scientificDetailRu: 'Подбор выполнен повторной симуляцией кандидатов. Сенсорная цель пока основана на неоткалиброванных индексах; индивидуальный лабораторный состав чая не предполагается известным.',
+    };
+  }, [physicalSchedule, customSteepTimes, customRinseTime, zeroInfusionOptions]);
 
   const physicalSimulation = useMemo(() => {
     return simulatePhysicalBrewing({
@@ -2378,8 +2355,8 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                   const vesselName = selectedTea.recommendedVesselRu?.split('(')[0]?.trim() || (brewingMethod === 'grandpa_cup' ? `Кружка / чашка ${waterVolume} мл` : `Гайвань ${waterVolume} мл`);
                   const eff = getTeaEffect(selectedTea);
                   const isDyn = Boolean(appSettings.useDynamicTemperatures);
-                  const steepTemps = isDyn ? dynamicTemperatures.steepTempsC : undefined;
-                  const steepScheduleText = effectiveDurations.map((s, idx) => {
+                  const steepTemps = isDyn ? physicalSchedule.temperaturesC : undefined;
+                  const steepScheduleText = physicalSchedule.durations.map((s, idx) => {
                     const t = isDyn && steepTemps && steepTemps[idx] ? ` (${steepTemps[idx]}°C)` : '';
                     return `${s}с${t}`;
                   }).join(', ');
@@ -2396,7 +2373,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                     teaMassG: leafMass,
                     waterVolumeMl: waterVolume,
                     steepsCount: steepsCount,
-                    steepScheduleSec: effectiveDurations,
+                    steepScheduleSec: physicalSchedule.durations,
                     useDynamicTemperatures: isDyn,
                     steepTemperaturesC: steepTemps,
                     vesselUsed: vesselName,
@@ -3959,7 +3936,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                   )}
 
                   {simulationResults.map((d, idx) => {
-                    const baselineSec = adaptiveCustomBrewing?.steepStatus[idx]?.baselineSec ?? computedAdaptiveDurations[idx] ?? 10;
+                    const baselineSec = physicalSchedule.baselineDurations[idx] ?? d.timeSec;
                     const statusObj = adaptiveCustomBrewing?.steepStatus[idx];
                     const userVal = customSteepTimes[idx];
 
@@ -4112,7 +4089,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
                           title="Сбросить время этого пролива к эталону"
                         >
                           <RotateCcw className="w-3 h-3 text-amber-700" />
-                          <span>Сброс к эталону ({adaptiveCustomBrewing?.steepStatus[selectedSteepIndex]?.baselineSec || computedAdaptiveDurations[selectedSteepIndex] || 10}с)</span>
+                          <span>Сброс к эталону ({physicalSchedule.baselineDurations[selectedSteepIndex] || currentSteepData.timeSec}с)</span>
                         </button>
                       )}
                       {brewingMethod === 'grandpa_cup' && (
