@@ -1086,7 +1086,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
       userDurations: customSteepTimes,
       userTemperaturesC: appSettings.useDynamicTemperatures ? customSteepTemps : [],
       optimizeTemperatures: appSettings.useDynamicTemperatures,
-      targetSteepIndex: 1,
+      targetSteepIndex: selectedSteepIndex,
     });
   }, [
     selectedTea,
@@ -1102,6 +1102,7 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     zeroInfusionOptions,
     customSteepTimes,
     customSteepTemps,
+    selectedSteepIndex,
     appSettings.useDynamicTemperatures,
     dynamicTemperatures,
   ]);
