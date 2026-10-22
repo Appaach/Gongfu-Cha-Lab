@@ -53,12 +53,11 @@ import {
   isTeaArchetype
 } from '../data/teaData';
 import { 
-  simulateGongfuExtraction, 
   optimizeBrewingParametersMulti,
   calculateAdaptiveCustomBrewing,
-  calculateRinseKineticData,
   calculateDynamicSteepTemperatures
 } from '../utils/extractionKinetics';
+import { simulatePhysicalBrewing, resolveZeroInfusionOptions } from '../domain/physicalBrewingModel';
 import { loadAppSettings } from '../utils/appSettings';
 import { 
   matchTeaSearch, 
@@ -1081,40 +1080,57 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     return selectedTea.type === 'shou_puerh' || selectedTea.type === 'heicha' ? 100 : waterTemp;
   }, [appSettings.useDynamicTemperatures, dynamicTemperatures, customRinseTemp, optimizationGoal, selectedTea, waterTemp]);
 
-  // Run dynamic simulation based on Noyes-Whitney, Arrhenius & environmental factors
-  const simulationResults = useMemo(() => {
+  // Run one shared physical simulation. Steep #0 and the main steeps share the same
+  // leaf pools, liquid state, temperature model and mass balance.
+  const physicalSimulation = useMemo(() => {
     const perSteepTemps = appSettings.useDynamicTemperatures
       ? dynamicTemperatures.steepTempsC
       : Array(steepsCount).fill(waterTemp);
     const customTempFlags = appSettings.useDynamicTemperatures
       ? dynamicTemperatures.isCustomSteepTemp
       : Array(steepsCount).fill(false);
+    const zeroInfusion = resolveZeroInfusionOptions({
+      tea: selectedTea,
+      waterTempC: waterTemp,
+      waterVolumeMl: waterVolume,
+      optimizationGoal,
+      customDurationSec: customRinseTime,
+      customTemperatureC: appSettings.useDynamicTemperatures
+        ? dynamicTemperatures.rinseTempC
+        : customRinseTemp,
+      isCustomTime: customRinseTime !== null,
+      isCustomTemperature: appSettings.useDynamicTemperatures
+        ? dynamicTemperatures.isCustomRinseTemp
+        : customRinseTemp !== null,
+    });
 
-    return simulateGongfuExtraction(
-      selectedTea, 
-      leafMass, 
-      waterVolume, 
-      waterTemp, 
-      effectiveDurations, 
-      steepsCount,
-      waterHardness,
+    return simulatePhysicalBrewing({
+      tea: selectedTea,
+      leafMassGrams: leafMass,
+      waterVolumeMl: waterVolume,
+      waterTempC: waterTemp,
+      durations: effectiveDurations,
+      requestedSteepsCount: steepsCount,
+      waterHardnessLevel: waterHardness,
       vesselMaterial,
-      effectiveCustomFlags,
+      customFlags: effectiveCustomFlags,
       optimizationGoal,
       brewingMethod,
       rootFraction,
-      customRinseTime,
-      selectedVintageYear,
-      perSteepTemps,
+      perSteepTempsC: perSteepTemps,
       customTempFlags,
-      effectiveRinseTemp
-    );
+      zeroInfusion: {
+        ...zeroInfusion,
+        waterVolumeMl: zeroInfusion.enabled ? zeroInfusion.waterVolumeMl : waterVolume,
+        disposition: zeroInfusion.disposition ?? 'discard',
+      },
+    });
   }, [
-    selectedTea, 
-    leafMass, 
-    waterVolume, 
-    waterTemp, 
-    effectiveDurations, 
+    selectedTea,
+    leafMass,
+    waterVolume,
+    waterTemp,
+    effectiveDurations,
     steepsCount,
     waterHardness,
     vesselMaterial,
@@ -1123,11 +1139,12 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
     brewingMethod,
     rootFraction,
     customRinseTime,
-    selectedVintageYear,
+    customRinseTemp,
     appSettings.useDynamicTemperatures,
     dynamicTemperatures,
-    effectiveRinseTemp
   ]);
+
+  const simulationResults = physicalSimulation.steeps;
 
   // Scientific rinse parameters based on leaf morphology and cultivar
   const baseTeaRinseInfo = useMemo(() => {
@@ -1148,34 +1165,8 @@ export const ExtractionSimulator: React.FC<ExtractionSimulatorProps> = ({
 
   const isRinseEnabled = teaRinseInfo.required;
 
-  const rinseSteepData = useMemo(() => {
-    if (!isRinseEnabled) return null;
-    return calculateRinseKineticData(
-      selectedTea,
-      leafMass,
-      waterVolume,
-      effectiveRinseTemp,
-      teaRinseInfo.seconds,
-      waterHardness,
-      vesselMaterial,
-      optimizationGoal,
-      customRinseTime !== null || (appSettings.useDynamicTemperatures && dynamicTemperatures.isCustomRinseTemp),
-      selectedVintageYear
-    );
-  }, [
-    isRinseEnabled,
-    selectedTea,
-    leafMass,
-    waterVolume,
-    effectiveRinseTemp,
-    teaRinseInfo.seconds,
-    waterHardness,
-    vesselMaterial,
-    optimizationGoal,
-    customRinseTime,
-    appSettings.useDynamicTemperatures,
-    selectedVintageYear
-  ]);
+  // Reuse the zero-infusion result from the same simulation that produces the main steeps.
+  const rinseSteepData = isRinseEnabled ? physicalSimulation.zeroInfusionData : null;
 
   const isRinseSelected = selectedSteepIndex === -1 && isRinseEnabled;
   const safeSteepIndex = Math.min(Math.max(0, selectedSteepIndex), Math.max(0, simulationResults.length - 1));
