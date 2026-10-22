@@ -1083,9 +1083,20 @@ export function resolveZeroInfusionOptions(args: {
   const effectiveTemp = args.customTemperatureC ?? args.waterTempC;
   const rinse = getTeaRinseInfo(args.tea, effectiveTemp, args.optimizationGoal);
   const profile = args.tea.zeroInfusionProfile;
-  const durationSec = args.customDurationSec ?? profile?.durationSec ?? rinse.seconds;
-  const hasExplicitDuration = args.customDurationSec !== null && args.customDurationSec !== undefined;
   const policy = profile?.policy;
+  const policyRequestsRinse = args.enabledOverride === true
+    || policy === 'enabled'
+    || policy === 'recommended'
+    || policy === 'optional'
+    || profile?.enabled === true
+    || rinse.required;
+  // An editable 5-second seed is used only when the user explicitly enables a rinse
+  // (or a profile requests one) but neither the tea nor the profile has a duration.
+  // It is a UI starting point, not an experimentally calibrated recommendation.
+  const defaultDurationSec = profile?.durationSec
+    ?? (rinse.seconds > 0 ? rinse.seconds : policyRequestsRinse ? 5 : 0);
+  const durationSec = args.customDurationSec ?? defaultDurationSec;
+  const hasExplicitDuration = args.customDurationSec !== null && args.customDurationSec !== undefined;
   const enabledByPolicy = args.enabledOverride !== null && args.enabledOverride !== undefined
     ? args.enabledOverride
     : hasExplicitDuration
