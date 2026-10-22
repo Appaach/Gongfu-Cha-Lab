@@ -834,18 +834,8 @@ export interface TeaRinseInfo {
 }
 
 export function getTeaRinseInfo(tea: TeaVariety, customTempC?: number, optimizationGoal?: import('../types').OptimizationGoal): TeaRinseInfo {
-  // If specialized debittering method for tea is active (Нулевой пролив ~1 мин, 100°C)
-  if (optimizationGoal === 'white_debitter') {
-    return {
-      required: true,
-      seconds: 60,
-      tempC: customTempC ? customTempC : 100,
-      badgeRu: 'Нулевой пролив (60 с, кипяток 100°C)',
-      actionRu: 'Залить крутым кипятком 100°C ровно на 60 сек и слить в чабань: глубокая элюция поверхностного горького EGCG и кофеина',
-      scientificReasonRu: 'Длительный нулевой пролив может извлечь часть водорастворимых веществ и изменить профиль следующего настоя, но величина эффекта зависит от сорта, листа, температуры и времени. Параметры здесь являются чайным пресетом, а не универсально подтверждённой долей извлечения.'
-    };
-  }
-
+  // Rinse eligibility is determined by the tea's explicit profile or physical archetype,
+  // never by a flavour-optimization goal. Goals may tune temperature/time only after eligibility.
   // If explicitly configured on variety
   if (tea.rinseRecommended !== undefined) {
     const isReq = tea.rinseRecommended;
