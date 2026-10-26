@@ -72,10 +72,12 @@ export const BrewingSimulatorView: React.FC<BrewingSimulatorViewProps> = ({
 
   const [simulationResult, setSimulationResult] = useState<SimulationExecutionResult | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Переключение метода заваривания
   const handleMethodChange = (newMethodId: BrewingMethodId) => {
     setMethodId(newMethodId);
+    setValidationError(null);
 
     if (newMethodId === 'lazy_mug') {
       const mug = DEFAULT_VESSELS[2];
@@ -103,6 +105,7 @@ export const BrewingSimulatorView: React.FC<BrewingSimulatorViewProps> = ({
   const handleVesselChange = (newVesselId: string) => {
     const found = DEFAULT_VESSELS.find((v) => v.id === newVesselId) ?? DEFAULT_VESSELS[0];
     setVessel(found);
+    setValidationError(null);
     const workingPour = Math.round(found.volumeMl * 0.9);
     if (methodId === 'gongfu_cha') {
       setGongfuSteps(createDefaultGongfuSteps(workingPour, baseWaterTemperatureC));
@@ -117,6 +120,7 @@ export const BrewingSimulatorView: React.FC<BrewingSimulatorViewProps> = ({
   // Запуск симуляции
   const handleRunSimulation = async () => {
     setIsSimulating(true);
+    setValidationError(null);
 
     let sessionConfig: BrewingSessionConfig;
 
@@ -166,6 +170,9 @@ export const BrewingSimulatorView: React.FC<BrewingSimulatorViewProps> = ({
     try {
       const res = await stage1EngineInstance.simulate(sessionConfig, currentTea);
       setSimulationResult(res);
+    } catch (err) {
+      setValidationError(err instanceof Error ? err.message : String(err));
+      setSimulationResult(null);
     } finally {
       setIsSimulating(false);
     }
@@ -236,6 +243,34 @@ export const BrewingSimulatorView: React.FC<BrewingSimulatorViewProps> = ({
     );
   }
 
+  const hasCapacityOverflow = (() => {
+    if (methodId === 'gongfu_cha') {
+      return gongfuSteps.some((s) => s.pourWaterVolumeMl > vessel.volumeMl);
+    }
+    if (methodId === 'liu_gen_pao') {
+      let retained = 0;
+      for (const s of liuGenPaoSteps) {
+        const tot = retained + s.addedWaterVolumeMl;
+        if (tot > vessel.volumeMl) return true;
+        retained = Math.round(tot * s.retainedLiquorFractionOfTotal);
+      }
+      return false;
+    }
+    let mug = 0;
+    for (const evt of lazyMugEvents) {
+      if (evt.type === 'initial_pour') {
+        mug = evt.waterVolumeMl;
+        if (mug > vessel.volumeMl) return true;
+      } else if (evt.type === 'sip_consumption') {
+        mug = Math.max(0, mug - evt.consumedVolumeMl);
+      } else if (evt.type === 'water_refill') {
+        if (mug + evt.addedWaterVolumeMl > vessel.volumeMl) return true;
+        mug += evt.addedWaterVolumeMl;
+      }
+    }
+    return false;
+  })();
+
   const activeMethod = BREWING_METHODS[methodId];
 
   return (
@@ -253,13 +288,31 @@ export const BrewingSimulatorView: React.FC<BrewingSimulatorViewProps> = ({
 
         <button
           onClick={handleRunSimulation}
-          disabled={isSimulating}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-[#224233] hover:bg-[#1A3327] active:bg-[#14281E] text-white text-xs font-medium rounded-md shadow-xs transition-colors cursor-pointer self-start sm:self-auto disabled:opacity-50"
+          disabled={isSimulating || hasCapacityOverflow}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-[#224233] hover:bg-[#1A3327] active:bg-[#14281E] text-white text-xs font-medium rounded-md shadow-xs transition-colors cursor-pointer self-start sm:self-auto disabled:opacity-50 disabled:cursor-not-allowed"
+          title={hasCapacityOverflow ? 'Расчёт заблокирован из-за физического переполнения сосуда' : undefined}
         >
           <Play className="w-3.5 h-3.5 fill-current" />
-          <span>{isSimulating ? 'Расчёт...' : 'Рассчитать гидродинамику'}</span>
+          <span>
+            {isSimulating
+              ? 'Расчёт...'
+              : hasCapacityOverflow
+              ? 'Переполнение посуды (расчёт невозможен)'
+              : 'Рассчитать гидродинамику'}
+          </span>
         </button>
       </div>
+
+      {/* Ошибка валидации физических параметров (если расчёт был отклонён ядром) */}
+      {validationError && (
+        <div className="p-4 bg-rose-50 border border-rose-300 rounded-md text-xs text-rose-900 flex items-start gap-3">
+          <AlertCircle className="w-4 h-4 text-rose-700 shrink-0 mt-0.5" />
+          <div>
+            <div className="font-semibold text-rose-950 mb-0.5">Ошибка валидации физических параметров:</div>
+            <div>{validationError}</div>
+          </div>
+        </div>
+      )}
 
       {/* Блок 1: Выбор метода заваривания (3 метода с независимой логикой) */}
       <SectionCard
@@ -713,26 +766,15 @@ export const BrewingSimulatorView: React.FC<BrewingSimulatorViewProps> = ({
       </SectionCard>
 
       {/* Предупреждение о превышении объёма сосуда (если есть) */}
-      {(() => {
-        const hasOverflow =
-          methodId === 'gongfu_cha'
-            ? gongfuSteps.some((s) => s.pourWaterVolumeMl > vessel.volumeMl)
-            : methodId === 'liu_gen_pao'
-            ? liuGenPaoSteps.some((s) => s.addedWaterVolumeMl > vessel.volumeMl)
-            : lazyInitialVolumeMl > vessel.volumeMl;
-
-        if (!hasOverflow) return null;
-
-        return (
-          <div className="p-3 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-900 flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-700 shrink-0" />
-            <span>
-              <strong>Внимание по геометрии сосуда:</strong> объём заливаемой жидкости превышает
-              номинальную вместимость выбранного сосуда ({vessel.volumeMl} мл).
-            </span>
-          </div>
-        );
-      })()}
+      {hasCapacityOverflow && (
+        <div className="p-3 bg-rose-50 border border-rose-300 rounded-md text-xs text-rose-900 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-rose-700 shrink-0" />
+          <span>
+            <strong>Блокировка расчёта (переполнение посуды):</strong> суммарный объём жидкости превышает
+            номинальную вместимость выбранного сосуда ({vessel.volumeMl} мл). Физическое переполнение невозможно, скорректируйте объёмы.
+          </span>
+        </div>
+      )}
 
       {/* Блок 6: Протокол шагов / событий в зависимости от выбранного метода */}
       {methodId === 'gongfu_cha' && (

@@ -24,9 +24,13 @@ import { DataOriginType } from '../../domain/tea/types.ts';
 export interface ThermalState {
   /** Объём жидкости в сосуде в данный момент (мл). Если сосуд пуст, равен 0. */
   readonly liquidVolumeMl: number;
-  /** Температура жидкости (°C). При объёме 0 равна температуре сосуда или окружающей среды. */
-  readonly liquidTemperatureC: number;
-  /** Средняя температура стенок заварочного сосуда (°C). */
+  /**
+   * Температура жидкости (°C).
+   * Принцип Unknown ≠ 0: если объём жидкости равен 0 (сосуд пуст во время паузы или до налива),
+   * температура несуществующей жидкости физически неопределена и строго равна null.
+   */
+  readonly liquidTemperatureC: number | null;
+  /** Средняя температура стенок заварочного сосуда (°C). Физически определена всегда. */
   readonly vesselTemperatureC: number;
   /** Температура окружающей среды помещения (°C). */
   readonly ambientTemperatureC: number;
@@ -36,30 +40,33 @@ export interface ThermalState {
 
 /**
  * Термодинамический профиль заварочного сосуда.
- * Все оценочные параметры имеют статус происхождения 'model_profile'
- * и централизованно документированы до проведения лабораторной калибровки.
+ *
+ * Все параметры проводимости являются интегральными (lumped) инженерными величинами,
+ * учитывающими совокупность механизмов (конвекция, теплопроводность стенок, излучение,
+ * испарительное охлаждение с поверхности), а не фундаментальными табличными константами.
+ * Имеют статус происхождения 'model_profile'.
  */
 export interface VesselThermalProfile {
   readonly id: string;
   readonly name: string;
   readonly material: VesselMaterial;
-  /** Масса сухого пустого сосуда (г). */
+  /** Масса сухого пустого сосуда с крышкой (г). */
   readonly vesselMassGrams: number;
-  /** Удельная теплоёмкость материала сосуда (Дж/(кг·К)). */
+  /** Удельная теплоёмкость сухого материала сосуда (Дж/(кг·К)). */
   readonly materialSpecificHeatJPerKgK: number;
   /**
    * Эффективная тепловая проводимость между объёмом жидкости и стенками сосуда (Вт/К).
-   * Отражает конвективный перенос тепла от настоя к внутренней поверхности.
+   * Интегральная инженерная оценка теплопередачи через смоченную внутреннюю поверхность.
    */
   readonly conductanceLiquidVesselWPerK: number;
   /**
    * Эффективная тепловая проводимость между наружными стенками сосуда и окружающим воздухом (Вт/К).
-   * Отражает конвективное и радиационное охлаждение стенок.
+   * Отражает совокупное конвективное и радиационное охлаждение наружной поверхности.
    */
   readonly conductanceVesselAmbientWPerK: number;
   /**
-   * Эффективная тепловая проводимость между свободной зеркальной поверхностью жидкости и воздухом (Вт/К).
-   * Для открытых чашек/кружек существенно выше, чем для закрытых чайников с плотной крышкой.
+   * Эффективная тепловая проводимость между зеркальной поверхностью жидкости и воздухом (Вт/К).
+   * Включает конвекцию над поверхностью и испарительный унос тепла (существенно выше для открытых кружек).
    */
   readonly conductanceLiquidAmbientWPerK: number;
   /** Статус происхождения параметров. */
@@ -73,9 +80,25 @@ export interface VesselThermalProfile {
  */
 export interface ThermalSimulationPoint {
   readonly timeSeconds: number;
-  readonly liquidTemperatureC: number;
+  /** Температура жидкости (°C). Если жидкость отсутствует, равна null. */
+  readonly liquidTemperatureC: number | null;
+  /** Температура стенок сосуда (°C). */
   readonly vesselTemperatureC: number;
+  /** Объём жидкости в сосуде в данный момент (мл). */
   readonly liquidVolumeMl: number;
+}
+
+/**
+ * Результат выполнения одного вызова численного интегратора.
+ */
+export interface IntegrationStepResult {
+  readonly finalState: ThermalState;
+  readonly curvePoints: ThermalSimulationPoint[];
+  readonly minLiquidTempC: number | null;
+  readonly maxLiquidTempC: number | null;
+  readonly minVesselTempC: number;
+  readonly maxVesselTempC: number;
+  readonly warnings: string[];
 }
 
 /**
@@ -85,14 +108,14 @@ export interface ThermalStepResult {
   readonly stepOrEventId: string | number;
   /** Температура заливаемой/доливаемой воды на входе (°C). */
   readonly pourWaterTempC: number;
-  /** Температура жидкости в начальный момент контакта (°C). */
-  readonly initialLiquidTempC: number;
-  /** Температура жидкости в конце экспозиции / перед сливом (°C). */
-  readonly finalLiquidTempC: number;
-  /** Минимальная зафиксированная температура жидкости за шаг (°C). */
-  readonly minLiquidTempC: number;
-  /** Максимальная зафиксированная температура жидкости за шаг (°C). */
-  readonly maxLiquidTempC: number;
+  /** Температура жидкости в начальный момент контакта (°C). null, если сосуд пуст. */
+  readonly initialLiquidTempC: number | null;
+  /** Температура жидкости в конце экспозиции / перед сливом (°C). null, если сосуд пуст. */
+  readonly finalLiquidTempC: number | null;
+  /** Минимальная зафиксированная температура жидкости за шаг (°C). null, если жидкость отсутствует. */
+  readonly minLiquidTempC: number | null;
+  /** Максимальная зафиксированная температура жидкости за шаг (°C). null, если жидкость отсутствует. */
+  readonly maxLiquidTempC: number | null;
   /** Температура стенок сосуда в начале шага (°C). */
   readonly initialVesselTempC: number;
   /** Температура стенок сосуда в конце шага (°C). */
@@ -113,7 +136,7 @@ export interface ThermalStepResult {
 export interface ThermalSimulationOptions {
   /**
    * Температура окружающего воздуха (°C).
-   * По умолчанию: 22.0 °C (стандартное комнатное допущение).
+   * По умолчанию: 22.0 °C (инженерное комнатное допущение).
    */
   readonly ambientTemperatureC?: number;
   /**
@@ -124,7 +147,7 @@ export interface ThermalSimulationOptions {
   readonly isVesselPreheated?: boolean;
   /**
    * Температура стенок предварительно прогретого сосуда (°C).
-   * По умолчанию: 75.0 °C (оценочное модельное допущение при ополаскивании горячей водой).
+   * По умолчанию: 75.0 °C.
    */
   readonly preheatedVesselTemperatureC?: number;
   /**
@@ -134,7 +157,7 @@ export interface ThermalSimulationOptions {
   readonly interInfusionPauseSeconds?: number;
   /**
    * Внутренний шаг времени численного интегратора (с).
-   * По умолчанию: 0.1 с (обеспечивает высокую устойчивость и точность Рунге-Кутты).
+   * По умолчанию: 0.1 с (обеспечивает точность схемы Хойна O(dt²) при dt << 2τ).
    */
   readonly integratorTimeStepSeconds?: number;
 }
@@ -151,4 +174,21 @@ export interface SessionThermalSummary {
   readonly status: 'uncalibrated_model_profile';
   readonly generalAssumptions: string[];
   readonly warnings: string[];
+}
+
+/**
+ * Отчёт о проверке численной сходимости интегратора при разных шагах dt.
+ */
+export interface ThermalConvergenceReport {
+  readonly profileId: string;
+  readonly durationSeconds: number;
+  readonly stepsTested: number[];
+  readonly results: Array<{
+    timeStepSeconds: number;
+    finalLiquidTempC: number | null;
+    finalVesselTempC: number;
+    deltaFromFinerC: number;
+  }>;
+  readonly maxDeltaC: number;
+  readonly isConverged: boolean;
 }

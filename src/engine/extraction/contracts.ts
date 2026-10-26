@@ -77,7 +77,7 @@ export class Stage1ExtractionEngine implements IExtractionEngine {
           maxLiquidTemperatureC: thermalStep ? thermalStep.maxLiquidTempC : step.waterTemperatureC,
           startVesselTemperatureC: thermalStep ? thermalStep.initialVesselTempC : (thermalOptions.isVesselPreheated ? 75 : 22),
           finalVesselTemperatureC: thermalStep ? thermalStep.finalVesselTempC : (thermalOptions.isVesselPreheated ? 75 : 22),
-          temperatureC: thermalStep ? Math.round(thermalStep.finalLiquidTempC * 10) / 10 : step.waterTemperatureC,
+          temperatureC: thermalStep && thermalStep.finalLiquidTempC !== null ? Math.round(thermalStep.finalLiquidTempC * 10) / 10 : step.waterTemperatureC,
 
           thermalCurveSamplePoints: thermalStep?.curveSamplePoints,
           thermalWarnings: thermalStep?.warnings,
@@ -117,7 +117,7 @@ export class Stage1ExtractionEngine implements IExtractionEngine {
           maxLiquidTemperatureC: thermalStep ? thermalStep.maxLiquidTempC : step.addedWaterTemperatureC,
           startVesselTemperatureC: thermalStep ? thermalStep.initialVesselTempC : (thermalOptions.isVesselPreheated ? 75 : 22),
           finalVesselTemperatureC: thermalStep ? thermalStep.finalVesselTempC : (thermalOptions.isVesselPreheated ? 75 : 22),
-          temperatureC: thermalStep ? Math.round(thermalStep.finalLiquidTempC * 10) / 10 : step.addedWaterTemperatureC,
+          temperatureC: thermalStep && thermalStep.finalLiquidTempC !== null ? Math.round(thermalStep.finalLiquidTempC * 10) / 10 : step.addedWaterTemperatureC,
 
           thermalCurveSamplePoints: thermalStep?.curveSamplePoints,
           thermalWarnings: thermalStep?.warnings,
@@ -151,7 +151,9 @@ export class Stage1ExtractionEngine implements IExtractionEngine {
           desc = `Завершение сессии: в кружке осталось ${currentVol} мл`;
         }
 
-        const liquidTemp = thermalStep ? Math.round(thermalStep.finalLiquidTempC * 10) / 10 : config.baseWaterTemperatureC;
+        const liquidTemp = thermalStep && thermalStep.finalLiquidTempC !== null
+          ? Math.round(thermalStep.finalLiquidTempC * 10) / 10
+          : (currentVol > 0 ? config.baseWaterTemperatureC : null);
 
         return {
           timestampSeconds: evt.timestampSeconds,

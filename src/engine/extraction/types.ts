@@ -27,19 +27,19 @@ export interface GongfuStepSnapshot {
   /** Температура заливаемой воды на входе (°C) */
   readonly pourTemperatureC: number;
   /** Температура жидкости в начале контакта (°C) */
-  readonly startLiquidTemperatureC: number;
+  readonly startLiquidTemperatureC: number | null;
   /** Температура жидкости в конце экспозиции / при сливе (°C) */
-  readonly finalLiquidTemperatureC: number;
+  readonly finalLiquidTemperatureC: number | null;
   /** Минимальная температура жидкости за шаг (°C) */
-  readonly minLiquidTemperatureC: number;
+  readonly minLiquidTemperatureC: number | null;
   /** Максимальная температура жидкости за шаг (°C) */
-  readonly maxLiquidTemperatureC: number;
+  readonly maxLiquidTemperatureC: number | null;
   /** Температура стенок сосуда в начале шага (°C) */
   readonly startVesselTemperatureC: number;
   /** Температура стенок сосуда в конце шага (°C) */
   readonly finalVesselTemperatureC: number;
   /** Обратная совместимость: текущая температура жидкости при сливе (°C) */
-  readonly temperatureC: number;
+  readonly temperatureC: number | null;
 
   /** Дискретные точки температурной кривой охлаждения */
   readonly thermalCurveSamplePoints?: ThermalSimulationPoint[];
@@ -66,19 +66,19 @@ export interface LiuGenPaoStepSnapshot {
   /** Температура доливаемой воды на входе (°C) */
   readonly pourTemperatureC: number;
   /** Температура смеси после добавления свежей воды (°C) */
-  readonly startLiquidTemperatureC: number;
+  readonly startLiquidTemperatureC: number | null;
   /** Температура жидкости перед сливом (°C) */
-  readonly finalLiquidTemperatureC: number;
+  readonly finalLiquidTemperatureC: number | null;
   /** Минимальная температура жидкости за шаг (°C) */
-  readonly minLiquidTemperatureC: number;
+  readonly minLiquidTemperatureC: number | null;
   /** Максимальная температура жидкости за шаг (°C) */
-  readonly maxLiquidTemperatureC: number;
+  readonly maxLiquidTemperatureC: number | null;
   /** Температура стенок сосуда в начале шага (°C) */
   readonly startVesselTemperatureC: number;
   /** Температура стенок сосуда в конце шага (°C) */
   readonly finalVesselTemperatureC: number;
   /** Обратная совместимость: температура жидкости перед сливом (°C) */
-  readonly temperatureC: number;
+  readonly temperatureC: number | null;
 
   /** Дискретные точки температурной кривой охлаждения */
   readonly thermalCurveSamplePoints?: ThermalSimulationPoint[];
@@ -101,15 +101,15 @@ export interface LazyMugEventSnapshot {
   /** Температура заливки/долива или текущего настоя (°C) */
   readonly pourTemperatureC: number;
   /** Температура жидкости в момент события (°C) */
-  readonly startLiquidTemperatureC: number;
+  readonly startLiquidTemperatureC: number | null;
   /** Температура жидкости в конце интервала до следующего события (°C) */
-  readonly finalLiquidTemperatureC: number;
-  readonly minLiquidTemperatureC: number;
-  readonly maxLiquidTemperatureC: number;
+  readonly finalLiquidTemperatureC: number | null;
+  readonly minLiquidTemperatureC: number | null;
+  readonly maxLiquidTemperatureC: number | null;
   readonly startVesselTemperatureC: number;
   readonly finalVesselTemperatureC: number;
   /** Обратная совместимость (°C) */
-  readonly temperatureC: number;
+  readonly temperatureC: number | null;
 
   /** Дискретные точки температурной кривой охлаждения интервала */
   readonly thermalCurveSamplePoints?: ThermalSimulationPoint[];

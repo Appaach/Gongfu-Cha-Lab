@@ -5,6 +5,7 @@
 
 export * from './types.ts';
 export * from './constants.ts';
+export * from './errors.ts';
 export * from './profiles.ts';
 export * from './integrator.ts';
 export * from './engine.ts';

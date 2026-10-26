@@ -8,13 +8,20 @@ import {
   LiuGenPaoSessionConfig,
   LazyMugSessionConfig,
   LazyMugTimelineEvent,
+  VesselMaterial,
 } from '../../domain/brewing/types.ts';
 import {
   DEFAULT_AMBIENT_TEMPERATURE_C,
   DEFAULT_PREHEATED_VESSEL_TEMPERATURE_C,
   DEFAULT_INTER_INFUSION_PAUSE_SECONDS,
+  DEFAULT_LIU_GEN_PAO_PAUSE_SECONDS,
   DEFAULT_INTEGRATOR_TIME_STEP_SECONDS,
 } from './constants.ts';
+import {
+  BrewingCapacityOverflowError,
+  TimelineChronologyError,
+  ThermalValidationError,
+} from './errors.ts';
 import { getVesselThermalProfile } from './profiles.ts';
 import {
   solveThermalMixing,
@@ -43,7 +50,7 @@ export class BrewingThermalEngine {
   private resolveOptions(
     vesselId: string,
     vesselVolumeMl: number,
-    vesselMaterialFallback: any,
+    vesselMaterialFallback: VesselMaterial,
     options?: ThermalSimulationOptions
   ): {
     profile: VesselThermalProfile;
@@ -73,12 +80,19 @@ export class BrewingThermalEngine {
   }
 
   /**
-   * Моделирование теплового баланса для метода Гунфу Ча (последовательные импульсные проливы).
+   * Моделирование теплового баланса для метода Гунфу Ча (последовательные импульсные проливы с полным сливом).
    */
   simulateGongfu(
     session: GongfuSessionConfig,
     options?: ThermalSimulationOptions
   ): ThermalSimulationOutput {
+    if (!session.steps || session.steps.length === 0) {
+      throw new ThermalValidationError(
+        'Сессия Гунфу Ча должна содержать как минимум один шаг заваривания.',
+        'EMPTY_STEPS'
+      );
+    }
+
     const { profile, ambientTemp, initialVesselTemp, isPreheated, interPause, dt } =
       this.resolveOptions(session.vessel.id, session.vessel.volumeMl, session.vessel.material, options);
 
@@ -92,16 +106,26 @@ export class BrewingThermalEngine {
       const stepWarnings: string[] = [];
       const stepAssumptions: string[] = [];
 
-      // Проверка на вместимость сосуда
+      // Строгая валидация вместимости сосуда: физическое переполнение недопустимо
       if (step.pourWaterVolumeMl > session.vessel.volumeMl) {
-        stepWarnings.push(
-          `Объём заливки (${step.pourWaterVolumeMl} мл) превышает номинальную вместимость сосуда (${session.vessel.volumeMl} мл).`
+        throw new BrewingCapacityOverflowError(
+          `Объём заливки (${step.pourWaterVolumeMl} мл) превышает номинальную вместимость сосуда (${session.vessel.volumeMl} мл) на шаге #${step.stepNumber}. Физическое переполнение заварочного сосуда невозможно.`,
+          session.vessel.volumeMl,
+          step.pourWaterVolumeMl,
+          step.stepNumber
         );
       }
 
-      // При заливке свежей воды:
-      // Температура воды на входе: step.waterTemperatureC
-      // Температура стенок: currentVesselTemp
+      if (step.pourWaterVolumeMl <= 0) {
+        throw new ThermalValidationError(
+          `Объём заливки на шаге #${step.stepNumber} должен быть строго положительным (${step.pourWaterVolumeMl} мл).`,
+          'INVALID_POUR_VOLUME',
+          'pourWaterVolumeMl',
+          step.pourWaterVolumeMl
+        );
+      }
+
+      // Начальное состояние перед проливом:
       const initialState = {
         liquidVolumeMl: step.pourWaterVolumeMl,
         liquidTemperatureC: step.waterTemperatureC,
@@ -135,11 +159,12 @@ export class BrewingThermalEngine {
         assumptions: stepAssumptions,
       });
 
-      // После слива настоя: пустой сосуд остывает на воздухе в течение паузы до следующего пролива
+      // После слива настоя: пустой сосуд (liquidVolumeMl = 0, liquidTemperatureC = null)
+      // остывает на воздухе в течение паузы до следующего пролива
       if (i < session.steps.length - 1 && interPause > 0) {
         const pauseState = {
           liquidVolumeMl: 0,
-          liquidTemperatureC: integration.finalState.vesselTemperatureC,
+          liquidTemperatureC: null, // Пустой сосуд: Unknown ≠ 0
           vesselTemperatureC: integration.finalState.vesselTemperatureC,
           ambientTemperatureC: ambientTemp,
           elapsedSeconds: 0,
@@ -160,13 +185,13 @@ export class BrewingThermalEngine {
       status: 'uncalibrated_model_profile',
       generalAssumptions: [
         `Двухузловая модель сосредоточенных теплоёмкостей (жидкость + стенки посуды).`,
-        `Теплоёмкость воды принята c_p = 4184 Дж/(кг·К), плотность ρ = 1.0 г/мл (модельное приближение).`,
+        `Теплоёмкость воды принята c_p = 4184.0 Дж/(кг·К) (IAPWS-IF97), плотность ρ = 1.0 г/мл.`,
         `Профиль сосуда "${profile.name}": масса ${profile.vesselMassGrams} г, c_p = ${profile.materialSpecificHeatJPerKgK} Дж/(кг·К).`,
         isPreheated
-          ? `Сосуд предварительно прогрет (принята модельная температура ${initialVesselTemp} °C).`
+          ? `Сосуд предварительно прогрет (модельная температура стенок ${initialVesselTemp} °C).`
           : `Сосуд не прогрет (начальная температура равна температуре воздуха ${ambientTemp} °C).`,
-        `Пауза между проливами принята ${interPause} с (модельное допущение охлаждения пустого сосуда на воздухе).`,
-        `Капиллярное влагоудержание листом в текущей версии не рассчитывается (оставлено на этап 2B).`,
+        `Пауза между проливами принята ${interPause} с (охлаждение сухого пустого сосуда на воздухе).`,
+        `Капиллярное влагоудержание листом в текущей версии не рассчитывается (Этап 2B).`,
       ],
       warnings: generalWarnings,
     };
@@ -181,6 +206,13 @@ export class BrewingThermalEngine {
     session: LiuGenPaoSessionConfig,
     options?: ThermalSimulationOptions
   ): ThermalSimulationOutput {
+    if (!session.steps || session.steps.length === 0) {
+      throw new ThermalValidationError(
+        'Сессия Лю Гэнь Пао должна содержать как минимум один шаг заваривания.',
+        'EMPTY_STEPS'
+      );
+    }
+
     const { profile, ambientTemp, initialVesselTemp, isPreheated, dt } =
       this.resolveOptions(session.vessel.id, session.vessel.volumeMl, session.vessel.material, options);
 
@@ -188,7 +220,7 @@ export class BrewingThermalEngine {
     const generalWarnings: string[] = [];
 
     let currentRetainedVolumeMl = 0;
-    let currentRetainedTempC = 0;
+    let currentRetainedTempC: number | null = null;
     let currentVesselTemp = initialVesselTemp;
 
     for (let i = 0; i < session.steps.length; i++) {
@@ -196,11 +228,11 @@ export class BrewingThermalEngine {
       const stepWarnings: string[] = [];
       const stepAssumptions: string[] = [];
 
-      // 1. Смешение свежей воды с сохранённым остатком настоя по балансу тепловой энергии
+      // 1. Смешение свежей воды с сохранённым остатком («корнем») настоя
       let mixedVolume: number;
-      let mixedTemp: number;
+      let mixedTemp: number | null;
 
-      if (i === 0 || currentRetainedVolumeMl <= 0) {
+      if (i === 0 || currentRetainedVolumeMl <= 0 || currentRetainedTempC === null) {
         mixedVolume = step.addedWaterVolumeMl;
         mixedTemp = step.addedWaterTemperatureC;
       } else {
@@ -212,9 +244,13 @@ export class BrewingThermalEngine {
         mixedTemp = mix.temperatureC;
       }
 
+      // Строгая валидация вместимости: объём жидкости не может превышать объём сосуда
       if (mixedVolume > session.vessel.volumeMl) {
-        stepWarnings.push(
-          `Полный объём жидкости (${mixedVolume} мл) превышает номинальную вместимость сосуда (${session.vessel.volumeMl} мл).`
+        throw new BrewingCapacityOverflowError(
+          `Суммарный объём жидкости (${mixedVolume} мл: остаток корня ${currentRetainedVolumeMl} мл + долив ${step.addedWaterVolumeMl} мл) превышает вместимость сосуда (${session.vessel.volumeMl} мл) на шаге #${step.stepNumber}. Физическое переполнение невозможно.`,
+          session.vessel.volumeMl,
+          mixedVolume,
+          step.stepNumber
         );
       }
 
@@ -264,11 +300,12 @@ export class BrewingThermalEngine {
       ambientTemperatureC: ambientTemp,
       isVesselPreheated: isPreheated,
       initialVesselTemperatureC: initialVesselTemp,
-      interInfusionPauseSeconds: 0,
+      interInfusionPauseSeconds: DEFAULT_LIU_GEN_PAO_PAUSE_SECONDS,
       status: 'uncalibrated_model_profile',
       generalAssumptions: [
         `Двухузловая модель сосредоточенных теплоёмкостей Лю Гэнь Пао.`,
         `Температура смеси на каждом шаге рассчитывается по балансу энергии смешения доливаемой воды и сохранённого корня настоя.`,
+        `Пауза между проливами Лю Гэнь Пао принята равной ${DEFAULT_LIU_GEN_PAO_PAUSE_SECONDS} с (непрерывная серия доливов).`,
         `Стенки сосуда сохраняют текущую температуру в момент долива.`,
         `Профиль сосуда: ${profile.name} (c_p = ${profile.materialSpecificHeatJPerKgK} Дж/(кг·К)).`,
       ],
@@ -285,47 +322,150 @@ export class BrewingThermalEngine {
     session: LazyMugSessionConfig,
     options?: ThermalSimulationOptions
   ): ThermalSimulationOutput {
+    if (!session.timelineEvents || session.timelineEvents.length === 0) {
+      throw new ThermalValidationError(
+        'Сессия заваривания в кружке должна содержать как минимум одно событие на временной шкале.',
+        'EMPTY_TIMELINE'
+      );
+    }
+
+    // 1. Строгая валидация хронологии временной шкалы событий
+    const events = session.timelineEvents;
+    let foundSessionEnd = false;
+
+    for (let i = 0; i < events.length; i++) {
+      const evt = events[i];
+
+      // Запрет отрицательных меток времени
+      if (!Number.isFinite(evt.timestampSeconds) || evt.timestampSeconds < 0) {
+        throw new TimelineChronologyError(
+          `Метка времени события #${i} (${evt.type}) не может быть отрицательной или NaN: ${evt.timestampSeconds} с.`,
+          i,
+          evt.timestampSeconds
+        );
+      }
+
+      // Запрет событий после завершения сессии
+      if (foundSessionEnd) {
+        throw new TimelineChronologyError(
+          `Обнаружено событие #${i} (${evt.type}) после окончания сессии (session_end). Завершающее событие должно быть строго последним на шкале.`,
+          i,
+          evt.timestampSeconds
+        );
+      }
+
+      if (evt.type === 'session_end') {
+        foundSessionEnd = true;
+      }
+
+      // Проверка хронологического порядка и отсутствия конфликтующих одинаковых меток
+      if (i > 0) {
+        const prev = events[i - 1];
+        if (evt.timestampSeconds < prev.timestampSeconds) {
+          throw new TimelineChronologyError(
+            `Нарушение хронологического порядка: событие #${i} (${evt.type}, ${evt.timestampSeconds} с) следует раньше события #${i - 1} (${prev.type}, ${prev.timestampSeconds} с).`,
+            i,
+            evt.timestampSeconds
+          );
+        }
+        if (evt.timestampSeconds === prev.timestampSeconds) {
+          throw new TimelineChronologyError(
+            `Конфликт событий #${i - 1} и #${i}: обнаружены одинаковые временные метки (${evt.timestampSeconds} с). Время должно монотонно возрастать.`,
+            i,
+            evt.timestampSeconds
+          );
+        }
+      }
+    }
+
     const { profile, ambientTemp, initialVesselTemp, isPreheated, dt } =
       this.resolveOptions(session.vessel.id, session.vessel.volumeMl, session.vessel.material, options);
 
     const stepResults: ThermalStepResult[] = [];
     const generalWarnings: string[] = [];
 
-    // Сортировка событий по временной шкале
-    const sortedEvents = [...session.timelineEvents].sort((a, b) => a.timestampSeconds - b.timestampSeconds);
-
     let currentVolume = 0;
-    let currentLiquidTemp = ambientTemp;
+    let currentLiquidTemp: number | null = null;
     let currentVesselTemp = initialVesselTemp;
 
-    for (let i = 0; i < sortedEvents.length; i++) {
-      const evt = sortedEvents[i];
-      const nextEvt: LazyMugTimelineEvent | undefined = sortedEvents[i + 1];
+    for (let i = 0; i < events.length; i++) {
+      const evt = events[i];
+      const nextEvt: LazyMugTimelineEvent | undefined = events[i + 1];
       const stepWarnings: string[] = [];
       const stepAssumptions: string[] = [];
 
-      let pourTemp = currentLiquidTemp;
+      let pourTemp = currentLiquidTemp ?? ambientTemp;
 
       // Обработка дискретного мгновенного события
       if (evt.type === 'initial_pour') {
+        if (evt.waterVolumeMl > session.vessel.volumeMl) {
+          throw new BrewingCapacityOverflowError(
+            `Начальный объём заливки (${evt.waterVolumeMl} мл) превышает вместимость кружки (${session.vessel.volumeMl} мл). Физическое переполнение невозможно.`,
+            session.vessel.volumeMl,
+            evt.waterVolumeMl,
+            'initial_pour'
+          );
+        }
+        if (evt.waterVolumeMl <= 0) {
+          throw new ThermalValidationError(
+            `Начальный объём заливки воды должен быть положительным (${evt.waterVolumeMl} мл).`,
+            'INVALID_POUR_VOLUME',
+            'waterVolumeMl',
+            evt.waterVolumeMl
+          );
+        }
+
         currentVolume = evt.waterVolumeMl;
         currentLiquidTemp = evt.waterTemperatureC;
         pourTemp = evt.waterTemperatureC;
-
-        if (currentVolume > session.vessel.volumeMl) {
-          stepWarnings.push(
-            `Начальный объём заливки (${currentVolume} мл) превышает вместимость кружки (${session.vessel.volumeMl} мл).`
+      } else if (evt.type === 'sip_consumption') {
+        // Валидация объёма отпивания
+        if (evt.consumedVolumeMl <= 0) {
+          throw new ThermalValidationError(
+            `Объём отпивания должен быть строго больше нуля (${evt.consumedVolumeMl} мл).`,
+            'INVALID_SIP_VOLUME',
+            'consumedVolumeMl',
+            evt.consumedVolumeMl
           );
         }
-      } else if (evt.type === 'sip_consumption') {
-        // Отпивание уменьшает объём, температура жидкости в момент отпивания не меняется
+        if (evt.consumedVolumeMl > currentVolume) {
+          throw new ThermalValidationError(
+            `Объём отпивания (${evt.consumedVolumeMl} мл) превышает текущий объём жидкости в кружке (${currentVolume} мл). Невозможно отпить больше содержимого.`,
+            'SIP_EXCEEDS_VOLUME',
+            'consumedVolumeMl',
+            evt.consumedVolumeMl
+          );
+        }
+
         const prevVol = currentVolume;
-        currentVolume = Math.max(0, currentVolume - evt.consumedVolumeMl);
+        currentVolume = currentVolume - evt.consumedVolumeMl;
         stepAssumptions.push(
-          `Отпивание ${evt.consumedVolumeMl} мл: объём уменьшен с ${prevVol} до ${currentVolume} мл без мгновенного изменения температуры.`
+          `Отпивание ${evt.consumedVolumeMl} мл: объём уменьшен с ${prevVol} до ${currentVolume} мл.`
         );
+
+        if (currentVolume === 0) {
+          currentLiquidTemp = null; // Кружка полностью осушена
+        }
       } else if (evt.type === 'water_refill') {
-        // Долив горячей воды: расчёт температуры смешения по балансу энергии
+        if (evt.addedWaterVolumeMl <= 0) {
+          throw new ThermalValidationError(
+            `Объём долива воды должен быть положительным (${evt.addedWaterVolumeMl} мл).`,
+            'INVALID_REFILL_VOLUME',
+            'addedWaterVolumeMl',
+            evt.addedWaterVolumeMl
+          );
+        }
+
+        const projectedVolume = currentVolume + evt.addedWaterVolumeMl;
+        if (projectedVolume > session.vessel.volumeMl) {
+          throw new BrewingCapacityOverflowError(
+            `После долива суммарный объём (${projectedVolume} мл: остаток ${currentVolume} мл + долив ${evt.addedWaterVolumeMl} мл) превышает вместимость кружки (${session.vessel.volumeMl} мл).`,
+            session.vessel.volumeMl,
+            projectedVolume,
+            'water_refill'
+          );
+        }
+
         pourTemp = evt.addedWaterTemperatureC;
         const mix = solveThermalMixing(
           { volumeMl: currentVolume, temperatureC: currentLiquidTemp },
@@ -333,12 +473,6 @@ export class BrewingThermalEngine {
         );
         currentVolume = mix.volumeMl;
         currentLiquidTemp = mix.temperatureC;
-
-        if (currentVolume > session.vessel.volumeMl) {
-          stepWarnings.push(
-            `После долива объём (${currentVolume} мл) превышает вместимость кружки (${session.vessel.volumeMl} мл).`
-          );
-        }
       } else if (evt.type === 'session_end') {
         stepAssumptions.push('Завершение сессии настаивания.');
       }

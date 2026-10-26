@@ -38,7 +38,7 @@ export const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
   // Сбор точек для общей температурной кривой
   const allTimelinePoints: Array<{
     timeSeconds: number;
-    liquidTempC: number;
+    liquidTempC: number | null;
     vesselTempC: number;
     label?: string;
   }> = [];
@@ -47,7 +47,7 @@ export const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
 
   if (result.gongfuSteps) {
     const pause = result.thermalSummary?.interInfusionPauseSeconds ?? 20;
-    result.gongfuSteps.forEach((step, idx) => {
+    result.gongfuSteps.forEach((step) => {
       if (step.thermalCurveSamplePoints && step.thermalCurveSamplePoints.length > 0) {
         step.thermalCurveSamplePoints.forEach((pt, ptIdx) => {
           allTimelinePoints.push({
@@ -114,17 +114,27 @@ export const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
   // Формирование SVG path
   let liquidPath = '';
   let vesselPath = '';
+  let liquidDrawing = false;
 
   allTimelinePoints.forEach((pt, i) => {
     const x = getX(pt.timeSeconds);
-    const yL = getY(pt.liquidTempC);
     const yV = getY(pt.vesselTempC);
     if (i === 0) {
-      liquidPath += `M ${x.toFixed(1)} ${yL.toFixed(1)}`;
       vesselPath += `M ${x.toFixed(1)} ${yV.toFixed(1)}`;
     } else {
-      liquidPath += ` L ${x.toFixed(1)} ${yL.toFixed(1)}`;
       vesselPath += ` L ${x.toFixed(1)} ${yV.toFixed(1)}`;
+    }
+
+    if (pt.liquidTempC !== null) {
+      const yL = getY(pt.liquidTempC);
+      if (!liquidDrawing) {
+        liquidPath += `M ${x.toFixed(1)} ${yL.toFixed(1)}`;
+        liquidDrawing = true;
+      } else {
+        liquidPath += ` L ${x.toFixed(1)} ${yL.toFixed(1)}`;
+      }
+    } else {
+      liquidDrawing = false;
     }
   });
 
@@ -362,7 +372,10 @@ export const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
               </thead>
               <tbody className="divide-y divide-stone-100 font-mono text-stone-800">
                 {result.gongfuSteps.map((step) => {
-                  const deltaT = Math.round((step.startLiquidTemperatureC - step.finalLiquidTemperatureC) * 10) / 10;
+                  const hasLiquidTemps = step.startLiquidTemperatureC !== null && step.finalLiquidTemperatureC !== null;
+                  const deltaT = hasLiquidTemps
+                    ? Math.round((step.startLiquidTemperatureC! - step.finalLiquidTemperatureC!) * 10) / 10
+                    : null;
                   return (
                     <tr key={step.stepNumber} className="hover:bg-stone-50/50">
                       <td className="py-3 px-3 font-semibold text-stone-900">
@@ -378,13 +391,15 @@ export const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
                         {step.pourTemperatureC} °C
                       </td>
                       <td className="py-3 px-3 tabular-nums text-emerald-950 font-medium">
-                        {Math.round(step.startLiquidTemperatureC * 10) / 10} → {Math.round(step.finalLiquidTemperatureC * 10) / 10} °C
+                        {hasLiquidTemps
+                          ? `${Math.round(step.startLiquidTemperatureC! * 10) / 10} → ${Math.round(step.finalLiquidTemperatureC! * 10) / 10} °C`
+                          : '—'}
                       </td>
                       <td className="py-3 px-3 tabular-nums text-stone-600">
                         {Math.round(step.startVesselTemperatureC * 10) / 10} → {Math.round(step.finalVesselTemperatureC * 10) / 10} °C
                       </td>
                       <td className="py-3 px-3 tabular-nums text-stone-500">
-                        -{deltaT} °C
+                        {deltaT !== null ? `-${deltaT} °C` : '—'}
                       </td>
                       <td className="py-3 px-3 italic text-stone-400 font-sans">
                         Ожидает калибровки
@@ -437,7 +452,9 @@ export const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
                       <span className="text-emerald-900 font-medium">{step.drainedVolumeMl} мл</span> / {step.retainedLiquorRemainingMl} мл
                     </td>
                     <td className="py-3 px-3 tabular-nums text-emerald-950 font-medium">
-                      {Math.round(step.startLiquidTemperatureC * 10) / 10} → {Math.round(step.finalLiquidTemperatureC * 10) / 10} °C
+                      {step.startLiquidTemperatureC !== null && step.finalLiquidTemperatureC !== null
+                        ? `${Math.round(step.startLiquidTemperatureC * 10) / 10} → ${Math.round(step.finalLiquidTemperatureC * 10) / 10} °C`
+                        : '—'}
                     </td>
                     <td className="py-3 px-3 tabular-nums text-stone-600">
                       {Math.round(step.startVesselTemperatureC * 10) / 10} → {Math.round(step.finalVesselTemperatureC * 10) / 10} °C
@@ -491,7 +508,9 @@ export const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
                       {evt.liquidVolumeInMugMl} мл
                     </td>
                     <td className="py-3 px-3 tabular-nums text-emerald-950 font-medium">
-                      {Math.round(evt.startLiquidTemperatureC * 10) / 10} → {Math.round(evt.finalLiquidTemperatureC * 10) / 10} °C
+                      {evt.startLiquidTemperatureC !== null && evt.finalLiquidTemperatureC !== null
+                        ? `${Math.round(evt.startLiquidTemperatureC * 10) / 10} → ${Math.round(evt.finalLiquidTemperatureC * 10) / 10} °C`
+                        : '—'}
                     </td>
                     <td className="py-3 px-3 tabular-nums text-stone-600">
                       {Math.round(evt.startVesselTemperatureC * 10) / 10} → {Math.round(evt.finalVesselTemperatureC * 10) / 10} °C
