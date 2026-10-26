@@ -1,0 +1,6 @@
+{
+  "name": "Gongfu Cha Lab",
+  "description": "Научно ориентированный симулятор и лаборатория заваривания чая: экстракция, методы заваривания и подбор параметров",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
