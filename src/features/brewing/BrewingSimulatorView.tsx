@@ -29,6 +29,9 @@ import { stage1EngineInstance } from '../../engine/extraction/contracts.ts';
 import { SimulationResultsView } from '../results/SimulationResultsView.tsx';
 import { Plus, Trash2, Play, Flame, Scale, Droplet, Clock, AlertCircle } from 'lucide-react';
 
+import { getVesselThermalProfile } from '../../engine/thermal/profiles.ts';
+import { Thermometer, ShieldAlert } from 'lucide-react';
+
 interface BrewingSimulatorViewProps {
   teas: TeaSample[];
   selectedTeaId: string;
@@ -48,6 +51,12 @@ export const BrewingSimulatorView: React.FC<BrewingSimulatorViewProps> = ({
   const [leafMassGrams, setLeafMassGrams] = useState<number>(6.0);
   const [baseWaterTemperatureC, setBaseWaterTemperatureC] = useState<number>(90);
   const [selectedWaterProfile, setSelectedWaterProfile] = useState<WaterProfile>(DEFAULT_WATER_PROFILES[0]);
+
+  // Параметры тепловой модели (Этап 2A)
+  const [isVesselPreheated, setIsVesselPreheated] = useState<boolean>(true);
+  const [preheatedVesselTempC, setPreheatedVesselTempC] = useState<number>(75);
+  const [ambientTempC, setAmbientTempC] = useState<number>(22);
+  const [interInfusionPauseSeconds, setInterInfusionPauseSeconds] = useState<number>(20);
 
   // Раздельные состояния параметров для разных методов
   const [gongfuSteps, setGongfuSteps] = useState<GongfuStepConfig[]>(() =>
@@ -73,16 +82,19 @@ export const BrewingSimulatorView: React.FC<BrewingSimulatorViewProps> = ({
       setVessel(mug);
       setLeafMassGrams(3.5);
       setLazyInitialVolumeMl(300);
+      setIsVesselPreheated(false);
       setLazyMugEvents(createDefaultLazyMugEvents(300, baseWaterTemperatureC));
     } else if (newMethodId === 'liu_gen_pao') {
       const gaiwan = DEFAULT_VESSELS[0];
       setVessel(gaiwan);
       setLeafMassGrams(5.0);
+      setIsVesselPreheated(true);
       setLiuGenPaoSteps(createDefaultLiuGenPaoSteps(100, baseWaterTemperatureC));
     } else {
       const gaiwan = DEFAULT_VESSELS[0];
       setVessel(gaiwan);
       setLeafMassGrams(6.0);
+      setIsVesselPreheated(true);
       setGongfuSteps(createDefaultGongfuSteps(100, baseWaterTemperatureC));
     }
   };
@@ -116,6 +128,10 @@ export const BrewingSimulatorView: React.FC<BrewingSimulatorViewProps> = ({
         leafMassGrams,
         baseWaterTemperatureC,
         waterProfile: selectedWaterProfile,
+        isVesselPreheated,
+        ambientTemperatureC: ambientTempC,
+        preheatedVesselTemperatureC: preheatedVesselTempC,
+        interInfusionPauseSeconds,
         steps: gongfuSteps,
       };
     } else if (methodId === 'liu_gen_pao') {
@@ -126,6 +142,9 @@ export const BrewingSimulatorView: React.FC<BrewingSimulatorViewProps> = ({
         leafMassGrams,
         baseWaterTemperatureC,
         waterProfile: selectedWaterProfile,
+        isVesselPreheated,
+        ambientTemperatureC: ambientTempC,
+        preheatedVesselTemperatureC: preheatedVesselTempC,
         steps: liuGenPaoSteps,
       };
     } else {
@@ -137,6 +156,8 @@ export const BrewingSimulatorView: React.FC<BrewingSimulatorViewProps> = ({
         baseWaterTemperatureC,
         initialWaterVolumeMl: lazyInitialVolumeMl,
         waterProfile: selectedWaterProfile,
+        isVesselPreheated,
+        ambientTemperatureC: ambientTempC,
         timelineEvents: lazyMugEvents,
         scenarioType: 'preset_assumption',
       };
@@ -171,6 +192,10 @@ export const BrewingSimulatorView: React.FC<BrewingSimulatorViewProps> = ({
         leafMassGrams,
         baseWaterTemperatureC,
         waterProfile: selectedWaterProfile,
+        isVesselPreheated,
+        ambientTemperatureC: ambientTempC,
+        preheatedVesselTemperatureC: preheatedVesselTempC,
+        interInfusionPauseSeconds,
         steps: gongfuSteps,
       };
     } else if (methodId === 'liu_gen_pao') {
@@ -181,6 +206,9 @@ export const BrewingSimulatorView: React.FC<BrewingSimulatorViewProps> = ({
         leafMassGrams,
         baseWaterTemperatureC,
         waterProfile: selectedWaterProfile,
+        isVesselPreheated,
+        ambientTemperatureC: ambientTempC,
+        preheatedVesselTemperatureC: preheatedVesselTempC,
         steps: liuGenPaoSteps,
       };
     } else {
@@ -192,6 +220,8 @@ export const BrewingSimulatorView: React.FC<BrewingSimulatorViewProps> = ({
         baseWaterTemperatureC,
         initialWaterVolumeMl: lazyInitialVolumeMl,
         waterProfile: selectedWaterProfile,
+        isVesselPreheated,
+        ambientTemperatureC: ambientTempC,
         timelineEvents: lazyMugEvents,
         scenarioType: 'preset_assumption',
       };
@@ -353,47 +383,73 @@ export const BrewingSimulatorView: React.FC<BrewingSimulatorViewProps> = ({
         </SectionCard>
 
         <SectionCard
-          title="3. Заварочный сосуд"
-          subtitle="Вместимость и материал ёмкости (вместимость не подменяет объём заливки)"
+          title="3. Заварочный сосуд и тепловой профиль (Этап 2A)"
+          subtitle="Вместимость, масса и теплофизические коэффициенты посуды"
         >
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-stone-700 mb-1.5">
-                Заварочная ёмкость:
-              </label>
-              <select
-                value={vessel.id}
-                onChange={(e) => handleVesselChange(e.target.value)}
-                className="w-full text-xs font-medium py-2 px-3 bg-white border border-stone-300 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 text-stone-900"
-              >
-                {DEFAULT_VESSELS.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name} (Вместимость: {v.volumeMl} мл)
-                  </option>
-                ))}
-              </select>
-            </div>
+          {(() => {
+            const vProfile = getVesselThermalProfile(vessel.id, vessel.material, vessel.volumeMl);
+            const cVesselJPerK = Math.round(vProfile.vesselMassGrams * 0.001 * vProfile.materialSpecificHeatJPerKgK * 10) / 10;
 
-            <div className="p-3.5 bg-stone-50/70 border border-stone-200/80 rounded-md space-y-2 text-xs">
-              <div className="flex items-center justify-between pb-1.5 border-b border-stone-200/60">
-                <span className="text-stone-500">Материал:</span>
-                <span className="font-medium text-stone-900 capitalize">
-                  {vessel.material === 'porcelain' ? 'Фарфор' : vessel.material === 'yixing_clay' ? 'Исинская глина' : 'Боросиликатное стекло'}
-                </span>
+            return (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-stone-700 mb-1.5">
+                    Заварочная ёмкость:
+                  </label>
+                  <select
+                    value={vessel.id}
+                    onChange={(e) => handleVesselChange(e.target.value)}
+                    className="w-full text-xs font-medium py-2 px-3 bg-white border border-stone-300 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 text-stone-900"
+                  >
+                    {DEFAULT_VESSELS.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name} (Вместимость: {v.volumeMl} мл)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="p-3.5 bg-stone-50/70 border border-stone-200/80 rounded-md space-y-2 text-xs">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-stone-200/60">
+                    <span className="text-stone-500">Материал / Вместимость:</span>
+                    <span className="font-medium text-stone-900">
+                      {vessel.material === 'porcelain' ? 'Фарфор' : vessel.material === 'yixing_clay' ? 'Исинская глина' : 'Боросиликатное стекло'} · {vessel.volumeMl} мл
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-stone-500">Масса пустого сосуда:</span>
+                    <div className="flex items-center gap-1.5 font-mono">
+                      <span className="font-medium text-stone-900">{vProfile.vesselMassGrams} г</span>
+                      <DataOriginBadge origin={vProfile.origin} />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-stone-500">Удельная теплоёмкость c_p:</span>
+                    <span className="font-mono font-medium text-stone-900">{vProfile.materialSpecificHeatJPerKgK} Дж/(кг·К)</span>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-stone-500">Полная теплоёмкость стенок C_v:</span>
+                    <span className="font-mono font-semibold text-emerald-900">{cVesselJPerK} Дж/К</span>
+                  </div>
+
+                  <div className="pt-1.5 border-t border-stone-200/60 flex items-center justify-between text-[11px] text-stone-500">
+                    <span>Теплопередача G (Вт/К):</span>
+                    <span className="font-mono">
+                      G_lv: {vProfile.conductanceLiquidVesselWPerK} · G_va: {vProfile.conductanceVesselAmbientWPerK} · G_la: {vProfile.conductanceLiquidAmbientWPerK}
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-stone-500 pt-1 leading-relaxed border-t border-stone-200/60">
+                    <span className="text-stone-700 font-medium">Примечание физической модели: </span>
+                    {vProfile.basisNotes}
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-stone-500">Номинальная вместимость сосуда:</span>
-                <span className="font-mono font-medium text-stone-900">{vessel.volumeMl} мл</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-stone-500">Коэффициент теплоемкости:</span>
-                <span className="font-mono font-medium text-stone-900">{vessel.thermalInertiaFactor}</span>
-              </div>
-              <p className="text-[11px] text-stone-500 pt-1 leading-relaxed border-t border-stone-200/60">
-                {vessel.notes}
-              </p>
-            </div>
-          </div>
+            );
+          })()}
         </SectionCard>
       </div>
 
@@ -525,10 +581,163 @@ export const BrewingSimulatorView: React.FC<BrewingSimulatorViewProps> = ({
         </div>
       </SectionCard>
 
-      {/* Блок 4: Протокол шагов / событий в зависимости от выбранного метода */}
+      {/* Блок: Начальное тепловое состояние и внешняя среда (Этап 2A) */}
+      <SectionCard
+        title="5. Начальное тепловое состояние и внешняя среда (Этап 2A)"
+        subtitle="Температура стенок сосуда до первого контакта, температура воздуха и межоперационные паузы"
+      >
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Предварительный прогрев посуды */}
+          <div>
+            <label className="block text-xs font-medium text-stone-700 mb-1.5 flex items-center gap-1.5">
+              <Thermometer className="w-3.5 h-3.5 text-amber-700" />
+              Начальное состояние стенок посуды:
+            </label>
+            <div className="space-y-2 text-xs">
+              <label className="flex items-start gap-2 p-2.5 rounded border border-stone-200 bg-white hover:bg-stone-50 cursor-pointer">
+                <input
+                  type="radio"
+                  name="preheat_mode"
+                  checked={isVesselPreheated}
+                  onChange={() => setIsVesselPreheated(true)}
+                  className="mt-0.5 accent-emerald-800"
+                />
+                <div>
+                  <span className="font-semibold text-stone-900 block">
+                    Сосуд предварительно прогрет
+                  </span>
+                  <span className="text-[11px] text-stone-500">
+                    Ополаскивание кипятком перед первым проливом (~{preheatedVesselTempC} °C).
+                  </span>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-2 p-2.5 rounded border border-stone-200 bg-white hover:bg-stone-50 cursor-pointer">
+                <input
+                  type="radio"
+                  name="preheat_mode"
+                  checked={!isVesselPreheated}
+                  onChange={() => setIsVesselPreheated(false)}
+                  className="mt-0.5 accent-emerald-800"
+                />
+                <div>
+                  <span className="font-semibold text-stone-900 block">
+                    Сосуд холодный (не прогрет)
+                  </span>
+                  <span className="text-[11px] text-stone-500">
+                    Температура стенок равна температуре воздуха ({ambientTempC} °C).
+                  </span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* Температура окружающей среды */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-medium text-stone-700 flex items-center gap-1.5">
+                Температура воздуха в помещении
+              </label>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-mono font-semibold text-stone-900">
+                  {ambientTempC} °C
+                </span>
+                <span className="text-[10px] text-stone-400 font-mono">[Допущение]</span>
+              </div>
+            </div>
+            <input
+              type="range"
+              min={15}
+              max={32}
+              step={1}
+              value={ambientTempC}
+              onChange={(e) => setAmbientTempC(Number(e.target.value))}
+              className="w-full accent-emerald-800 cursor-pointer"
+            />
+            <div className="flex justify-between text-[11px] font-mono text-stone-400 mt-1">
+              <span>15 °C (прохладно)</span>
+              <span>22 °C (норма)</span>
+              <span>32 °C (жарко)</span>
+            </div>
+            <p className="text-[11px] text-stone-500 mt-2 leading-relaxed">
+              Определяет интенсивность конвективной теплоотдачи стенок сосуда и открытого зеркала настоя в атмосферу.
+            </p>
+          </div>
+
+          {/* Пауза между проливами для Гунфу Ча или примечание для кружки */}
+          <div>
+            {methodId === 'gongfu_cha' ? (
+              <>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-medium text-stone-700 flex items-center gap-1.5">
+                    Пауза между проливами (с)
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-mono font-semibold text-stone-900">
+                      {interInfusionPauseSeconds} с
+                    </span>
+                    <span className="text-[10px] text-stone-400 font-mono">[Допущение]</span>
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min={5}
+                  max={60}
+                  step={5}
+                  value={interInfusionPauseSeconds}
+                  onChange={(e) => setInterInfusionPauseSeconds(Number(e.target.value))}
+                  className="w-full accent-emerald-800 cursor-pointer"
+                />
+                <div className="flex justify-between text-[11px] font-mono text-stone-400 mt-1">
+                  <span>5 с (быстро)</span>
+                  <span>20 с (стандарт)</span>
+                  <span>60 с (медленно)</span>
+                </div>
+                <p className="text-[11px] text-stone-500 mt-2 leading-relaxed">
+                  Длительность паузы, во время которой пустой сосуд остывает на воздухе до следующей заливки воды.
+                </p>
+              </>
+            ) : (
+              <div className="p-3 bg-stone-50 border border-stone-200/80 rounded-md text-xs text-stone-600 space-y-1">
+                <span className="font-semibold text-stone-900 block font-sans">
+                  Непрерывный теплообмен
+                </span>
+                <p className="leading-relaxed text-[11px]">
+                  В методах Лю Гэнь Пао и открытом настаивании паузы между действиями рассчитываются
+                  непосредственно по шкале шагов и событий сессии.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </SectionCard>
+
+      {/* Предупреждение о превышении объёма сосуда (если есть) */}
+      {(() => {
+        const hasOverflow =
+          methodId === 'gongfu_cha'
+            ? gongfuSteps.some((s) => s.pourWaterVolumeMl > vessel.volumeMl)
+            : methodId === 'liu_gen_pao'
+            ? liuGenPaoSteps.some((s) => s.addedWaterVolumeMl > vessel.volumeMl)
+            : lazyInitialVolumeMl > vessel.volumeMl;
+
+        if (!hasOverflow) return null;
+
+        return (
+          <div className="p-3 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-900 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-700 shrink-0" />
+            <span>
+              <strong>Внимание по геометрии сосуда:</strong> объём заливаемой жидкости превышает
+              номинальную вместимость выбранного сосуда ({vessel.volumeMl} мл).
+            </span>
+          </div>
+        );
+      })()}
+
+      {/* Блок 6: Протокол шагов / событий в зависимости от выбранного метода */}
       {methodId === 'gongfu_cha' && (
         <SectionCard
-          title="5. Протокол проливов Гунфу Ча"
+          title="6. Протокол проливов Гунфу Ча"
           subtitle="Последовательность импульсных проливов с практически полным сливом"
           action={
             <button
@@ -648,7 +857,7 @@ export const BrewingSimulatorView: React.FC<BrewingSimulatorViewProps> = ({
 
       {methodId === 'liu_gen_pao' && (
         <SectionCard
-          title="5. Протокол Лю Гэнь Пао (Сохранение корней настоя)"
+          title="6. Протокол Лю Гэнь Пао (Сохранение корней настоя)"
           subtitle="Доля удержания определена относительно ПОЛНОГО объёма жидкости перед сливом"
           action={
             <button
@@ -779,7 +988,7 @@ export const BrewingSimulatorView: React.FC<BrewingSimulatorViewProps> = ({
 
       {methodId === 'lazy_mug' && (
         <SectionCard
-          title="5. Событийная шкала открытого настаивания в кружке"
+          title="6. Событийная шкала открытого настаивания в кружке"
           subtitle="Непрерывный контакт: экстракция продолжается непрерывно между событиями питья и долива"
         >
           <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-md text-xs text-amber-900 mb-4 flex items-start gap-2">

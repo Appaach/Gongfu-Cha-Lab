@@ -4,10 +4,15 @@
  */
 
 import { runDomainTestSuite } from './domain.test.ts';
+import { runThermalTestSuite } from './thermal.test.ts';
 
 async function main() {
   console.log('--- Запуск верификации предметных инвариантов Gongfu Cha Lab ---');
-  const results = await runDomainTestSuite();
+  const domainResults = await runDomainTestSuite();
+  console.log('--- Запуск верификации теплового ядра (Этап 2A) ---');
+  const thermalResults = await runThermalTestSuite();
+
+  const results = [...domainResults, ...thermalResults];
   let failures = 0;
 
   for (const r of results) {

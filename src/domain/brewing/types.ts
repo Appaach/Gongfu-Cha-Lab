@@ -32,9 +32,13 @@ export interface BrewingVessel {
   readonly id: string;
   readonly name: string;
   readonly material: VesselMaterial;
-  readonly volumeMl: number;             // Номинальная вместимость сосуда (мл). НЕ подменяет фактический объём заливки!
-  readonly thermalInertiaFactor: number; // Относительный коэффициент теплоемкости (0.2 – 0.9)
-  readonly wallThicknessMm: number;      // Толщина стенок (мм)
+  readonly volumeMl: number; // Номинальная вместимость сосуда (мл). НЕ подменяет фактический объём заливки!
+  /**
+   * @deprecated Сохранено исключительно для обратной совместимости интерфейса.
+   * НЕ является физической величиной и НЕ участвует в физических уравнениях теплообмена (заменено на VesselThermalProfile).
+   */
+  readonly thermalInertiaFactor: number;
+  readonly wallThicknessMm: number; // Толщина стенок (мм)
   readonly notes?: string;
 }
 
@@ -127,6 +131,12 @@ export interface BaseBrewingSessionConfig {
   readonly vessel: BrewingVessel;
   readonly leafMassGrams: number;       // Масса сухого чая (г)
   readonly waterProfile: WaterProfile;  // Профиль воды
+
+  // Параметры тепловой модели (Этап 2A)
+  readonly isVesselPreheated?: boolean;          // Сосуд предварительно прогрет (по умолчанию: true)
+  readonly ambientTemperatureC?: number;         // Температура воздуха (по умолчанию: 22 °C, модельное допущение)
+  readonly preheatedVesselTemperatureC?: number; // Температура стенок при прогреве (по умолчанию: 75 °C)
+  readonly interInfusionPauseSeconds?: number;   // Пауза между проливами (по умолчанию: 20 с)
 }
 
 /**

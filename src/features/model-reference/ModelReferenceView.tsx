@@ -6,7 +6,8 @@
 import React, { useState } from 'react';
 import { SectionCard } from '../../components/SectionCard.tsx';
 import { runDomainTestSuite, TestResult } from '../../tests/domain.test.ts';
-import { CheckCircle2, XCircle, Beaker, Play, ShieldAlert, Cpu } from 'lucide-react';
+import { runThermalTestSuite } from '../../tests/thermal.test.ts';
+import { CheckCircle2, XCircle, Beaker, Play, ShieldAlert, Cpu, Flame, Thermometer } from 'lucide-react';
 
 export const ModelReferenceView: React.FC = () => {
   const [testResults, setTestResults] = useState<TestResult[] | null>(null);
@@ -15,8 +16,9 @@ export const ModelReferenceView: React.FC = () => {
   const handleRunTests = async () => {
     setIsRunningTests(true);
     try {
-      const results = await runDomainTestSuite();
-      setTestResults(results);
+      const domainResults = await runDomainTestSuite();
+      const thermalResults = await runThermalTestSuite();
+      setTestResults([...domainResults, ...thermalResults]);
     } finally {
       setIsRunningTests(false);
     }
@@ -146,6 +148,53 @@ export const ModelReferenceView: React.FC = () => {
           </div>
         </SectionCard>
       </div>
+
+      {/* Двухузловая тепловая модель (Этап 2A) */}
+      <SectionCard
+        title="3. Двухузловая тепловая модель (Этап 2A)"
+        subtitle="Динамика теплообмена жидкости, стенок посуды и окружающего воздуха"
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-stone-600 leading-relaxed">
+          <div className="space-y-2">
+            <h4 className="font-semibold text-stone-900 flex items-center gap-1.5">
+              <Thermometer className="w-3.5 h-3.5 text-amber-700" />
+              Система связанных дифференциальных уравнений
+            </h4>
+            <div className="p-3 bg-stone-50 border border-stone-200/80 rounded font-mono text-[11px] text-stone-900 space-y-1">
+              <div>C_liquid · dT_l/dt = -G_lv·(T_l - T_v) - G_la·(T_l - T_a)</div>
+              <div>C_vessel · dT_v/dt =  G_lv·(T_l - T_v) - G_va·(T_v - T_a)</div>
+            </div>
+            <p>
+              Жидкость и стенки рассматриваются как два сосредоточенных тепловых узла с теплоёмкостями
+              <code className="font-mono text-stone-900"> C_liquid = m_w · c_p,w</code> и
+              <code className="font-mono text-stone-900"> C_vessel = m_v · c_p,v</code>.
+            </p>
+            <p>
+              Эффективные проводимости: <code className="font-mono text-stone-900">G_lv</code> (жидкость–стенка),
+              <code className="font-mono text-stone-900"> G_va</code> (стенка–воздух) и
+              <code className="font-mono text-stone-900"> G_la</code> (поверхность настоя–воздух) измеряются в <strong>Вт/К</strong>.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <h4 className="font-semibold text-stone-900 flex items-center gap-1.5">
+              <Flame className="w-3.5 h-3.5 text-rose-700" />
+              Баланс смешения и численное интегрирование
+            </h4>
+            <div className="p-3 bg-stone-50 border border-stone-200/80 rounded font-mono text-[11px] text-stone-900">
+              T_mixed = (V_1 · T_1 + V_2 · T_2) / (V_1 + V_2)
+            </div>
+            <p>
+              При добавлении воды (Лю Гэнь Пао или долив в кружку) температура смеси рассчитывается по
+              закону сохранения тепловой энергии при постоянной удельной теплоёмкости воды (4184 Дж/(кг·К)).
+            </p>
+            <p>
+              Интегрирование ОДУ выполняется детерминированной схемой Рунге-Кутты 2-го порядка (метод Хойна)
+              с шагом 0.1 с и контролем физических границ температур.
+            </p>
+          </div>
+        </div>
+      </SectionCard>
 
       {/* Архитектурные принципы лаборатории */}
       <SectionCard
