@@ -8,7 +8,7 @@ import { SimulationExecutionResult } from '../../engine/extraction/types.ts';
 import { SectionCard } from '../../components/SectionCard.tsx';
 import { BrewingSessionConfig } from '../../domain/brewing/types.ts';
 import { BREWING_METHODS } from '../../domain/brewing/defaults.ts';
-import { ArrowLeft, Beaker, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Beaker, AlertCircle, Info } from 'lucide-react';
 
 interface SimulationResultsViewProps {
   result: SimulationExecutionResult;
@@ -21,9 +21,7 @@ export const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
   sessionConfig,
   onBackToConfig,
 }) => {
-  const method = BREWING_METHODS[sessionConfig.methodId];
-  const totalWaterMl = result.steps.reduce((acc, s) => acc + s.infusedVolumeMl, 0);
-  const totalDrainedMl = result.steps.reduce((acc, s) => acc + s.drainedVolumeMl, 0);
+  const method = BREWING_METHODS[result.methodId];
 
   return (
     <div className="space-y-6">
@@ -38,10 +36,10 @@ export const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
             <span>Вернуться к параметрам заваривания</span>
           </button>
           <h1 className="text-xl sm:text-2xl font-bold text-stone-900 tracking-tight">
-            Протокол моделирования: {result.teaSummary.name}
+            Протокол гидродинамического расчёта: {result.teaSummary.name}
           </h1>
           <p className="text-xs text-stone-500 mt-0.5">
-            Метод: {method.name} · Посуда: {sessionConfig.vessel.name} · Навеска: {sessionConfig.leafMassGrams} г
+            Метод: {method.name} · Ёмкость: {sessionConfig.vessel.name} · Навеска: {sessionConfig.leafMassGrams} г · Вода: {sessionConfig.waterProfile.name}
           </p>
         </div>
 
@@ -51,7 +49,7 @@ export const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
         </div>
       </div>
 
-      {/* Честный дисклеймер статуса Этапа 1 */}
+      {/* Честный дисклеймер статуса Этапа 1.1 */}
       <div className="p-4 bg-amber-50/70 border border-amber-200/90 rounded-lg text-amber-900 flex items-start gap-3">
         <AlertCircle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
         <div className="text-xs leading-relaxed space-y-1">
@@ -61,108 +59,183 @@ export const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
           <p className="text-amber-800/90">
             {result.disclaimer} В соответствии с принципами Gongfu Cha Lab, приложение не генерирует
             фиктивные случайные проценты экстракции или вымышленные графики. Ниже представлен
-            рассчитанный гидродинамический баланс объёмов жидкости и подготовленная структура данных для будущих измерений.
+            предварительный гидродинамический баланс объёмов жидкости и подготовленная структура данных для будущих измерений.
           </p>
         </div>
       </div>
 
-      {/* Сводные показатели материального баланса (рассчитанные честно по массам и объемам) */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="p-3.5 bg-white border border-stone-200 rounded-md">
-          <span className="text-xs text-stone-500 block mb-1">Суммарный долив воды</span>
-          <div className="flex items-baseline">
-            <span className="text-2xl font-mono tabular-nums font-semibold text-stone-900">
-              {totalWaterMl}
-            </span>
-            <span className="text-xs font-mono text-stone-500 ml-1.5 uppercase">мл</span>
+      {/* Список зафиксированных допущений */}
+      {result.assumptionsNotes.length > 0 && (
+        <div className="p-3.5 bg-stone-50 border border-stone-200 rounded-md text-xs text-stone-600 space-y-1.5">
+          <div className="font-semibold text-stone-900 flex items-center gap-1.5">
+            <Info className="w-4 h-4 text-stone-500" />
+            <span>Зафиксированные модельные допущения текущего этапа:</span>
           </div>
+          <ul className="list-disc pl-5 space-y-0.5 text-stone-600">
+            {result.assumptionsNotes.map((note, idx) => (
+              <li key={idx}>{note}</li>
+            ))}
+          </ul>
         </div>
+      )}
 
-        <div className="p-3.5 bg-white border border-stone-200 rounded-md">
-          <span className="text-xs text-stone-500 block mb-1">Суммарный выход настоя</span>
-          <div className="flex items-baseline">
-            <span className="text-2xl font-mono tabular-nums font-semibold text-stone-900">
-              {totalDrainedMl}
-            </span>
-            <span className="text-xs font-mono text-stone-500 ml-1.5 uppercase">мл</span>
-          </div>
-        </div>
-
-        <div className="p-3.5 bg-white border border-stone-200 rounded-md">
-          <span className="text-xs text-stone-500 block mb-1">Соотношение сырья</span>
-          <div className="flex items-baseline">
-            <span className="text-2xl font-mono tabular-nums font-semibold text-stone-900">
-              1:{(sessionConfig.vessel.volumeMl / sessionConfig.leafMassGrams).toFixed(1)}
-            </span>
-            <span className="text-xs font-mono text-stone-500 ml-1.5 uppercase">г:мл</span>
-          </div>
-        </div>
-
-        <div className="p-3.5 bg-white border border-stone-200 rounded-md">
-          <span className="text-xs text-stone-500 block mb-1">Проливов выполнено</span>
-          <div className="flex items-baseline">
-            <span className="text-2xl font-mono tabular-nums font-semibold text-stone-900">
-              {result.steps.length}
-            </span>
-            <span className="text-xs font-mono text-stone-500 ml-1.5 uppercase">шагов</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Пошаговая таблица проливов */}
-      <SectionCard
-        title="Пошаговая гидродинамическая карта проливов"
-        subtitle="Фактический объём вливаемой жидкости, удержание в сосуде и температурный режим шагов"
-      >
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-stone-200 bg-stone-50/70 text-stone-600 font-medium font-mono uppercase tracking-wider">
-                <th className="py-2.5 px-3">Шаг</th>
-                <th className="py-2.5 px-3">Экспозиция</th>
-                <th className="py-2.5 px-3">Долив воды</th>
-                <th className="py-2.5 px-3">Слитый настой</th>
-                <th className="py-2.5 px-3">Остаток в сосуде</th>
-                <th className="py-2.5 px-3">Температура</th>
-                <th className="py-2.5 px-3">TDS (мг/л)</th>
-                <th className="py-2.5 px-3">Выход сухих (%)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100 font-mono text-stone-800">
-              {result.steps.map((step) => (
-                <tr key={step.stepNumber} className="hover:bg-stone-50/50 transition-colors">
-                  <td className="py-3 px-3 font-semibold text-stone-900">
-                    #{step.stepNumber}
-                  </td>
-                  <td className="py-3 px-3 tabular-nums">
-                    {step.exposureTimeSeconds} с
-                  </td>
-                  <td className="py-3 px-3 tabular-nums">
-                    {step.infusedVolumeMl} мл
-                  </td>
-                  <td className="py-3 px-3 tabular-nums text-emerald-900 font-medium">
-                    {step.drainedVolumeMl} мл
-                  </td>
-                  <td className="py-3 px-3 tabular-nums text-stone-500">
-                    {step.retainedVolumeMl > 0 ? `${step.retainedVolumeMl} мл` : '0 мл (дренаж)'}
-                  </td>
-                  <td className="py-3 px-3 tabular-nums">
-                    {step.averageTemperatureC} °C
-                  </td>
-                  <td className="py-3 px-3 italic text-stone-400 font-sans">
-                    {step.concentrationMgL !== null ? `${step.concentrationMgL} мг/л` : 'Ожидает Этапа 3'}
-                  </td>
-                  <td className="py-3 px-3 italic text-stone-400 font-sans">
-                    {step.yieldPercent !== null ? `${step.yieldPercent} %` : 'Ожидает Этапа 3'}
-                  </td>
+      {/* Таблица для Гунфу Ча */}
+      {result.gongfuSteps && (
+        <SectionCard
+          title="Пошаговая карта проливов Гунфу Ча (полный слив)"
+          subtitle="Фактический объём заливки, слив и температура воды по шагам"
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-stone-200 bg-stone-50/70 text-stone-600 font-medium font-mono uppercase tracking-wider">
+                  <th className="py-2.5 px-3">Пролив</th>
+                  <th className="py-2.5 px-3">Экспозиция</th>
+                  <th className="py-2.5 px-3">Залитая вода</th>
+                  <th className="py-2.5 px-3">Слитый настой</th>
+                  <th className="py-2.5 px-3">Температура</th>
+                  <th className="py-2.5 px-3">TDS (мг/л)</th>
+                  <th className="py-2.5 px-3">Выход сухих (%)</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </SectionCard>
+              </thead>
+              <tbody className="divide-y divide-stone-100 font-mono text-stone-800">
+                {result.gongfuSteps.map((step) => (
+                  <tr key={step.stepNumber} className="hover:bg-stone-50/50">
+                    <td className="py-3 px-3 font-semibold text-stone-900">
+                      #{step.stepNumber}
+                    </td>
+                    <td className="py-3 px-3 tabular-nums">
+                      {step.exposureTimeSeconds} с
+                    </td>
+                    <td className="py-3 px-3 tabular-nums">
+                      {step.pourVolumeMl} мл
+                    </td>
+                    <td className="py-3 px-3 tabular-nums text-emerald-900 font-medium">
+                      {step.drainedVolumeMl} мл
+                    </td>
+                    <td className="py-3 px-3 tabular-nums">
+                      {step.temperatureC} °C
+                    </td>
+                    <td className="py-3 px-3 italic text-stone-400 font-sans">
+                      Ожидает калибровки
+                    </td>
+                    <td className="py-3 px-3 italic text-stone-400 font-sans">
+                      Ожидает калибровки
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      )}
 
-      {/* Описание дальнейших шагов интеграции */}
+      {/* Таблица для Лю Гэнь Пао */}
+      {result.liuGenPaoSteps && (
+        <SectionCard
+          title="Пошаговая карта Лю Гэнь Пао (сохранение корней настоя)"
+          subtitle="Расчёт остатка корня от ПОЛНОГО объёма в сосуде (предыдущий остаток + долив)"
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-stone-200 bg-stone-50/70 text-stone-600 font-medium font-mono uppercase tracking-wider">
+                  <th className="py-2.5 px-3">Шаг</th>
+                  <th className="py-2.5 px-3">Экспозиция</th>
+                  <th className="py-2.5 px-3">Остаток от прошл.</th>
+                  <th className="py-2.5 px-3">Долитая вода</th>
+                  <th className="py-2.5 px-3">Полный объём до слива</th>
+                  <th className="py-2.5 px-3">Слитый настой</th>
+                  <th className="py-2.5 px-3">Оставшийся корень</th>
+                  <th className="py-2.5 px-3">TDS (мг/л)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-100 font-mono text-stone-800">
+                {result.liuGenPaoSteps.map((step) => (
+                  <tr key={step.stepNumber} className="hover:bg-stone-50/50">
+                    <td className="py-3 px-3 font-semibold text-stone-900">
+                      #{step.stepNumber}
+                    </td>
+                    <td className="py-3 px-3 tabular-nums">
+                      {step.exposureTimeSeconds} с
+                    </td>
+                    <td className="py-3 px-3 tabular-nums text-stone-500">
+                      {step.previousRetainedLiquorMl} мл
+                    </td>
+                    <td className="py-3 px-3 tabular-nums text-blue-900">
+                      +{step.addedWaterVolumeMl} мл
+                    </td>
+                    <td className="py-3 px-3 tabular-nums font-semibold text-stone-900">
+                      {step.totalLiquorBeforeDrainMl} мл
+                    </td>
+                    <td className="py-3 px-3 tabular-nums text-emerald-900 font-medium">
+                      {step.drainedVolumeMl} мл
+                    </td>
+                    <td className="py-3 px-3 tabular-nums text-amber-900">
+                      {step.retainedLiquorRemainingMl} мл
+                    </td>
+                    <td className="py-3 px-3 italic text-stone-400 font-sans">
+                      Ожидает калибровки
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Карта событий для Кружки */}
+      {result.lazyMugEvents && (
+        <SectionCard
+          title="Событийная карта открытого заваривания в кружке"
+          subtitle="Дискретный сценарий изменений объёма жидкости при непрерывном контакте листьев с водой"
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-stone-200 bg-stone-50/70 text-stone-600 font-medium font-mono uppercase tracking-wider">
+                  <th className="py-2.5 px-3">Время от старта</th>
+                  <th className="py-2.5 px-3">Тип события</th>
+                  <th className="py-2.5 px-3">Описание события</th>
+                  <th className="py-2.5 px-3">Объём жидкости в кружке</th>
+                  <th className="py-2.5 px-3">Температура воды</th>
+                  <th className="py-2.5 px-3">TDS (мг/л)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-100 font-mono text-stone-800">
+                {result.lazyMugEvents.map((evt, idx) => (
+                  <tr key={idx} className="hover:bg-stone-50/50">
+                    <td className="py-3 px-3 font-semibold text-stone-900">
+                      {Math.floor(evt.timestampSeconds / 60)}:{(evt.timestampSeconds % 60).toString().padStart(2, '0')} мин
+                    </td>
+                    <td className="py-3 px-3 font-sans text-stone-600">
+                      {evt.eventType === 'initial_pour' && 'Заливка'}
+                      {evt.eventType === 'sip_consumption' && 'Отпивание'}
+                      {evt.eventType === 'water_refill' && 'Долив'}
+                      {evt.eventType === 'session_end' && 'Финал'}
+                    </td>
+                    <td className="py-3 px-3 font-sans text-stone-700">
+                      {evt.description}
+                    </td>
+                    <td className="py-3 px-3 tabular-nums font-semibold text-stone-900">
+                      {evt.liquidVolumeInMugMl} мл
+                    </td>
+                    <td className="py-3 px-3 tabular-nums">
+                      {evt.temperatureC} °C
+                    </td>
+                    <td className="py-3 px-3 italic text-stone-400 font-sans">
+                      Ожидает калибровки
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Описание последующих физико-химических расчетов */}
       <SectionCard
         title="План интеграции физико-химических формул"
         subtitle="Что будет рассчитываться ядром после подключения диффузионной модели второго порядка"

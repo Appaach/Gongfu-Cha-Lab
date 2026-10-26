@@ -7,60 +7,90 @@ import { BrewingSessionConfig } from '../../domain/brewing/types.ts';
 import { TeaSample } from '../../domain/tea/types.ts';
 
 /**
- * Статус математического расчётного ядра.
- * На текущем этапе (Этап 1) ядро честно декларирует статус `pending_calibration`
- * и не производит вычислений на вымышленных коэффициентах.
+ * Статус готовности математического ядра.
+ * На этапе 1.1 ядро строго имеет статус `pending_calibration`.
  */
 export type EngineReadinessStatus = 'ready' | 'pending_calibration' | 'uncalibrated';
 
 /**
- * Структура снимка шага экстракции (подготовленный интерфейс для будущих данных Этапа 3).
+ * Гидродинамический снимок шага Гунфу Ча (полный слив).
  */
-export interface StepExtractionSnapshot {
+export interface GongfuStepSnapshot {
   readonly stepNumber: number;
   readonly exposureTimeSeconds: number;
-  readonly infusedVolumeMl: number;
+  readonly pourVolumeMl: number;
   readonly drainedVolumeMl: number;
-  readonly retainedVolumeMl: number;
-  readonly averageTemperatureC: number;
-  
-  // Расчётные величины (на этапе 1 равны null со статусом pending_calibration)
-  readonly extractedSolidsMg: number | null; // Масса экстрагированных веществ за шаг (мг)
-  readonly concentrationMgL: number | null;  // Концентрация настоя / TDS (мг/л)
-  readonly leafExhaustionFraction: number | null; // Накопленная доля исчерпания водорастворимого резервуара (0.0 – 1.0)
-  readonly yieldPercent: number | null; // % экстракции от массы сухого листа
+  readonly capillaryHoldUpMl: number;
+  readonly temperatureC: number;
+
+  // Величины, ожидающие калибровки физического ядра (Этап 3)
+  readonly extractedSolidsMg: number | null;
+  readonly concentrationMgL: number | null;
+  readonly yieldPercent: number | null;
 }
 
 /**
- * Итоговый результат выполнения симуляции.
+ * Гидродинамический снимок шага Лю Гэнь Пао (сохранение корней).
+ */
+export interface LiuGenPaoStepSnapshot {
+  readonly stepNumber: number;
+  readonly exposureTimeSeconds: number;
+  readonly addedWaterVolumeMl: number;
+  readonly previousRetainedLiquorMl: number;
+  readonly totalLiquorBeforeDrainMl: number; // Полный объем жидкости в сосуде перед сливом
+  readonly drainedVolumeMl: number;          // Слитая порция
+  readonly retainedLiquorRemainingMl: number; // Оставшийся корень настоя
+  readonly temperatureC: number;
+
+  readonly extractedSolidsMg: number | null;
+  readonly concentrationMgL: number | null;
+  readonly yieldPercent: number | null;
+}
+
+/**
+ * Гидродинамический снимок события в кружке (непрерывный контакт).
+ */
+export interface LazyMugEventSnapshot {
+  readonly timestampSeconds: number;
+  readonly eventType: string;
+  readonly liquidVolumeInMugMl: number;
+  readonly temperatureC: number;
+  readonly description: string;
+
+  readonly extractedSolidsMg: number | null;
+  readonly concentrationMgL: number | null;
+  readonly yieldPercent: number | null;
+}
+
+/**
+ * Унифицированный результат выполнения симуляции.
  */
 export interface SimulationExecutionResult {
   readonly sessionId: string;
   readonly timestamp: string;
   readonly engineVersion: string;
   readonly status: EngineReadinessStatus;
+  readonly methodId: 'gongfu_cha' | 'liu_gen_pao' | 'lazy_mug';
   readonly disclaimer: string;
+  readonly assumptionsNotes: string[];
   readonly teaSummary: {
     readonly id: string;
     readonly name: string;
-    readonly category: string;
+    readonly category?: string;
     readonly leafMassGrams: number;
   };
-  readonly steps: StepExtractionSnapshot[];
+  readonly gongfuSteps?: GongfuStepSnapshot[];
+  readonly liuGenPaoSteps?: LiuGenPaoStepSnapshot[];
+  readonly lazyMugEvents?: LazyMugEventSnapshot[];
 }
 
 /**
  * Контракт математического ядра экстракции.
- * Интерфейс спроектирован так, чтобы алгоритм можно было заменить или обновить
- * без модификации компонентов интерфейса.
  */
 export interface IExtractionEngine {
   readonly version: string;
   readonly readinessStatus: EngineReadinessStatus;
 
-  /**
-   * Запуск моделирования сессии заваривания.
-   */
   simulate(
     config: BrewingSessionConfig,
     tea: TeaSample

@@ -7,6 +7,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { TopBar, NavTabId } from './components/TopBar.tsx';
 import { REFERENCE_TEAS } from './data/referenceTeas.ts';
 import { TeaSample } from './domain/tea/types.ts';
+import { migrateLegacyCustomTea } from './domain/tea/validation.ts';
 import { BrewingSimulatorView } from './features/brewing/BrewingSimulatorView.tsx';
 import { TeaCatalogView } from './features/catalog/TeaCatalogView.tsx';
 import { CustomTeasView } from './features/custom-teas/CustomTeasView.tsx';
@@ -19,12 +20,15 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<NavTabId>('simulator');
   const [selectedTeaId, setSelectedTeaId] = useState<string>(REFERENCE_TEAS[0].id);
 
-  // Пользовательские чаи из локального хранилища
+  // Пользовательские чаи из локального хранилища с безопасной миграцией схемы
   const [customTeas, setCustomTeas] = useState<TeaSample[]>(() => {
     try {
       const saved = localStorage.getItem(CUSTOM_TEAS_STORAGE_KEY);
       if (saved) {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.map((item) => migrateLegacyCustomTea(item));
+        }
       }
     } catch {
       // Игнорируем ошибки парсинга при первом запуске

@@ -6,11 +6,17 @@
 import { TeaSample, createValueWithOrigin } from '../domain/tea/types.ts';
 
 /**
- * Эталонный каталог чаёв Gongfu Cha Lab.
- * Все характеристики снабжены метаданными происхождения:
- * - measured: подтверждено анализом;
- * - estimated: оценка по академическому профилю культивара;
- * - unknown: данные не определялись (модель НЕ подставляет 0!).
+ * Эталонный демонстрационный каталог чаёв Gongfu Cha Lab.
+ *
+ * ВАЖНОЕ МЕТРОЛОГИЧЕСКОЕ ПРИМЕЧАНИЕ:
+ * Ни одно из приведенных ниже демонстрационных значений не является физически подтвержденным
+ * первичным лабораторным измерением конкретной партии (отсутствует лабораторный сертификат
+ * испытаний с идентификатором партии и поверенным протоколом).
+ *
+ * Все приведенные числовые параметры разделены на:
+ * - 'literature': типичные диапазоны из опубликованной чайной литературы / справочников культиваров;
+ * - 'model_profile': демонстрационные ориентиры модели для предварительного моделирования;
+ * - 'unknown': параметры, для которых нет надежного основания (значение равно null, Unknown ≠ 0).
  */
 export const REFERENCE_TEAS: TeaSample[] = [
   {
@@ -19,17 +25,39 @@ export const REFERENCE_TEAS: TeaSample[] = [
     nativeName: '西湖龙井',
     category: 'green',
     originRegion: 'Чжэцзян, Ханчжоу (Мэйцзяву)',
-    harvestYear: 2025,
+    cultivar: 'Лунцзин #43 / Цюньтичжун',
+    harvestYear: undefined, // Не подставляем фиктивный год сбора для эталона
     morphology: 'bud_and_leaves',
-    hydrationSpeedFactor: createValueWithOrigin(1.4, 'estimated', 'ед.', 'Плоский приплюснутый лист, быстрое смачивание'),
-    waterAbsorptionRatio: createValueWithOrigin(2.65, 'measured', 'г/г', 'Взвешивание влажного остатка после отжима (ISO 3103)', 0.95),
-    leafDensityGPerCm3: createValueWithOrigin(0.38, 'estimated', 'г/см³', 'Насыпная плотность сухих расправленных флешей'),
-    totalSolubleFraction: createValueWithOrigin(38.2, 'measured', '%', 'Гравиметрический метод высушивания экстракта', 0.92),
-    caffeineEstimate: createValueWithOrigin(3.2, 'measured', '%', 'ВЭЖХ-анализ партии весеннего сбора', 0.96),
-    polyphenolsEstimate: createValueWithOrigin(21.4, 'measured', '%', 'Спектрофотометрия с реактивом Фолина-Чокальтеу', 0.90),
-    theanineEstimate: createValueWithOrigin(3.1, 'measured', '%', 'Аминокислотный анализатор, сорт Лунцзин #43', 0.94),
+    roastLevel: 'light',
+    processingNotes: 'Фиксация и формование в котле (Шацин), плоский приплюснутый лист',
+
+    // Физические параметры
+    waterAbsorptionRatio: createValueWithOrigin(2.6, 'literature', 'г/г', {
+      sourceNotes: 'Обобщенные литературные данные сорбции воды неферментированным зеленым листом',
+    }),
+    leafBulkDensityGPerCm3: createValueWithOrigin(0.38, 'model_profile', 'г/см³', {
+      sourceNotes: 'Ориентировочная насыпная плотность сухой навески плоского листа',
+    }),
+    uncalibratedHydrationSpeed: createValueWithOrigin(1.4, 'model_profile', 'ед.', {
+      sourceNotes: 'Некалиброванный модельный параметр скорости смачивания',
+    }),
+
+    // Химические фракции (% от массы сухого листа)
+    totalExtractableFraction: createValueWithOrigin(38.0, 'literature', '%', {
+      sourceNotes: 'Литературный диапазон водорастворимого сухого экстракта зеленого чая высшего сорта (36–42%)',
+    }),
+    caffeineFraction: createValueWithOrigin(3.2, 'literature', '%', {
+      sourceNotes: 'Обобщенные литературные данные содержания кофеина в весенних флешах Camellia sinensis',
+    }),
+    totalPolyphenolsFraction: createValueWithOrigin(20.0, 'literature', '%', {
+      sourceNotes: 'Литературные данные суммарных катехинов для культивара Лунцзин #43',
+    }),
+    theanineFraction: createValueWithOrigin(3.0, 'literature', '%', {
+      sourceNotes: 'Характерное для ранневесеннего Лунцзина высокое содержание L-теанина',
+    }),
+
     isCustom: false,
-    notes: 'Ранневесенний сбор (до праздника Цинмин). Нежные листья с высоким содержанием теанина и умеренной терпкостью.',
+    editorialSummary: 'Ранневесенний зелёный чай слабой прогревки. Плоская форма листа способствует быстрому первичному смачиванию.',
   },
   {
     id: 'tea-yinzhen',
@@ -37,17 +65,37 @@ export const REFERENCE_TEAS: TeaSample[] = [
     nativeName: '白毫银针',
     category: 'white',
     originRegion: 'Фуцзянь, Фудин (Таймушань)',
-    harvestYear: 2024,
+    cultivar: 'Фудин Да Бай Ча',
+    harvestYear: undefined,
     morphology: 'whole_bud',
-    hydrationSpeedFactor: createValueWithOrigin(0.7, 'estimated', 'ед.', 'Густой ворс (трихомы) замедляет смачивание водой'),
-    waterAbsorptionRatio: createValueWithOrigin(2.9, 'measured', 'г/г', 'Лабораторное измерение сорбции почек Да Бай Ча', 0.9),
-    leafDensityGPerCm3: createValueWithOrigin(0.25, 'estimated', 'г/см³', 'Низкая плотность из-за воздушного пуха'),
-    totalSolubleFraction: createValueWithOrigin(34.0, 'estimated', '%', 'Литературный диапазон для белого чая из Фудина'),
-    caffeineEstimate: createValueWithOrigin(4.1, 'measured', '%', 'Почки содержат повышенную концентрацию пуриновых алкалоидов', 0.93),
-    polyphenolsEstimate: createValueWithOrigin(17.8, 'estimated', '%', 'Низкая степень окисления, преимущественно мономерные катехины'),
-    theanineEstimate: createValueWithOrigin(3.8, 'measured', '%', 'Высокая концентрация L-теанина в верхушечной почке', 0.95),
+    roastLevel: 'none',
+    processingNotes: 'Естественное завяливание на солнце и медленная сушка на ситах',
+
+    waterAbsorptionRatio: createValueWithOrigin(2.9, 'model_profile', 'г/г', {
+      sourceNotes: 'Демонстрационный ориентир водопоглощения плотной почки',
+    }),
+    leafBulkDensityGPerCm3: createValueWithOrigin(0.24, 'model_profile', 'г/см³', {
+      sourceNotes: 'Низкая насыпная плотность из-за густого ворса',
+    }),
+    uncalibratedHydrationSpeed: createValueWithOrigin(0.7, 'model_profile', 'ед.', {
+      sourceNotes: 'Замедленное первичное смачивание из-за гидрофобного пуха',
+    }),
+
+    totalExtractableFraction: createValueWithOrigin(34.0, 'literature', '%', {
+      sourceNotes: 'Литературный диапазон экстрактивности почек белого чая',
+    }),
+    caffeineFraction: createValueWithOrigin(4.0, 'literature', '%', {
+      sourceNotes: 'Верхушечные почки Да Бай Ча накапливают повышенное количество пуриновых алкалоидов',
+    }),
+    totalPolyphenolsFraction: createValueWithOrigin(17.5, 'literature', '%', {
+      sourceNotes: 'Неокисленные полифенолы белого чая слабой ферментации',
+    }),
+    theanineFraction: createValueWithOrigin(3.5, 'literature', '%', {
+      sourceNotes: 'Высокое содержание свободных аминокислот в верхушечной почке',
+    }),
+
     isCustom: false,
-    notes: 'Цельная почка весеннего сбора с кустов Да Бай Ча. Требует более длительной экспозиции на первом проливе.',
+    editorialSummary: 'Белый чай, состоящий исключительно из цельных весенних почек с густым белым ворсом.',
   },
   {
     id: 'tea-tieguanyin',
@@ -55,17 +103,37 @@ export const REFERENCE_TEAS: TeaSample[] = [
     nativeName: '安溪铁观音',
     category: 'oolong_light',
     originRegion: 'Фуцзянь, Аньси (Ганьдэ)',
-    harvestYear: 2025,
+    cultivar: 'Те Гуаньинь',
+    harvestYear: undefined,
     morphology: 'tightly_rolled_ball',
-    hydrationSpeedFactor: createValueWithOrigin(0.45, 'estimated', 'ед.', 'Тугая сферическая скрутка требует 2-3 пролива на раскрытие'),
-    waterAbsorptionRatio: createValueWithOrigin(3.1, 'measured', 'г/г', 'Удержание воды полностью раскрывшимся листом с черенком', 0.94),
-    leafDensityGPerCm3: createValueWithOrigin(0.62, 'measured', 'г/см³', 'Плотные сферические гранулы машинной скрутки', 0.98),
-    totalSolubleFraction: createValueWithOrigin(41.5, 'estimated', '%', 'Типичный выход для полуферментированных улунов'),
-    caffeineEstimate: createValueWithOrigin(2.8, 'estimated', '%', 'Зрелый лист содержит меньше кофеина, чем верхушечные почки'),
-    polyphenolsEstimate: createValueWithOrigin(18.5, 'estimated', '%', 'Частичная ферментация 25-30%'),
-    theanineEstimate: createValueWithOrigin(1.9, 'estimated', '%', 'Справочные данные культивара Те Гуаньинь'),
+    roastLevel: 'none',
+    processingNotes: 'Слабая ферментация (Цин Сян), тугая сферическая скрутка в мешках',
+
+    waterAbsorptionRatio: createValueWithOrigin(3.1, 'literature', 'г/г', {
+      sourceNotes: 'Удержание влаги зрелым крупным листом с черенком при полном раскрытии',
+    }),
+    leafBulkDensityGPerCm3: createValueWithOrigin(0.60, 'model_profile', 'г/см³', {
+      sourceNotes: 'Высокая насыпная плотность плотных сфер машинной скрутки',
+    }),
+    uncalibratedHydrationSpeed: createValueWithOrigin(0.45, 'model_profile', 'ед.', {
+      sourceNotes: 'Медленное первичное раскручивание тугих гранул',
+    }),
+
+    totalExtractableFraction: createValueWithOrigin(40.0, 'literature', '%', {
+      sourceNotes: 'Литературные данные по экстрактивным веществам улунов',
+    }),
+    caffeineFraction: createValueWithOrigin(2.8, 'literature', '%', {
+      sourceNotes: 'Зрелые листья 2-3 порядка содержат меньше кофеина, чем почки',
+    }),
+    totalPolyphenolsFraction: createValueWithOrigin(18.0, 'literature', '%', {
+      sourceNotes: 'Частичная ферментация улунов (25–35%)',
+    }),
+    theanineFraction: createValueWithOrigin(1.8, 'literature', '%', {
+      sourceNotes: 'Умеренное содержание аминокислот в зрелом листе',
+    }),
+
     isCustom: false,
-    notes: 'Светлый улун слабой ферментации (Цин Сян). Первый пролив выполняет роль прогрева и частичного раскручивания листа.',
+    editorialSummary: 'Светлый южнофуцзяньский улун сферической скрутки. Требует пролива для расправления листьев.',
   },
   {
     id: 'tea-dahongpao',
@@ -73,17 +141,38 @@ export const REFERENCE_TEAS: TeaSample[] = [
     nativeName: '武夷大红袍',
     category: 'oolong_dark',
     originRegion: 'Фуцзянь, горы Уи (Чжэн Янь)',
-    harvestYear: 2023,
+    cultivar: 'Смешанный утесный купаж (Шуйсянь / Жоугуй / Цидань)',
+    harvestYear: undefined,
     morphology: 'strip_rolled',
-    hydrationSpeedFactor: createValueWithOrigin(1.2, 'estimated', 'ед.', 'Продольная скрутка и прогрев на углях ускоряют диффузию'),
-    waterAbsorptionRatio: createValueWithOrigin(2.8, 'estimated', 'г/г', 'Утесный улун средней прожарки'),
-    leafDensityGPerCm3: createValueWithOrigin(0.32, 'estimated', 'г/см³', 'Объемные изогнутые листья'),
-    totalSolubleFraction: createValueWithOrigin(39.0, 'estimated', '%', 'Справочные данные для темных улунов'),
-    caffeineEstimate: createValueWithOrigin(2.9, 'estimated', '%', 'Справочный профиль улунов гор Уи'),
-    polyphenolsEstimate: createValueWithOrigin(16.0, 'estimated', '%', 'Окисленные полифенолы, продукты карамелизации'),
-    theanineEstimate: createValueWithOrigin(1.5, 'unknown', '%', 'Анализ аминокислот для данной партии не проводился'),
+    roastLevel: 'heavy',
+    processingNotes: 'Традиционный прогрев на древесных углях (Хунпэй), продольная скрутка',
+
+    waterAbsorptionRatio: createValueWithOrigin(2.7, 'model_profile', 'г/г', {
+      sourceNotes: 'Демонстрационный ориентир водопоглощения прогретого утесного листа',
+    }),
+    leafBulkDensityGPerCm3: createValueWithOrigin(0.32, 'model_profile', 'г/см³', {
+      sourceNotes: 'Объемные изогнутые полосы продольной скрутки',
+    }),
+    uncalibratedHydrationSpeed: createValueWithOrigin(1.2, 'model_profile', 'ед.', {
+      sourceNotes: 'Относительно быстрое смачивание за счет пористости прогретой ткани листа',
+    }),
+
+    totalExtractableFraction: createValueWithOrigin(39.0, 'literature', '%', {
+      sourceNotes: 'Литературный диапазон экстрактивности темных улунов',
+    }),
+    caffeineFraction: createValueWithOrigin(2.8, 'literature', '%', {
+      sourceNotes: 'Справочный уровень кофеина для северофуцзяньских культиваров',
+    }),
+    totalPolyphenolsFraction: createValueWithOrigin(16.0, 'literature', '%', {
+      sourceNotes: 'Полифенолы, частично полимеризованные и окисленные при прогреве',
+    }),
+    // Для теанина точных литературных данных для этой партии нет -> честный Unknown!
+    theanineFraction: createValueWithOrigin<number>(null, 'unknown', '%', {
+      sourceNotes: 'Точный уровень свободных аминокислот после глубокого хунпэя не подтвержден литературой',
+    }),
+
     isCustom: false,
-    notes: 'Утёсный чай традиционного угольного хунпэя. Высокая стойкость к многократным проливам крутым кипятком.',
+    editorialSummary: 'Утёсный улун традиционного угольного прогрева. Высокая термическая устойчивость.',
   },
   {
     id: 'tea-dianhong',
@@ -91,17 +180,37 @@ export const REFERENCE_TEAS: TeaSample[] = [
     nativeName: '滇红金毫',
     category: 'black',
     originRegion: 'Юньнань, Фэнцин',
-    harvestYear: 2024,
+    cultivar: 'Юньнаньский крупнолистовой (Camellia sinensis var. assamica)',
+    harvestYear: undefined,
     morphology: 'bud_and_leaves',
-    hydrationSpeedFactor: createValueWithOrigin(1.5, 'estimated', 'ед.', 'Полная оксидация и разрушение клеточных мембран при сминании'),
-    waterAbsorptionRatio: createValueWithOrigin(2.7, 'measured', 'г/г', 'Измерение водопоглощения юньнаньского крупнолистового сырья', 0.91),
-    leafDensityGPerCm3: createValueWithOrigin(0.35, 'estimated', 'г/см³', 'Крупнолистовой чай с золотистым ворсом'),
-    totalSolubleFraction: createValueWithOrigin(43.8, 'measured', '%', 'Экстрактивность юньнаньского крупнолистового ассамика', 0.95),
-    caffeineEstimate: createValueWithOrigin(3.6, 'measured', '%', 'ВЭЖХ сырья Camellia sinensis var. assamica', 0.93),
-    polyphenolsEstimate: createValueWithOrigin(14.2, 'measured', '%', 'Высокая доля теафлавинов и теарубигинов', 0.89),
-    theanineEstimate: createValueWithOrigin(2.1, 'unknown', '%', 'Точный аминокислотный спектр не подтвержден лабораторией'),
+    roastLevel: 'light',
+    processingNotes: 'Глубокое сминание, полная ферментация и сушка горячим воздухом',
+
+    waterAbsorptionRatio: createValueWithOrigin(2.7, 'model_profile', 'г/г', {
+      sourceNotes: 'Демонстрационный ориентир сорбции крупного юньнаньского листа',
+    }),
+    leafBulkDensityGPerCm3: createValueWithOrigin(0.35, 'model_profile', 'г/см³', {
+      sourceNotes: 'Насыпная плотность крупного листа с ворсом',
+    }),
+    uncalibratedHydrationSpeed: createValueWithOrigin(1.5, 'model_profile', 'ед.', {
+      sourceNotes: 'Разрушенные при сминании клетки листа обеспечивают быстрое смачивание',
+    }),
+
+    totalExtractableFraction: createValueWithOrigin(42.0, 'literature', '%', {
+      sourceNotes: 'Высокая экстрактивность юньнаньской ассамики по ГОСТ/литературе Китая',
+    }),
+    caffeineFraction: createValueWithOrigin(3.6, 'literature', '%', {
+      sourceNotes: 'Повышенный уровень алкалоидов в крупнолистовом сырье Юньнани',
+    }),
+    totalPolyphenolsFraction: createValueWithOrigin(14.0, 'literature', '%', {
+      sourceNotes: 'Окисленные полифенолы (теафлавины и теарубигины)',
+    }),
+    theanineFraction: createValueWithOrigin<number>(null, 'unknown', '%', {
+      sourceNotes: 'Данные по аминокислотному составу для конкретного профиля отсутствуют',
+    }),
+
     isCustom: false,
-    notes: 'Красный чай из Фэнцина. Высокая экстрактивность на первых проливах за счёт глубокой оксидации.',
+    editorialSummary: 'Красный чай из Фэнцина. Высокая плотность экстракта на первых проливах благодаря глубокой оксидации.',
   },
   {
     id: 'tea-sheng-menghai',
@@ -109,16 +218,36 @@ export const REFERENCE_TEAS: TeaSample[] = [
     nativeName: '勐海生普',
     category: 'sheng_puer',
     originRegion: 'Юньнань, Сишуанбаньна (Мэнхай)',
-    harvestYear: 2022,
+    cultivar: 'Юньнаньский крупнолистовой дикорастущий/плантационный',
+    harvestYear: undefined,
     morphology: 'compressed_cake_chunk',
-    hydrationSpeedFactor: createValueWithOrigin(0.35, 'estimated', 'ед.', 'Прессованный фрагмент требует предварительного пропаривания'),
-    waterAbsorptionRatio: createValueWithOrigin(2.95, 'measured', 'г/г', 'Водопоглощение расслоенного пуэрного блина', 0.92),
-    leafDensityGPerCm3: createValueWithOrigin(0.78, 'measured', 'г/см³', 'Высокая плотность фабричной прессовки каменным прессом', 0.97),
-    totalSolubleFraction: createValueWithOrigin(42.0, 'estimated', '%', 'Юньнаньское сырье первого весеннего сбора'),
-    caffeineEstimate: createValueWithOrigin(3.9, 'estimated', '%', 'Крупнолистовой дикорастущий подвид'),
-    polyphenolsEstimate: createValueWithOrigin(28.0, 'measured', '%', 'Мощный танинный комплекс молодого шэна', 0.91),
-    theanineEstimate: createValueWithOrigin(2.4, 'unknown', '%', 'Лабораторные замеры аминокислот отсутствуют'),
+    roastLevel: 'none',
+    processingNotes: 'Прессование паром в форме блина, естественное созревание',
+
+    waterAbsorptionRatio: createValueWithOrigin(2.9, 'model_profile', 'г/г', {
+      sourceNotes: 'Демонстрационный ориентир сорбции прессованного пуэра',
+    }),
+    leafBulkDensityGPerCm3: createValueWithOrigin(0.75, 'model_profile', 'г/см³', {
+      sourceNotes: 'Плотность прессованного фрагмента блина',
+    }),
+    uncalibratedHydrationSpeed: createValueWithOrigin(0.35, 'model_profile', 'ед.', {
+      sourceNotes: 'Плотная механическая прессовка замедляет проникновение воды',
+    }),
+
+    totalExtractableFraction: createValueWithOrigin(41.0, 'literature', '%', {
+      sourceNotes: 'Литературный диапазон экстрактивности юньнаньского крупнолистового сырья',
+    }),
+    caffeineFraction: createValueWithOrigin(3.8, 'literature', '%', {
+      sourceNotes: 'Крупнолистовой юньнаньский подвид',
+    }),
+    totalPolyphenolsFraction: createValueWithOrigin(26.0, 'literature', '%', {
+      sourceNotes: 'Высокая концентрация неокисленных катехинов в молодом шэне',
+    }),
+    theanineFraction: createValueWithOrigin<number>(null, 'unknown', '%', {
+      sourceNotes: 'Данные анализа аминокислот отсутствуют (Unknown ≠ 0)',
+    }),
+
     isCustom: false,
-    notes: 'Молодой шэн пуэр плотной прессовки. Яркая танинная структура, требует экспозиции от 5 секунд с постепенным увеличением.',
+    editorialSummary: 'Молодой шэн пуэр плотной прессовки. Высокое содержание полифенолов формирует выраженную терпкость.',
   },
 ];

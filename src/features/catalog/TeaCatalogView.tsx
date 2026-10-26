@@ -6,8 +6,7 @@
 import React, { useState, useMemo } from 'react';
 import { TeaSample, TeaCategory } from '../../domain/tea/types.ts';
 import { MetricDisplay } from '../../components/MetricDisplay.tsx';
-import { DataOriginBadge } from '../../components/DataOriginBadge.tsx';
-import { Search, Play } from 'lucide-react';
+import { Search, Play, Info } from 'lucide-react';
 
 interface TeaCatalogViewProps {
   teas: TeaSample[];
@@ -52,7 +51,7 @@ export const TeaCatalogView: React.FC<TeaCatalogViewProps> = ({
       const matchesQuery =
         searchQuery.trim().length === 0 ||
         tea.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        tea.originRegion.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (tea.originRegion && tea.originRegion.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (tea.nativeName && tea.nativeName.includes(searchQuery));
       return matchesCategory && matchesQuery;
     });
@@ -69,7 +68,7 @@ export const TeaCatalogView: React.FC<TeaCatalogViewProps> = ({
             Каталог чаёв и физико-химические паспорта
           </h1>
           <p className="text-xs text-stone-500 mt-0.5">
-            Справочные профили сортов с явной маркировкой подтверждённых, оценочных и отсутствующих данных
+            Справочные профили сортов с явной маркировкой литературных, модельных и отсутствующих данных
           </p>
         </div>
 
@@ -78,9 +77,19 @@ export const TeaCatalogView: React.FC<TeaCatalogViewProps> = ({
         </div>
       </div>
 
+      {/* Информационное уведомление о достоверности эталонных данных */}
+      <div className="p-3.5 bg-stone-50 border border-stone-200 rounded-md text-xs text-stone-600 flex items-start gap-2.5">
+        <Info className="w-4 h-4 text-stone-500 shrink-0 mt-0.5" />
+        <p className="leading-relaxed">
+          <strong>Метрологический регламент Gongfu Cha Lab:</strong> Значения в каталоге получены из
+          обобщённых академических справочников культиваров или типовых профилей модели. Без первичного
+          поверенного лабораторного протокола конкретной партии значения не объявляются лабораторно измеренными.
+        </p>
+      </div>
+
       {/* Фильтры и поиск */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-        {/* Интерактивный переключатель категорий (button-based) */}
+        {/* Селектор категорий */}
         <div className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
           {(['all', 'green', 'white', 'oolong_light', 'oolong_dark', 'black', 'sheng_puer'] as Array<TeaCategory | 'all'>).map(
             (cat) => (
@@ -145,26 +154,32 @@ export const TeaCatalogView: React.FC<TeaCatalogViewProps> = ({
                         </span>
                       )}
                     </div>
-                    <span className="text-xs text-stone-500 font-medium">
-                      {CATEGORY_NAMES[tea.category]}
-                    </span>
+                    {tea.category && (
+                      <span className="text-xs text-stone-500 font-medium">
+                        {CATEGORY_NAMES[tea.category] ?? tea.category}
+                      </span>
+                    )}
                   </div>
 
-                  <div className="flex items-center gap-2 text-[11px] text-stone-500 mb-2">
-                    <span>{tea.originRegion}</span>
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] text-stone-500 mb-2">
+                    {tea.originRegion && <span>{tea.originRegion}</span>}
                     {tea.harvestYear && (
                       <>
                         <span aria-hidden="true">·</span>
-                        <span>{tea.harvestYear} г.</span>
+                        <span>Урожай {tea.harvestYear}</span>
                       </>
                     )}
-                    <span aria-hidden="true">·</span>
-                    <span>{MORPHOLOGY_NAMES[tea.morphology] ?? tea.morphology}</span>
+                    {tea.morphology && (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span>{MORPHOLOGY_NAMES[tea.morphology] ?? tea.morphology}</span>
+                      </>
+                    )}
                   </div>
 
                   <div className="flex items-center justify-between pt-2 border-t border-stone-100 text-xs">
                     <span className="font-mono text-stone-600 text-[11px]">
-                      TDS рез.: {tea.totalSolubleFraction.value ?? '—'}%
+                      Сухой экстракт: {tea.totalExtractableFraction.value !== null ? `${tea.totalExtractableFraction.value}%` : '—'}
                     </span>
                     <button
                       type="button"
@@ -199,14 +214,18 @@ export const TeaCatalogView: React.FC<TeaCatalogViewProps> = ({
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 text-xs text-stone-500 mt-1">
-                  <span>{CATEGORY_NAMES[inspectedTea.category]}</span>
-                  <span aria-hidden="true">·</span>
-                  <span>{inspectedTea.originRegion}</span>
-                  {inspectedTea.harvestYear && (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-stone-500 mt-1">
+                  {inspectedTea.category && <span>{CATEGORY_NAMES[inspectedTea.category] ?? inspectedTea.category}</span>}
+                  {inspectedTea.originRegion && (
                     <>
                       <span aria-hidden="true">·</span>
-                      <span>Урожай {inspectedTea.harvestYear}</span>
+                      <span>{inspectedTea.originRegion}</span>
+                    </>
+                  )}
+                  {inspectedTea.cultivar && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span>Культивар: {inspectedTea.cultivar}</span>
                     </>
                   )}
                 </div>
@@ -222,72 +241,73 @@ export const TeaCatalogView: React.FC<TeaCatalogViewProps> = ({
               </button>
             </div>
 
-            {/* Физические параметры матрицы */}
+            {/* Физические параметры листа */}
             <div>
               <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-400 font-mono mb-3">
-                Физико-морфологические параметры листа
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <MetricDisplay
-                  label="Водопоглощение"
-                  metric={inspectedTea.waterAbsorptionRatio}
-                  description="Масса воды, удерживаемой 1 г сухого листа при набухании"
-                />
-                <MetricDisplay
-                  label="Скорость гидратации"
-                  metric={inspectedTea.hydrationSpeedFactor}
-                  description="Относительный коэффициент смачивания матрицы"
-                />
-                <MetricDisplay
-                  label="Насыпная плотность"
-                  metric={inspectedTea.leafDensityGPerCm3}
-                  description="Плотность сухих листьев в навеске"
-                />
-              </div>
-            </div>
-
-            {/* Химические резервуары экстрактивных веществ */}
-            <div>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-400 font-mono mb-3">
-                Химические резервуары растворимых веществ (% сухого веса)
+                Физико-морфологические свойства матрицы сухого листа
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <MetricDisplay
-                  label="Общие сухие вещества (TDS резервуар)"
-                  metric={inspectedTea.totalSolubleFraction}
-                  description="Максимальный теоретический выход экстракта при полном вываривании"
+                  label="Водопоглощение матрицы"
+                  metric={inspectedTea.waterAbsorptionRatio}
+                  description="Масса воды, физически связываемой 1 г сухого листа при набухании"
                 />
                 <MetricDisplay
-                  label="Алкалоиды (Кофеин)"
-                  metric={inspectedTea.caffeineEstimate}
-                  description="Пуриновые алкалоиды, определяющие тонизирующее действие и чистую горечь"
-                />
-                <MetricDisplay
-                  label="Полифенолы (Катехины / Танины)"
-                  metric={inspectedTea.polyphenolsEstimate}
-                  description="Антиоксидантный комплекс, формирующий терпкость и вяжущее тело"
-                />
-                <MetricDisplay
-                  label="L-теанин и аминокислоты"
-                  metric={inspectedTea.theanineEstimate}
-                  description="Определяют вкус умами, сладость послевкусия и седативный баланс"
+                  label="Насыпная плотность навески"
+                  metric={inspectedTea.leafBulkDensityGPerCm3}
+                  description="Плотность сухих листьев в незатрамбованном объёме"
                 />
               </div>
             </div>
 
-            {/* Описание и происхождение данных */}
-            {inspectedTea.notes && (
+            {/* Химический состав сухого листа */}
+            <div>
+              <div className="mb-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-400 font-mono">
+                  Химический состав сухого листа (% от массы сухого листа)
+                </h3>
+                <p className="text-[11px] text-stone-500 mt-0.5">
+                  Кофеин, теанин и полифенолы входят в состав сухого листа и его водорастворимой фракции (не являются отдельными аддитивными пулами).
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <MetricDisplay
+                  label="Суммарный экстракт (% сухой массы)"
+                  metric={inspectedTea.totalExtractableFraction}
+                  description="Максимальная водорастворимая сухая фракция при полном исчерпании листа"
+                />
+                <MetricDisplay
+                  label="Кофеин (алкалоиды, % сухой массы)"
+                  metric={inspectedTea.caffeineFraction}
+                  description="Пуриновые алкалоиды, формирующие тонизирующие свойства и базовую горечь"
+                />
+                <MetricDisplay
+                  label="Суммарные полифенолы (% сухой массы)"
+                  metric={inspectedTea.totalPolyphenolsFraction}
+                  description="Катехины, теафлавины и теарубигины, формирующие вяжущие свойства и цвет"
+                />
+                <MetricDisplay
+                  label="L-теанин и аминокислоты (% сухой массы)"
+                  metric={inspectedTea.theanineFraction}
+                  description="Свободные аминокислоты, формирующие умами и мягкость послевкусия"
+                />
+              </div>
+            </div>
+
+            {/* Редакционное описание эталонного чая */}
+            {inspectedTea.editorialSummary && (
               <div className="p-3.5 bg-stone-50 rounded-md border border-stone-200/80 text-xs text-stone-600 leading-relaxed">
                 <strong className="text-stone-900 font-medium block mb-0.5">
-                  Органолептический и морфологический комментарий:
+                  Редакционная справка каталога:
                 </strong>
-                {inspectedTea.notes}
+                {inspectedTea.editorialSummary}
               </div>
             )}
 
             <div className="pt-2 text-[11px] text-stone-400 font-mono flex items-center justify-between border-t border-stone-100">
               <span>ИДЕНТИФИКАТОР: {inspectedTea.id}</span>
-              <span>ИСТОЧНИК: {inspectedTea.isCustom ? 'Пользовательская лаборатория' : 'Эталонный архив'}</span>
+              <span>ТИП: {inspectedTea.isCustom ? 'Пользовательский образец' : 'Эталонный каталог'}</span>
             </div>
           </div>
         )}

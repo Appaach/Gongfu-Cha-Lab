@@ -5,9 +5,29 @@
 
 /**
  * Источник происхождения числовых или качественных данных в модели.
- * Принцип: "Неизвестное значение не равно нулю" (Unknown != 0).
+ * Строгая градация достоверности:
+ * - measured: проверенное лабораторное измерение конкретного образца (с указанием метода и сведений об образце);
+ * - literature: значение из проверяемого литературного / научного источника (монография, справочник, статья);
+ * - model_profile: предварительная оценка или типовой ориентировочный профиль модели (демонстрационные данные);
+ * - user_defined: значение, явно введённое пользователем вручную;
+ * - unknown: неизвестное значение (данные отсутствуют).
+ *
+ * Принцип: "Неизвестное значение не равно нулю" (Unknown ≠ 0).
  */
-export type DataOriginType = 'measured' | 'estimated' | 'user_defined' | 'unknown';
+export type DataOriginType =
+  | 'measured'
+  | 'literature'
+  | 'model_profile'
+  | 'user_defined'
+  | 'unknown';
+
+/**
+ * Обоснованная оценка неопределённости (только при наличии реального протокола).
+ */
+export interface MeasurementUncertainty {
+  readonly plusMinus?: number;
+  readonly description?: string;
+}
 
 /**
  * Обертка над физической или химической величиной с явным указанием единицы измерения и источника.
@@ -16,8 +36,11 @@ export interface ValueWithOrigin<T> {
   readonly value: T | null;
   readonly origin: DataOriginType;
   readonly unit: string;
-  readonly confidence?: number; // 0.0 – 1.0 (степень доверия к значению)
-  readonly sourceNotes?: string; // Литературный источник, прибор или примечание
+  readonly uncertainty?: MeasurementUncertainty; // Не фиктивный, только если обоснован протоколом
+  readonly sourceNotes?: string;                 // Пояснение контекста происхождения
+  readonly citation?: string;                    // Библиографическая ссылка для литературы
+  readonly measurementMethod?: string;           // Лабораторный метод (для measured)
+  readonly sampleInfo?: string;                  // Идентификатор / описание образца (для measured)
 }
 
 /**
@@ -27,24 +50,28 @@ export type TeaCategory =
   | 'green'        // Зелёный (неферментированный)
   | 'white'        // Белый (естественное завяливание и сушка)
   | 'yellow'       // Жёлтый (слабое томление / мэнхуан)
-  | 'oolong_light' // Светлый улун (сферическая скрутка, слабая ферментация)
+  | 'oolong_light' // Светлый улун (слабая ферментация, сферическая скрутка)
   | 'oolong_dark'  // Тёмный улун (продольная скрутка, прогрев на углях)
   | 'black'        // Красный / Чёрный (полная оксидация)
   | 'sheng_puer'   // Шэн пуэр (естественная постферментация)
   | 'shou_puer'    // Шу пуэр (ускоренная влажная постферментация)
-  | 'hei_cha';     // Хэй ча (чёрный чай кирпичной прессовки)
+  | 'hei_cha';     // Хэй ча (чёрный чай прессованный)
 
 /**
- * Морфологическая форма чайного листа.
- * Определяет площадь соприкосновения с водой и кинетику набухания.
+ * Морфологическая форма и целостность чайного листа.
  */
 export type LeafMorphology =
-  | 'whole_bud'             // Цельная почка (Цзинь Цзюнь Мэй, Бай Хао Инь Чжэнь)
-  | 'bud_and_leaves'        // Почка и верхние листья (1-2 листа)
+  | 'whole_bud'             // Цельная верхушечная почка
+  | 'bud_and_leaves'        // Почка и 1-2 прилегающих листа
   | 'mature_open_leaves'    // Крупные зрелые раскрытые листья
-  | 'tightly_rolled_ball'   // Сферическая тугая скрутка (Те Гуаньинь, Дун Дин)
-  | 'strip_rolled'          // Продольная полосовая скрутка (Да Хун Пао, Даньцуны)
-  | 'compressed_cake_chunk'; // Прессованный блин / кирпич (пуэры, хэй ча)
+  | 'tightly_rolled_ball'   // Сферическая тугая скрутка
+  | 'strip_rolled'          // Продольная полосовая скрутка
+  | 'compressed_cake_chunk'; // Прессованный фрагмент блина / кирпича
+
+/**
+ * Степень прогрева / обжарки листа (технический параметр).
+ */
+export type RoastLevel = 'none' | 'light' | 'medium' | 'heavy';
 
 /**
  * Полный паспорт образца чая.
@@ -53,62 +80,107 @@ export type LeafMorphology =
 export interface TeaSample {
   readonly id: string;
   readonly name: string;
-  readonly nativeName?: string; // Оригинальное китайское название иероглифами
-  readonly category: TeaCategory;
-  readonly originRegion: string;
-  readonly harvestYear?: number;
-  readonly morphology: LeafMorphology;
+  readonly nativeName?: string;
+  readonly category?: TeaCategory; // Для пользовательского чая может быть не указана
+  readonly morphology?: LeafMorphology; // Для пользовательского чая может быть не указана
+  readonly originRegion?: string;
+  readonly cultivar?: string;      // Культивар / ботаническая разновидность
+  readonly producer?: string;      // Производитель / фабрика / мастер
+  readonly harvestYear?: number;   // Год сбора (не подставляется автоматически!)
+  readonly productionYear?: number; // Год прессовки / финальной обработки
+  readonly roastLevel?: RoastLevel;
+  readonly processingNotes?: string; // Технологические особенности обработки
 
-  // Физико-морфологические параметры листа
-  readonly hydrationSpeedFactor: ValueWithOrigin<number>; // Условная скорость смачивания листа (0.1 – 2.0)
-  readonly waterAbsorptionRatio: ValueWithOrigin<number>; // г воды, удерживаемой 1 г сухого листа (типично 2.0 – 3.2 г/г)
-  readonly leafDensityGPerCm3: ValueWithOrigin<number>;   // Насыпная плотность листа (г/см³)
+  // --- Физические параметры листа ---
+  // Физическое водопоглощение матрицы сухого листа (г связанной воды на 1 г сухого листа)
+  readonly waterAbsorptionRatio: ValueWithOrigin<number>;
+  // Насыпная плотность сухой навески (г/см³)
+  readonly leafBulkDensityGPerCm3: ValueWithOrigin<number>;
+  // Некалиброванный внутренний параметр модели (скорость смачивания). Не является обязательным свойством чая.
+  readonly uncalibratedHydrationSpeed?: ValueWithOrigin<number>;
 
-  // Химический резервуар экстрагируемых веществ (% от массы сухого листа или г/100г)
-  readonly totalSolubleFraction: ValueWithOrigin<number>; // Суммарная доля водорастворимого сухого остатка (30–45%)
-  readonly caffeineEstimate: ValueWithOrigin<number>;     // Алкалоиды / кофеин (2.0–5.5%)
-  readonly polyphenolsEstimate: ValueWithOrigin<number>;  // Полифенолы / катехины (12–30%)
-  readonly theanineEstimate: ValueWithOrigin<number>;     // L-теанин и аминокислоты (1.0–4.5%)
+  // --- Химический состав сухого листа (% от массы сухого листа) ---
+  // Общая доля водорастворимого сухого остатка (% от массы сухого листа).
+  // Включает в себя растворимые углеводы, полифенолы, аминокислоты, минералы и алкалоиды.
+  readonly totalExtractableFraction: ValueWithOrigin<number>;
+  // Отдельные компоненты (входят в состав сухого листа, НЕ прибавляются сверх totalExtractableFraction!):
+  readonly caffeineFraction: ValueWithOrigin<number>;      // Алкалоиды / кофеин (% от массы сухого листа)
+  readonly totalPolyphenolsFraction: ValueWithOrigin<number>; // Суммарные полифенолы / катехины (% от массы сухого листа)
+  readonly theanineFraction: ValueWithOrigin<number>;      // L-теанин и аминокислоты (% от массы сухого листа)
 
   readonly isCustom: boolean;
-  readonly notes?: string;
+  // Редакционное энциклопедическое описание для каталога (не субъективные дегустационные заметки!)
+  readonly editorialSummary?: string;
 }
 
 /**
- * Фабричная функция для создания типизированного значения с источником.
+ * Создание типизированного значения с источником и валидацией инвариантов.
+ * Инварианты:
+ * 1. Если origin === 'unknown', value ОБЯЗАНО быть null.
+ * 2. Если origin !== 'unknown', value НЕ МОЖЕТ быть null или undefined (иначе origin принудительно unknown).
+ * 3. Не допускается автоматическое присвоение confidence = 1.0.
  */
-export function createValueWithOrigin<T>(
-  value: T | null,
+export function createValueWithOrigin<T = number>(
+  value: T | null | undefined,
   origin: DataOriginType,
   unit: string,
-  sourceNotes?: string,
-  confidence?: number
+  options?: {
+    uncertainty?: MeasurementUncertainty;
+    sourceNotes?: string;
+    citation?: string;
+    measurementMethod?: string;
+    sampleInfo?: string;
+  }
 ): ValueWithOrigin<T> {
+  // Инвариант: unknown всегда имеет value: null
+  if (origin === 'unknown' || value === null || value === undefined) {
+    return {
+      value: null,
+      origin: 'unknown',
+      unit,
+      sourceNotes: options?.sourceNotes,
+    };
+  }
+
   return {
-    value: origin === 'unknown' ? null : value,
+    value,
     origin,
     unit,
-    confidence: origin === 'unknown' ? undefined : (confidence ?? 1.0),
-    sourceNotes,
+    uncertainty: options?.uncertainty,
+    sourceNotes: options?.sourceNotes,
+    citation: options?.citation,
+    measurementMethod: options?.measurementMethod,
+    sampleInfo: options?.sampleInfo,
   };
 }
 
 /**
  * Проверка, является ли значение известным (не unknown и не null).
  */
-export function isKnownValue<T>(item: ValueWithOrigin<T>): item is ValueWithOrigin<T> & { value: T } {
-  return item.origin !== 'unknown' && item.value !== null && item.value !== undefined;
+export function isKnownValue<T>(
+  item: ValueWithOrigin<T> | undefined | null
+): item is ValueWithOrigin<T> & { value: T } {
+  return (
+    item !== undefined &&
+    item !== null &&
+    item.origin !== 'unknown' &&
+    item.value !== null &&
+    item.value !== undefined
+  );
 }
 
 /**
  * Форматирование величины с единицей измерения или обозначением отсутствия данных.
  */
 export function formatValueWithUnit(
-  val: ValueWithOrigin<number>,
+  val: ValueWithOrigin<number> | undefined | null,
   digits = 1
 ): string {
   if (!isKnownValue(val)) {
     return 'Данные отсутствуют';
   }
-  return `${val.value.toFixed(digits)} ${val.unit}`;
+  const uncertaintyStr = val.uncertainty?.plusMinus
+    ? ` ± ${val.uncertainty.plusMinus.toFixed(digits)}`
+    : '';
+  return `${val.value.toFixed(digits)}${uncertaintyStr} ${val.unit}`;
 }

@@ -8,13 +8,14 @@ import {
   TeaSample,
   TeaCategory,
   LeafMorphology,
+  RoastLevel,
   DataOriginType,
   createValueWithOrigin,
 } from '../../domain/tea/types.ts';
 import { validateTeaSample } from '../../domain/tea/validation.ts';
 import { SectionCard } from '../../components/SectionCard.tsx';
 import { DataOriginBadge } from '../../components/DataOriginBadge.tsx';
-import { Plus, Trash2, Play, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Play, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface CustomTeasViewProps {
   customTeas: TeaSample[];
@@ -23,6 +24,27 @@ interface CustomTeasViewProps {
   onSelectForBrewing: (id: string) => void;
 }
 
+const CATEGORY_LABELS: Record<TeaCategory, string> = {
+  green: 'Зелёный',
+  white: 'Белый',
+  yellow: 'Жёлтый',
+  oolong_light: 'Светлый улун',
+  oolong_dark: 'Тёмный улун',
+  black: 'Красный / Чёрный',
+  sheng_puer: 'Шэн пуэр',
+  shou_puer: 'Шу пуэр',
+  hei_cha: 'Хэй ча',
+};
+
+const MORPHOLOGY_LABELS: Record<LeafMorphology, string> = {
+  strip_rolled: 'Продольная скрутка полосой',
+  tightly_rolled_ball: 'Тугая сферическая скрутка',
+  whole_bud: 'Цельная верхушечная почка',
+  bud_and_leaves: 'Почка и 1-2 листа',
+  mature_open_leaves: 'Крупные зрелые листья',
+  compressed_cake_chunk: 'Прессованный блин / кирпич',
+};
+
 export const CustomTeasView: React.FC<CustomTeasViewProps> = ({
   customTeas,
   onAddCustomTea,
@@ -30,36 +52,38 @@ export const CustomTeasView: React.FC<CustomTeasViewProps> = ({
   onSelectForBrewing,
 }) => {
   const [isCreating, setIsCreating] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Состояние формы
+  // Основные доступные пользователю сведения (без автоматической подстановки фиктивных значений!)
   const [name, setName] = useState('');
   const [nativeName, setNativeName] = useState('');
-  const [category, setCategory] = useState<TeaCategory>('oolong_dark');
+  const [category, setCategory] = useState<TeaCategory | ''>('');
+  const [morphology, setMorphology] = useState<LeafMorphology | ''>('');
   const [originRegion, setOriginRegion] = useState('');
-  const [harvestYear, setHarvestYear] = useState<number>(new Date().getFullYear());
-  const [morphology, setMorphology] = useState<LeafMorphology>('strip_rolled');
-  const [notes, setNotes] = useState('');
+  const [cultivar, setCultivar] = useState('');
+  const [producer, setProducer] = useState('');
+  const [harvestYear, setHarvestYear] = useState<string>(''); // пустая строка, не подставляем текущий год!
+  const [productionYear, setProductionYear] = useState<string>('');
+  const [roastLevel, setRoastLevel] = useState<RoastLevel | ''>('');
+  const [processingNotes, setProcessingNotes] = useState('');
 
-  // Параметры с источниками
-  const [waterAbsorptionVal, setWaterAbsorptionVal] = useState<number>(2.8);
-  const [waterAbsorptionOrigin, setWaterAbsorptionOrigin] = useState<DataOriginType>('user_defined');
+  // Расширенные лабораторные поля (по умолчанию строго Unknown, без фиктивных значений!)
+  const [waterAbsorptionVal, setWaterAbsorptionVal] = useState<string>('');
+  const [waterAbsorptionOrigin, setWaterAbsorptionOrigin] = useState<DataOriginType>('unknown');
 
-  const [hydrationVal, setHydrationVal] = useState<number>(1.0);
-  const [hydrationOrigin, setHydrationOrigin] = useState<DataOriginType>('estimated');
+  const [densityVal, setDensityVal] = useState<string>('');
+  const [densityOrigin, setDensityOrigin] = useState<DataOriginType>('unknown');
 
-  const [densityVal, setDensityVal] = useState<number>(0.35);
-  const [densityOrigin, setDensityOrigin] = useState<DataOriginType>('estimated');
+  const [extractableVal, setExtractableVal] = useState<string>('');
+  const [extractableOrigin, setExtractableOrigin] = useState<DataOriginType>('unknown');
 
-  const [solubleFractionVal, setSolubleFractionVal] = useState<number>(38.0);
-  const [solubleFractionOrigin, setSolubleFractionOrigin] = useState<DataOriginType>('user_defined');
-
-  const [caffeineVal, setCaffeineVal] = useState<number>(3.0);
+  const [caffeineVal, setCaffeineVal] = useState<string>('');
   const [caffeineOrigin, setCaffeineOrigin] = useState<DataOriginType>('unknown');
 
-  const [theanineVal, setTheanineVal] = useState<number>(2.0);
+  const [theanineVal, setTheanineVal] = useState<string>('');
   const [theanineOrigin, setTheanineOrigin] = useState<DataOriginType>('unknown');
 
-  const [polyphenolsVal, setPolyphenolsVal] = useState<number>(18.0);
+  const [polyphenolsVal, setPolyphenolsVal] = useState<string>('');
   const [polyphenolsOrigin, setPolyphenolsOrigin] = useState<DataOriginType>('unknown');
 
   const [formErrors, setFormErrors] = useState<string[]>([]);
@@ -67,51 +91,42 @@ export const CustomTeasView: React.FC<CustomTeasViewProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    function parseNumericParam(strVal: string, origin: DataOriginType, unit: string) {
+      if (origin === 'unknown' || !strVal.trim()) {
+        return createValueWithOrigin<number>(null, 'unknown', unit);
+      }
+      const num = parseFloat(strVal);
+      if (isNaN(num)) {
+        return createValueWithOrigin<number>(null, 'unknown', unit);
+      }
+      return createValueWithOrigin<number>(num, origin, unit);
+    }
+
     const candidateTea: TeaSample = {
       id: `custom-tea-${Date.now()}`,
       name: name.trim(),
       nativeName: nativeName.trim() || undefined,
-      category,
-      originRegion: originRegion.trim() || 'Пользовательская партия',
-      harvestYear: harvestYear ? Number(harvestYear) : undefined,
-      morphology,
-      hydrationSpeedFactor: createValueWithOrigin(
-        hydrationOrigin === 'unknown' ? null : Number(hydrationVal),
-        hydrationOrigin,
-        'ед.'
-      ),
-      waterAbsorptionRatio: createValueWithOrigin(
-        waterAbsorptionOrigin === 'unknown' ? null : Number(waterAbsorptionVal),
-        waterAbsorptionOrigin,
-        'г/г'
-      ),
-      leafDensityGPerCm3: createValueWithOrigin(
-        densityOrigin === 'unknown' ? null : Number(densityVal),
-        densityOrigin,
-        'г/см³'
-      ),
-      totalSolubleFraction: createValueWithOrigin(
-        solubleFractionOrigin === 'unknown' ? null : Number(solubleFractionVal),
-        solubleFractionOrigin,
-        '%'
-      ),
-      caffeineEstimate: createValueWithOrigin(
-        caffeineOrigin === 'unknown' ? null : Number(caffeineVal),
-        caffeineOrigin,
-        '%'
-      ),
-      theanineEstimate: createValueWithOrigin(
-        theanineOrigin === 'unknown' ? null : Number(theanineVal),
-        theanineOrigin,
-        '%'
-      ),
-      polyphenolsEstimate: createValueWithOrigin(
-        polyphenolsOrigin === 'unknown' ? null : Number(polyphenolsVal),
-        polyphenolsOrigin,
-        '%'
-      ),
+      category: category ? category : undefined,
+      morphology: morphology ? morphology : undefined,
+      originRegion: originRegion.trim() || undefined,
+      cultivar: cultivar.trim() || undefined,
+      producer: producer.trim() || undefined,
+      harvestYear: harvestYear.trim() ? parseInt(harvestYear, 10) : undefined,
+      productionYear: productionYear.trim() ? parseInt(productionYear, 10) : undefined,
+      roastLevel: roastLevel ? roastLevel : undefined,
+      processingNotes: processingNotes.trim() || undefined,
+
+      // Физические параметры (строго Unknown, если не введены пользователем)
+      waterAbsorptionRatio: parseNumericParam(waterAbsorptionVal, waterAbsorptionOrigin, 'г/г'),
+      leafBulkDensityGPerCm3: parseNumericParam(densityVal, densityOrigin, 'г/см³'),
+
+      // Химические фракции (% от массы сухого листа)
+      totalExtractableFraction: parseNumericParam(extractableVal, extractableOrigin, '%'),
+      caffeineFraction: parseNumericParam(caffeineVal, caffeineOrigin, '%'),
+      theanineFraction: parseNumericParam(theanineVal, theanineOrigin, '%'),
+      totalPolyphenolsFraction: parseNumericParam(polyphenolsVal, polyphenolsOrigin, '%'),
+
       isCustom: true,
-      notes: notes.trim() || undefined,
     };
 
     const issues = validateTeaSample(candidateTea);
@@ -125,9 +140,19 @@ export const CustomTeasView: React.FC<CustomTeasViewProps> = ({
     onAddCustomTea(candidateTea);
     setIsCreating(false);
     setFormErrors([]);
+    // Сброс формы
     setName('');
     setNativeName('');
-    setNotes('');
+    setCategory('');
+    setMorphology('');
+    setOriginRegion('');
+    setCultivar('');
+    setProducer('');
+    setHarvestYear('');
+    setProductionYear('');
+    setRoastLevel('');
+    setProcessingNotes('');
+    setShowAdvanced(false);
   };
 
   return (
@@ -139,7 +164,7 @@ export const CustomTeasView: React.FC<CustomTeasViewProps> = ({
             Мои чаи и лабораторные образцы
           </h1>
           <p className="text-xs text-stone-500 mt-0.5">
-            Создание собственных сортов с фиксацией источника каждого параметра (измерено, оценка, неизвестно)
+            Создание чая без необходимости указывать неизвестный химический состав (Unknown ≠ 0)
           </p>
         </div>
 
@@ -156,8 +181,8 @@ export const CustomTeasView: React.FC<CustomTeasViewProps> = ({
       {isCreating && (
         <form onSubmit={handleSubmit}>
           <SectionCard
-            title="Паспорт нового чайного образца"
-            subtitle="Заполните известные параметры. Для неустановленных величин выберите статус «Неизвестно» (Unknown ≠ 0)"
+            title="Паспорт чайного образца"
+            subtitle="Заполните известные вам сведения. Все неизвестные поля останутся в статусе «Нет данных» и не будут искажать расчёты."
           >
             {formErrors.length > 0 && (
               <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-800 space-y-1">
@@ -170,6 +195,7 @@ export const CustomTeasView: React.FC<CustomTeasViewProps> = ({
               </div>
             )}
 
+            {/* Базовый блок: доступные сведения */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="block text-xs font-medium text-stone-700 mb-1">
@@ -187,7 +213,7 @@ export const CustomTeasView: React.FC<CustomTeasViewProps> = ({
 
               <div>
                 <label className="block text-xs font-medium text-stone-700 mb-1">
-                  Оригинальное название (иероглифы, опционально)
+                  Оригинальное название (иероглифы, если известно)
                 </label>
                 <input
                   type="text"
@@ -200,191 +226,261 @@ export const CustomTeasView: React.FC<CustomTeasViewProps> = ({
 
               <div>
                 <label className="block text-xs font-medium text-stone-700 mb-1">
-                  Категория чая
+                  Категория чая (если известна)
                 </label>
                 <select
                   value={category}
-                  onChange={(e) => setCategory(e.target.value as TeaCategory)}
+                  onChange={(e) => setCategory(e.target.value as TeaCategory | '')}
                   className="w-full text-xs py-2 px-3 bg-white border border-stone-300 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 text-stone-900"
                 >
-                  <option value="green">Зелёный</option>
-                  <option value="white">Белый</option>
-                  <option value="yellow">Жёлтый</option>
-                  <option value="oolong_light">Светлый улун</option>
-                  <option value="oolong_dark">Тёмный улун</option>
-                  <option value="black">Красный / Чёрный</option>
-                  <option value="sheng_puer">Шэн пуэр</option>
-                  <option value="shou_puer">Шу пуэр</option>
-                  <option value="hei_cha">Хэй ча</option>
+                  <option value="">Не указано / Не знаю</option>
+                  {(Object.keys(CATEGORY_LABELS) as TeaCategory[]).map((cat) => (
+                    <option key={cat} value={cat}>
+                      {CATEGORY_LABELS[cat]}
+                    </option>
+                  ))}
                 </select>
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-stone-700 mb-1">
-                  Регион сбора
+                  Форма и целостность листа (если известна)
+                </label>
+                <select
+                  value={morphology}
+                  onChange={(e) => setMorphology(e.target.value as LeafMorphology | '')}
+                  className="w-full text-xs py-2 px-3 bg-white border border-stone-300 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 text-stone-900"
+                >
+                  <option value="">Не указано / Не знаю</option>
+                  {(Object.keys(MORPHOLOGY_LABELS) as LeafMorphology[]).map((m) => (
+                    <option key={m} value={m}>
+                      {MORPHOLOGY_LABELS[m]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-stone-700 mb-1">
+                  Регион сбора / терруар
                 </label>
                 <input
                   type="text"
                   value={originRegion}
                   onChange={(e) => setOriginRegion(e.target.value)}
-                  placeholder="Гуандун, Чаочжоу"
+                  placeholder="Например: Гуандун, Чаочжоу, Удун"
                   className="w-full text-xs py-2 px-3 bg-white border border-stone-300 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 text-stone-900"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-stone-700 mb-1">
-                  Год сбора / урожая
+                  Культивар / разновидность
+                </label>
+                <input
+                  type="text"
+                  value={cultivar}
+                  onChange={(e) => setCultivar(e.target.value)}
+                  placeholder="Например: Я Ши Сян / Ба Сянь"
+                  className="w-full text-xs py-2 px-3 bg-white border border-stone-300 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 text-stone-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-stone-700 mb-1">
+                  Производитель / мастер / фабрика
+                </label>
+                <input
+                  type="text"
+                  value={producer}
+                  onChange={(e) => setProducer(e.target.value)}
+                  placeholder="Например: Фабрика Мэнхай / Мастер Вонг"
+                  className="w-full text-xs py-2 px-3 bg-white border border-stone-300 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 text-stone-900"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-stone-700 mb-1">
+                  Степень прогрева / обжарки
+                </label>
+                <select
+                  value={roastLevel}
+                  onChange={(e) => setRoastLevel(e.target.value as RoastLevel | '')}
+                  className="w-full text-xs py-2 px-3 bg-white border border-stone-300 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 text-stone-900"
+                >
+                  <option value="">Не указано</option>
+                  <option value="none">Без прогрева (цин сян / зелёный)</option>
+                  <option value="light">Слабый прогрев</option>
+                  <option value="medium">Средний прогрев</option>
+                  <option value="heavy">Глубокий прогрев (хунпэй на углях)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-stone-700 mb-1">
+                  Год сбора урожая (если известен)
                 </label>
                 <input
                   type="number"
-                  min={1990}
-                  max={2030}
+                  min={1980}
+                  max={2035}
                   value={harvestYear}
-                  onChange={(e) => setHarvestYear(Number(e.target.value))}
+                  onChange={(e) => setHarvestYear(e.target.value)}
+                  placeholder="Оставьте пустым, если не знаете"
                   className="w-full text-xs py-2 px-3 bg-white border border-stone-300 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 text-stone-900 font-mono"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-stone-700 mb-1">
-                  Морфология листа
+                  Год производства / прессовки
                 </label>
-                <select
-                  value={morphology}
-                  onChange={(e) => setMorphology(e.target.value as LeafMorphology)}
-                  className="w-full text-xs py-2 px-3 bg-white border border-stone-300 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 text-stone-900"
-                >
-                  <option value="strip_rolled">Продольная скрутка полосой</option>
-                  <option value="tightly_rolled_ball">Тугая сферическая скрутка</option>
-                  <option value="whole_bud">Цельная верхушечная почка</option>
-                  <option value="bud_and_leaves">Почка и верхние листья</option>
-                  <option value="mature_open_leaves">Крупные зрелые листья</option>
-                  <option value="compressed_cake_chunk">Прессованный блин / кирпич</option>
-                </select>
+                <input
+                  type="number"
+                  min={1980}
+                  max={2035}
+                  value={productionYear}
+                  onChange={(e) => setProductionYear(e.target.value)}
+                  placeholder="Оставьте пустым, если не знаете"
+                  className="w-full text-xs py-2 px-3 bg-white border border-stone-300 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 text-stone-900 font-mono"
+                />
               </div>
             </div>
 
-            {/* Физические и химические параметры с селектором происхождения */}
-            <div className="pt-4 border-t border-stone-200">
-              <h3 className="text-xs font-semibold text-stone-900 mb-3 uppercase tracking-wider font-mono">
-                Физические и химические параметры с указанием источника
-              </h3>
-
-              <div className="space-y-3">
-                {/* Водопоглощение */}
-                <div className="p-3 bg-stone-50 rounded border border-stone-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="sm:w-1/3">
-                    <span className="text-xs font-medium text-stone-900 block">
-                      Водопоглощение (г воды / г листа)
-                    </span>
-                    <span className="text-[11px] text-stone-500">
-                      Сколько воды связывает сухой лист при замачивании (норма: 2.0 – 3.2 г/г)
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 sm:w-2/3">
-                    <input
-                      type="number"
-                      step={0.1}
-                      disabled={waterAbsorptionOrigin === 'unknown'}
-                      value={waterAbsorptionOrigin === 'unknown' ? '' : waterAbsorptionVal}
-                      onChange={(e) => setWaterAbsorptionVal(Number(e.target.value))}
-                      placeholder={waterAbsorptionOrigin === 'unknown' ? 'Неизвестно' : ''}
-                      className="w-28 text-xs py-1.5 px-2 bg-white border border-stone-300 rounded font-mono disabled:bg-stone-100 disabled:text-stone-400"
-                    />
-                    <select
-                      value={waterAbsorptionOrigin}
-                      onChange={(e) => setWaterAbsorptionOrigin(e.target.value as DataOriginType)}
-                      className="text-xs py-1.5 px-2 bg-white border border-stone-300 rounded text-stone-800"
-                    >
-                      <option value="user_defined">Ручной ввод</option>
-                      <option value="estimated">Оценка культивара</option>
-                      <option value="measured">Лаб. измерение</option>
-                      <option value="unknown">Неизвестно (Unknown)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Общий резервуар сухих веществ */}
-                <div className="p-3 bg-stone-50 rounded border border-stone-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="sm:w-1/3">
-                    <span className="text-xs font-medium text-stone-900 block">
-                      Доля экстрактивных сухих веществ (%)
-                    </span>
-                    <span className="text-[11px] text-stone-500">
-                      Суммарная водорастворимая фракция (норма: 30% – 45%)
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 sm:w-2/3">
-                    <input
-                      type="number"
-                      step={0.5}
-                      disabled={solubleFractionOrigin === 'unknown'}
-                      value={solubleFractionOrigin === 'unknown' ? '' : solubleFractionVal}
-                      onChange={(e) => setSolubleFractionVal(Number(e.target.value))}
-                      placeholder={solubleFractionOrigin === 'unknown' ? 'Неизвестно' : ''}
-                      className="w-28 text-xs py-1.5 px-2 bg-white border border-stone-300 rounded font-mono disabled:bg-stone-100 disabled:text-stone-400"
-                    />
-                    <select
-                      value={solubleFractionOrigin}
-                      onChange={(e) => setSolubleFractionOrigin(e.target.value as DataOriginType)}
-                      className="text-xs py-1.5 px-2 bg-white border border-stone-300 rounded text-stone-800"
-                    >
-                      <option value="user_defined">Ручной ввод</option>
-                      <option value="estimated">Оценка культивара</option>
-                      <option value="measured">Лаб. измерение</option>
-                      <option value="unknown">Неизвестно (Unknown)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Кофеин */}
-                <div className="p-3 bg-stone-50 rounded border border-stone-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="sm:w-1/3">
-                    <span className="text-xs font-medium text-stone-900 block">
-                      Кофеин (% сухой массы)
-                    </span>
-                    <span className="text-[11px] text-stone-500">
-                      Алкалоиды (типично 2.0% – 5.0%)
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 sm:w-2/3">
-                    <input
-                      type="number"
-                      step={0.1}
-                      disabled={caffeineOrigin === 'unknown'}
-                      value={caffeineOrigin === 'unknown' ? '' : caffeineVal}
-                      onChange={(e) => setCaffeineVal(Number(e.target.value))}
-                      placeholder={caffeineOrigin === 'unknown' ? 'Неизвестно' : ''}
-                      className="w-28 text-xs py-1.5 px-2 bg-white border border-stone-300 rounded font-mono disabled:bg-stone-100 disabled:text-stone-400"
-                    />
-                    <select
-                      value={caffeineOrigin}
-                      onChange={(e) => setCaffeineOrigin(e.target.value as DataOriginType)}
-                      className="text-xs py-1.5 px-2 bg-white border border-stone-300 rounded text-stone-800"
-                    >
-                      <option value="unknown">Неизвестно (Unknown)</option>
-                      <option value="user_defined">Ручной ввод</option>
-                      <option value="estimated">Оценка культивара</option>
-                      <option value="measured">Лаб. измерение</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Заметки */}
-            <div className="mt-4 pt-4 border-t border-stone-200">
+            {/* Технологические особенности обработки */}
+            <div className="mb-4">
               <label className="block text-xs font-medium text-stone-700 mb-1">
-                Лабораторные заметки и описание партии
+                Особенности обработки, ферментации и прессования (технические факты)
               </label>
-              <textarea
-                rows={2}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Условия хранения, особенности обработки, вкусовые дескрипторы..."
+              <input
+                type="text"
+                value={processingNotes}
+                onChange={(e) => setProcessingNotes(e.target.value)}
+                placeholder="Например: Ручной шацин, продольная скрутка, сушка на древесных углях"
                 className="w-full text-xs py-2 px-3 bg-white border border-stone-300 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-700 text-stone-900"
               />
+            </div>
+
+            {/* Дополнительный лабораторный блок (свернут по умолчанию, все поля unknown) */}
+            <div className="pt-3 border-t border-stone-200">
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-600 hover:text-stone-900 cursor-pointer"
+              >
+                {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                <span>Дополнительные физико-химические параметры (если известны протоколы)</span>
+              </button>
+
+              {showAdvanced && (
+                <div className="mt-4 space-y-3 bg-stone-50/70 p-4 rounded-lg border border-stone-200">
+                  <p className="text-[11px] text-stone-500 mb-3">
+                    По умолчанию все параметры имеют статус «Неизвестно». Заполняйте поля только при наличии лабораторного анализа или проверенных данных.
+                  </p>
+
+                  {/* Водопоглощение */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-white rounded border border-stone-200/80">
+                    <div>
+                      <span className="text-xs font-medium text-stone-900 block">
+                        Водопоглощение матрицы (г воды / г сухого листа)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step={0.1}
+                        value={waterAbsorptionVal}
+                        onChange={(e) => {
+                          setWaterAbsorptionVal(e.target.value);
+                          if (e.target.value && waterAbsorptionOrigin === 'unknown') {
+                            setWaterAbsorptionOrigin('user_defined');
+                          }
+                        }}
+                        placeholder="—"
+                        className="w-24 text-xs py-1 px-2 border border-stone-300 rounded font-mono"
+                      />
+                      <select
+                        value={waterAbsorptionOrigin}
+                        onChange={(e) => setWaterAbsorptionOrigin(e.target.value as DataOriginType)}
+                        className="text-xs py-1 px-2 border border-stone-300 rounded bg-white"
+                      >
+                        <option value="unknown">Неизвестно</option>
+                        <option value="user_defined">Ручной ввод</option>
+                        <option value="literature">Литература</option>
+                        <option value="measured">Лаб. измерение</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Экстрактивные сухие вещества */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-white rounded border border-stone-200/80">
+                    <div>
+                      <span className="text-xs font-medium text-stone-900 block">
+                        Суммарный водорастворимый экстракт (% от массы сухого листа)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step={0.5}
+                        value={extractableVal}
+                        onChange={(e) => {
+                          setExtractableVal(e.target.value);
+                          if (e.target.value && extractableOrigin === 'unknown') {
+                            setExtractableOrigin('user_defined');
+                          }
+                        }}
+                        placeholder="—"
+                        className="w-24 text-xs py-1 px-2 border border-stone-300 rounded font-mono"
+                      />
+                      <select
+                        value={extractableOrigin}
+                        onChange={(e) => setExtractableOrigin(e.target.value as DataOriginType)}
+                        className="text-xs py-1 px-2 border border-stone-300 rounded bg-white"
+                      >
+                        <option value="unknown">Неизвестно</option>
+                        <option value="user_defined">Ручной ввод</option>
+                        <option value="literature">Литература</option>
+                        <option value="measured">Лаб. измерение</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Кофеин */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-white rounded border border-stone-200/80">
+                    <div>
+                      <span className="text-xs font-medium text-stone-900 block">
+                        Кофеин (% от массы сухого листа)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step={0.1}
+                        value={caffeineVal}
+                        onChange={(e) => {
+                          setCaffeineVal(e.target.value);
+                          if (e.target.value && caffeineOrigin === 'unknown') {
+                            setCaffeineOrigin('user_defined');
+                          }
+                        }}
+                        placeholder="—"
+                        className="w-24 text-xs py-1 px-2 border border-stone-300 rounded font-mono"
+                      />
+                      <select
+                        value={caffeineOrigin}
+                        onChange={(e) => setCaffeineOrigin(e.target.value as DataOriginType)}
+                        className="text-xs py-1 px-2 border border-stone-300 rounded bg-white"
+                      >
+                        <option value="unknown">Неизвестно</option>
+                        <option value="user_defined">Ручной ввод</option>
+                        <option value="literature">Литература</option>
+                        <option value="measured">Лаб. измерение</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="mt-5 flex items-center justify-end gap-3">
@@ -399,7 +495,7 @@ export const CustomTeasView: React.FC<CustomTeasViewProps> = ({
                 type="submit"
                 className="px-4 py-2 text-xs font-medium text-white bg-[#224233] hover:bg-[#1A3327] rounded-md transition-colors cursor-pointer"
               >
-                Сохранить образец в лабораторию
+                Сохранить образец
               </button>
             </div>
           </SectionCard>
@@ -413,8 +509,8 @@ export const CustomTeasView: React.FC<CustomTeasViewProps> = ({
             В вашей лаборатории пока нет добавленных сортов
           </p>
           <p className="text-xs text-stone-500 max-w-md mx-auto leading-relaxed">
-            Нажмите кнопку «Добавить образец» выше, чтобы создать паспорт вашей партии чая
-            с точным указанием проверенных и неустановленных характеристик.
+            Нажмите кнопку «Добавить образец» выше, чтобы создать паспорт вашей партии чая.
+            Химические параметры указывать не обязательно — модель честно учтет их как неизвестные.
           </p>
         </div>
       ) : (
@@ -445,8 +541,14 @@ export const CustomTeasView: React.FC<CustomTeasViewProps> = ({
                   </button>
                 </div>
 
-                <div className="flex items-center gap-2 text-xs text-stone-500 mb-3">
-                  <span>{tea.originRegion}</span>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-stone-500 mb-3">
+                  {tea.category && <span>{CATEGORY_LABELS[tea.category] ?? tea.category}</span>}
+                  {tea.originRegion && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span>{tea.originRegion}</span>
+                    </>
+                  )}
                   {tea.harvestYear && (
                     <>
                       <span aria-hidden="true">·</span>
@@ -457,24 +559,24 @@ export const CustomTeasView: React.FC<CustomTeasViewProps> = ({
 
                 <div className="space-y-1.5 text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="text-stone-500">Водопоглощение:</span>
+                    <span className="text-stone-500">Водопоглощение листа:</span>
                     <div className="flex items-center gap-1 font-mono">
-                      <span>{tea.waterAbsorptionRatio.value ?? '—'} г/г</span>
+                      <span>{tea.waterAbsorptionRatio.value !== null ? `${tea.waterAbsorptionRatio.value} г/г` : '—'}</span>
                       <DataOriginBadge origin={tea.waterAbsorptionRatio.origin} />
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-stone-500">Экстрактивные вещества:</span>
                     <div className="flex items-center gap-1 font-mono">
-                      <span>{tea.totalSolubleFraction.value ?? '—'} %</span>
-                      <DataOriginBadge origin={tea.totalSolubleFraction.origin} />
+                      <span>{tea.totalExtractableFraction.value !== null ? `${tea.totalExtractableFraction.value} %` : '—'}</span>
+                      <DataOriginBadge origin={tea.totalExtractableFraction.origin} />
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-stone-500">Кофеин:</span>
                     <div className="flex items-center gap-1 font-mono">
-                      <span>{tea.caffeineEstimate.value !== null ? `${tea.caffeineEstimate.value} %` : '—'}</span>
-                      <DataOriginBadge origin={tea.caffeineEstimate.origin} />
+                      <span>{tea.caffeineFraction.value !== null ? `${tea.caffeineFraction.value} %` : '—'}</span>
+                      <DataOriginBadge origin={tea.caffeineFraction.origin} />
                     </div>
                   </div>
                 </div>
