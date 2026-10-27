@@ -41,6 +41,9 @@ export const REFERENCE_TEAS: TeaSample[] = [
     uncalibratedHydrationSpeed: createValueWithOrigin(1.4, 'model_profile', 'ед.', {
       sourceNotes: 'Некалиброванный модельный параметр скорости смачивания',
     }),
+    hydrationRateConstantPerSecond: createValueWithOrigin<number>(null, 'unknown', 's^-1', {
+      sourceNotes: 'Размерная константа скорости гидратации для данной партии не измерена (Unknown ≠ 0)',
+    }),
 
     // Химические фракции (% от массы сухого листа)
     totalExtractableFraction: createValueWithOrigin(38.0, 'literature', '%', {
@@ -80,6 +83,9 @@ export const REFERENCE_TEAS: TeaSample[] = [
     uncalibratedHydrationSpeed: createValueWithOrigin(0.7, 'model_profile', 'ед.', {
       sourceNotes: 'Замедленное первичное смачивание из-за гидрофобного пуха',
     }),
+    hydrationRateConstantPerSecond: createValueWithOrigin<number>(null, 'unknown', 's^-1', {
+      sourceNotes: 'Размерная константа скорости гидратации для данной партии не измерена (Unknown ≠ 0)',
+    }),
 
     totalExtractableFraction: createValueWithOrigin(34.0, 'literature', '%', {
       sourceNotes: 'Литературный диапазон экстрактивности почек белого чая',
@@ -118,6 +124,9 @@ export const REFERENCE_TEAS: TeaSample[] = [
     uncalibratedHydrationSpeed: createValueWithOrigin(0.45, 'model_profile', 'ед.', {
       sourceNotes: 'Медленное первичное раскручивание тугих гранул',
     }),
+    hydrationRateConstantPerSecond: createValueWithOrigin<number>(null, 'unknown', 's^-1', {
+      sourceNotes: 'Размерная константа скорости гидратации для данной партии не измерена (Unknown ≠ 0)',
+    }),
 
     totalExtractableFraction: createValueWithOrigin(40.0, 'literature', '%', {
       sourceNotes: 'Литературные данные по экстрактивным веществам улунов',
@@ -155,6 +164,9 @@ export const REFERENCE_TEAS: TeaSample[] = [
     }),
     uncalibratedHydrationSpeed: createValueWithOrigin(1.2, 'model_profile', 'ед.', {
       sourceNotes: 'Относительно быстрое смачивание за счет пористости прогретой ткани листа',
+    }),
+    hydrationRateConstantPerSecond: createValueWithOrigin<number>(null, 'unknown', 's^-1', {
+      sourceNotes: 'Размерная константа скорости гидратации для данной партии не измерена (Unknown ≠ 0)',
     }),
 
     totalExtractableFraction: createValueWithOrigin(39.0, 'literature', '%', {
@@ -195,6 +207,9 @@ export const REFERENCE_TEAS: TeaSample[] = [
     uncalibratedHydrationSpeed: createValueWithOrigin(1.5, 'model_profile', 'ед.', {
       sourceNotes: 'Разрушенные при сминании клетки листа обеспечивают быстрое смачивание',
     }),
+    hydrationRateConstantPerSecond: createValueWithOrigin<number>(null, 'unknown', 's^-1', {
+      sourceNotes: 'Размерная константа скорости гидратации для данной партии не измерена (Unknown ≠ 0)',
+    }),
 
     totalExtractableFraction: createValueWithOrigin(42.0, 'literature', '%', {
       sourceNotes: 'Высокая экстрактивность юньнаньской ассамики по ГОСТ/литературе Китая',
@@ -232,6 +247,9 @@ export const REFERENCE_TEAS: TeaSample[] = [
     }),
     uncalibratedHydrationSpeed: createValueWithOrigin(0.35, 'model_profile', 'ед.', {
       sourceNotes: 'Плотная механическая прессовка замедляет проникновение воды',
+    }),
+    hydrationRateConstantPerSecond: createValueWithOrigin<number>(null, 'unknown', 's^-1', {
+      sourceNotes: 'Размерная константа скорости гидратации для данной партии не измерена (Unknown ≠ 0)',
     }),
 
     totalExtractableFraction: createValueWithOrigin(41.0, 'literature', '%', {

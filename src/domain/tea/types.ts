@@ -98,6 +98,9 @@ export interface TeaSample {
   readonly leafBulkDensityGPerCm3: ValueWithOrigin<number>;
   // Некалиброванный внутренний параметр модели (скорость смачивания). Не является обязательным свойством чая.
   readonly uncalibratedHydrationSpeed?: ValueWithOrigin<number>;
+  // Размерная константа скорости гидратации (с⁻¹ / s⁻¹).
+  // Физически отделена от безразмерного эвристического индекса uncalibratedHydrationSpeed.
+  readonly hydrationRateConstantPerSecond?: ValueWithOrigin<number>;
 
   // --- Химический состав сухого листа (% от массы сухого листа) ---
   // Общая доля водорастворимого сухого остатка (% от массы сухого листа).

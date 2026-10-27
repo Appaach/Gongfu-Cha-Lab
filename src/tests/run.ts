@@ -6,6 +6,7 @@
 import { runDomainTestSuite } from './domain.test.ts';
 import { runThermalTestSuite } from './thermal.test.ts';
 import { runWaterBalanceTestSuite } from './waterBalance.test.ts';
+import { runHydrationKineticsTestSuite } from './hydrationKinetics.test.ts';
 
 async function main() {
   console.log('--- Запуск верификации предметных инвариантов Gongfu Cha Lab ---');
@@ -14,8 +15,15 @@ async function main() {
   const thermalResults = await runThermalTestSuite();
   console.log('--- Запуск верификации водного баланса (Этап 2B.1) ---');
   const waterBalanceResults = await runWaterBalanceTestSuite();
+  console.log('--- Запуск верификации кинетики гидратации (Этап 2B.2) ---');
+  const hydrationKineticsResults = await runHydrationKineticsTestSuite();
 
-  const results = [...domainResults, ...thermalResults, ...waterBalanceResults];
+  const results = [
+    ...domainResults,
+    ...thermalResults,
+    ...waterBalanceResults,
+    ...hydrationKineticsResults,
+  ];
   let failures = 0;
 
   for (const r of results) {

@@ -250,8 +250,14 @@ $$\sum_{k=1}^N m_{\text{added}, k} \equiv m_{\text{abs}}(t_N) + m_{\text{retaine
 
 - **Этап 2B.0 (Выполнено)**: Аудит данных, формулировка компартментов, уравнений сохранения массы и ограничений в `docs/WATER_BALANCE_MODEL.md`.
 - **Этап 2B.1 (Выполнено)**: Реализация чистых функций водного баланса (`src/engine/water-balance/`) и 100% покрытие модульными тестами инвариантов сохранения массы для всех трёх методов (27 проверок).
-- **Этап 2B.2 (Следующий этап)**: Реализация кинетики гидратации $m_{\text{abs}}(t)$ с поддержкой размерных параметров и строгой обработкой статуса `unknown` (без эвристической подмены на секунды).
-- **Этап 2B.3**: Подключение водного баланса к сценариям симулятора заваривания с согласованием материальных потоков и подготовкой интерфейсов для теплового взаимодействия.
+- **Этап 2B.0 (Выполнено)**: Аудит данных, формулировка компартментов, уравнений сохранения массы и ограничений в `docs/WATER_BALANCE_MODEL.md`.
+- **Этап 2B.1 (Выполнено)**: Реализация чистых функций водного баланса (`src/engine/water-balance/`) и 100% покрытие модульными тестами инвариантов сохранения массы для всех трёх методов (27 проверок).
+- **Этап 2B.2 (Выполнено)**: Реализация кинетики гидратации $m_{\text{abs}}(t)$ (`src/engine/water-balance/hydrationKinetics.ts`):
+  - Эмпирическая модель насыщения 1-го порядка $m_{\text{abs}}(t+\Delta t) = m_{\max} - (m_{\max} - m_{\text{abs}}(t)) e^{-k_{\text{hyd}}\Delta t}$;
+  - Размерный параметр $k_{\text{hyd}}$ ($\text{с}^{-1}$, `hydrationRateConstantPerSecond`);
+  - Статусы `calculated` и `unknown_hydration_profile` в строгом соответствии с правилом «Unknown ≠ 0»;
+  - Связка с `applyWaterAbsorption` и валидация физических инвариантов (монотонность, полугрупповое свойство, ограничения по воде/ёмкости, аудит происхождения данных).
+- **Этап 2B.3 (Следующий этап)**: Подключение водного баланса и кинетики к сценариям симулятора заваривания с согласованием материальных потоков и подготовкой интерфейсов для теплового взаимодействия.
 - **Последующие этапы**: Тепловой баланс влажного листа (учёт теплоёмкости $C_{\text{leaf}} = m_{\text{dry}} c_{p, \text{dry}} + m_{\text{abs}} c_{p, \text{water}}$) и экспериментальная калибровка гидравлического сопротивления.
 
 ---
@@ -264,24 +270,39 @@ $$\sum_{k=1}^N m_{\text{added}, k} \equiv m_{\text{abs}}(t_N) + m_{\text{retaine
    - Рассчитывает предельную влагоёмкость $m_{\text{abs, max}} = m_{\text{dry}} \cdot R_{\text{abs, max}}$ (г).
    - Строгая валидация: $m_{\text{dry}} > 0$, $R_{\text{abs, max}} \ge 0$. Не рассчитывает скорость.
 
-2. `applyWaterAbsorption(params: WaterAbsorptionParams): ApplyAbsorptionResult`
+2. `calculateSaturationHydrationRequested(dryLeafMassGrams, currentAbsorbedWaterGrams, maxAbsorptionRatioGramsPerGram, hydrationRateConstantPerSecond, durationSeconds): number`
+   - Аналитически вычисляет запрашиваемое кинетикой насыщения поглощение влаги:
+     $\Delta m_{\text{req}} = (m_{\text{dry}} \cdot R_{\text{abs, max}} - m_{\text{abs}}) \cdot (1 - e^{-k_{\text{hyd}} \cdot \Delta t})$.
+   - Строгая валидация: $m_{\text{dry}} > 0$, $m_{\text{abs}} \ge 0$, $R_{\text{abs, max}} \ge 0$, $k_{\text{hyd}} \ge 0$, $\Delta t \ge 0$.
+
+3. `stepHydrationKinetics(params: HydrationKineticsStepParams): HydrationKineticsStepResult`
+   - Выполняет полный шаг кинетики гидратации:
+     - Проверяет полноту и статус размерных параметров (`hydrationRateConstant`, `maxAbsorptionRatio`).
+     - При отсутствии данных возвращает `status: 'unknown_hydration_profile'` с информативным объяснением на русском языке (Unknown ≠ 0), возвращая `null` для запрошенных и фактических масс.
+     - Проверяет единицы измерения (`s^-1`, `с^-1`, `г/г`, `g/g`).
+     - Аудирует происхождение данных (наличие citation для literature, методик и образцов для measured).
+     - Вычисляет запрашиваемое поглощение и вызывает `applyWaterAbsorption` для проверки ограничений и соблюдения закона сохранения массы.
+     - Возвращает `status: 'calculated'`, фактически поглощённую массу, новые массы фаз, `limitingFactor`, невязку баланса и диагностические замечания.
+
+4. `applyWaterAbsorption(params: WaterAbsorptionParams): ApplyAbsorptionResult`
    - Переносит воду из свободного компартмента $V_{\text{free}}$ в связанную матрицу листа $m_{\text{abs}}$.
    - Ограничивает поглощение остаточной влагоёмкостью листа и доступной свободной водой в сосуде.
    - Возвращает `limitingFactor` (`unconstrained`, `limited_by_leaf_capacity`, `limited_by_available_free_water`, `limited_by_both`, `zero_requested`).
    - Гарантирует сохранение массы: $\Delta m = 0$ с машинной точностью.
 
-3. `solveLiquorDrain(params: DrainParams): DrainResult`
+5. `solveLiquorDrain(params: DrainParams): DrainResult`
    - Рассчитывает слив свободного настоя с учётом цели рецепта ($r$) и капиллярного порога ($V_{\text{interstitial}}$).
    - Вычисляет: $V_{\text{retained, actual}} = \min(V_{\text{free, pre}}, \max(r \cdot V_{\text{free, pre}}, V_{\text{interstitial}}))$.
    - Возвращает слитый объём $V_{\text{drained}} = V_{\text{free, pre}} - V_{\text{retained, actual}}$ и лимитирующий фактор (`exact_target`, `governed_by_capillary_hold_up`, `insufficient_water_for_capillary_hold_up`, `zero_water`).
    - При `capillaryHoldUpCapacityMl === null` выбрасывает `UnknownCapillaryHoldUpError` (Unknown ≠ 0).
 
-4. `addWater(currentFreeWaterGrams, addedWaterGrams, density?): { newFreeWaterGrams, newFreeWaterVolumeMl }`
+6. `addWater(currentFreeWaterGrams, addedWaterGrams, density?): { newFreeWaterGrams, newFreeWaterVolumeMl }`
    - Добавляет порцию свежей воды к свободной фазе.
 
-5. `consumeFreeWater(currentFreeWaterGrams, consumedWaterGrams, density?): { newFreeWaterGrams, newFreeWaterVolumeMl, actualConsumedGrams }`
+7. `consumeFreeWater(currentFreeWaterGrams, consumedWaterGrams, density?): { newFreeWaterGrams, newFreeWaterVolumeMl, actualConsumedGrams }`
    - Моделирует отпивание из свободной фазы кружки без изменения поглощённой листом воды $m_{\text{abs}}$.
    - При попытке отпить больше доступного выбрасывает `InsufficientFreeWaterError`.
 
-6. `convertVolumeToMass` / `convertMassToVolume`
+8. `convertVolumeToMass` / `convertMassToVolume`
    - Конверсия с явным указанием принятой плотности $\rho_w = 1.0\text{ г/мл}$ (инженерное допущение).
+

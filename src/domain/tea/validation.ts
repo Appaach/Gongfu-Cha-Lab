@@ -42,6 +42,14 @@ export function validateTeaSample(tea: TeaSample): ValidationIssue[] {
     }
   }
 
+  // Проверка размерной константы скорости гидратации (с⁻¹)
+  if (tea.hydrationRateConstantPerSecond && isKnownValue(tea.hydrationRateConstantPerSecond)) {
+    const val = tea.hydrationRateConstantPerSecond.value;
+    if (val < 0) {
+      issues.push({ field: 'hydrationRateConstantPerSecond', message: 'Константа скорости гидратации не может быть отрицательной', severity: 'error' });
+    }
+  }
+
   // Проверка суммарной доли экстрактивных веществ (% от массы сухого листа, типично 25% – 50%)
   if (isKnownValue(tea.totalExtractableFraction)) {
     const val = tea.totalExtractableFraction.value;
@@ -124,6 +132,7 @@ export function migrateLegacyCustomTea(raw: any): TeaSample {
     waterAbsorptionRatio: readVal(raw.waterAbsorptionRatio, 'г/г'),
     leafBulkDensityGPerCm3: readVal(raw.leafBulkDensityGPerCm3 || raw.leafDensityGPerCm3, 'г/см³'),
     uncalibratedHydrationSpeed: readVal(raw.uncalibratedHydrationSpeed || raw.hydrationSpeedFactor, 'ед.'),
+    hydrationRateConstantPerSecond: readVal(raw.hydrationRateConstantPerSecond, 's^-1'),
 
     // Химические фракции (% от массы сухого листа)
     totalExtractableFraction: readVal(raw.totalExtractableFraction || raw.totalSolubleFraction, '%'),
