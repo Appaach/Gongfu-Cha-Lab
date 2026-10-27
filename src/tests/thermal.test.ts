@@ -547,6 +547,7 @@ export async function runThermalTestSuite(): Promise<TestResult[]> {
         ...defaultMugSession,
         timelineEvents: [
           { type: 'initial_pour', timestampSeconds: -10, waterVolumeMl: 250, waterTemperatureC: 90 },
+          { type: 'session_end', timestampSeconds: 300 },
         ],
       };
       engine.simulateLazyMug(invalidSession);
@@ -564,6 +565,7 @@ export async function runThermalTestSuite(): Promise<TestResult[]> {
           { type: 'initial_pour', timestampSeconds: 0, waterVolumeMl: 250, waterTemperatureC: 90 },
           { type: 'sip_consumption', timestampSeconds: 120, consumedVolumeMl: 50 },
           { type: 'water_refill', timestampSeconds: 60, addedWaterVolumeMl: 50, addedWaterTemperatureC: 95 }, // 60 < 120!
+          { type: 'session_end', timestampSeconds: 300 },
         ],
       };
       engine.simulateLazyMug(invalidSession);
@@ -581,6 +583,7 @@ export async function runThermalTestSuite(): Promise<TestResult[]> {
           { type: 'initial_pour', timestampSeconds: 0, waterVolumeMl: 250, waterTemperatureC: 90 },
           { type: 'sip_consumption', timestampSeconds: 120, consumedVolumeMl: 50 },
           { type: 'water_refill', timestampSeconds: 120, addedWaterVolumeMl: 50, addedWaterTemperatureC: 95 },
+          { type: 'session_end', timestampSeconds: 300 },
         ],
       };
       engine.simulateLazyMug(invalidSession);
@@ -614,6 +617,7 @@ export async function runThermalTestSuite(): Promise<TestResult[]> {
         timelineEvents: [
           { type: 'initial_pour', timestampSeconds: 0, waterVolumeMl: 100, waterTemperatureC: 90 },
           { type: 'sip_consumption', timestampSeconds: 60, consumedVolumeMl: 150 }, // 150 > 100!
+          { type: 'session_end', timestampSeconds: 300 },
         ],
       };
       engine.simulateLazyMug(invalidSession);
@@ -653,6 +657,449 @@ export async function runThermalTestSuite(): Promise<TestResult[]> {
       runA.curvePoints.length === runB.curvePoints.length &&
         runA.curvePoints[0].liquidTemperatureC === runB.curvePoints[0].liquidTemperatureC
     );
+  }
+
+  // Тест 17: Строгая валидация тепловых проводимостей профиля (conductances)
+  {
+    const suite = '17. Валидация тепловых проводимостей (conductanceLiquidVessel, VesselAmbient, LiquidAmbient)';
+    const baseState: ThermalState = {
+      liquidVolumeMl: 100,
+      liquidTemperatureC: 90.0,
+      vesselTemperatureC: 75.0,
+      ambientTemperatureC: 22.0,
+      elapsedSeconds: 0,
+    };
+
+    // 17.1 conductanceLiquidVesselWPerK
+    for (const [label, badVal] of [
+      ['отрицательное значение (-0.5)', -0.5],
+      ['NaN', NaN],
+      ['бесконечность (+Infinity)', Infinity],
+    ] as const) {
+      let caught = false;
+      try {
+        const badProfile: VesselThermalProfile = {
+          ...gaiwanProfile,
+          conductanceLiquidVesselWPerK: badVal,
+        };
+        integrateThermalStep(baseState, badProfile, 10);
+      } catch (err) {
+        if (err instanceof ThermalValidationError && err.code === 'INVALID_CONDUCTANCE') {
+          caught = true;
+        }
+      }
+      assert(suite, `conductanceLiquidVesselWPerK: ${label} вызывает ThermalValidationError (INVALID_CONDUCTANCE)`, caught);
+    }
+
+    // 17.2 conductanceVesselAmbientWPerK
+    for (const [label, badVal] of [
+      ['отрицательное значение (-0.2)', -0.2],
+      ['NaN', NaN],
+      ['бесконечность (+Infinity)', Infinity],
+    ] as const) {
+      let caught = false;
+      try {
+        const badProfile: VesselThermalProfile = {
+          ...gaiwanProfile,
+          conductanceVesselAmbientWPerK: badVal,
+        };
+        integrateThermalStep(baseState, badProfile, 10);
+      } catch (err) {
+        if (err instanceof ThermalValidationError && err.code === 'INVALID_CONDUCTANCE') {
+          caught = true;
+        }
+      }
+      assert(suite, `conductanceVesselAmbientWPerK: ${label} вызывает ThermalValidationError (INVALID_CONDUCTANCE)`, caught);
+    }
+
+    // 17.3 conductanceLiquidAmbientWPerK
+    for (const [label, badVal] of [
+      ['отрицательное значение (-1.0)', -1.0],
+      ['NaN', NaN],
+      ['бесконечность (+Infinity)', Infinity],
+    ] as const) {
+      let caught = false;
+      try {
+        const badProfile: VesselThermalProfile = {
+          ...gaiwanProfile,
+          conductanceLiquidAmbientWPerK: badVal,
+        };
+        integrateThermalStep(baseState, badProfile, 10);
+      } catch (err) {
+        if (err instanceof ThermalValidationError && err.code === 'INVALID_CONDUCTANCE') {
+          caught = true;
+        }
+      }
+      assert(suite, `conductanceLiquidAmbientWPerK: ${label} вызывает ThermalValidationError (INVALID_CONDUCTANCE)`, caught);
+    }
+
+    // 17.4 Ноль допустим как физическое допущение об отсутствии теплообмена
+    let zeroConductanceAllowed = false;
+    try {
+      const zeroProfile: VesselThermalProfile = {
+        ...gaiwanProfile,
+        conductanceLiquidAmbientWPerK: 0.0, // Идеально теплоизолированная крышка
+      };
+      const zeroRes = integrateThermalStep(baseState, zeroProfile, 10);
+      zeroConductanceAllowed = zeroRes.finalState.liquidTemperatureC !== null;
+    } catch {
+      zeroConductanceAllowed = false;
+    }
+    assert(suite, 'conductance = 0 допустим как физическое приближение (адиабатическая крышка) и не вызывает ошибку', zeroConductanceAllowed);
+  }
+
+  // Тест 18: Валидация параметров численного интегрирования (timeStepSeconds, samplingIntervalSeconds)
+  {
+    const suite = '18. Валидация параметров численного интегрирования (dt, samplingInterval)';
+    const baseState: ThermalState = {
+      liquidVolumeMl: 100,
+      liquidTemperatureC: 90.0,
+      vesselTemperatureC: 75.0,
+      ambientTemperatureC: 22.0,
+      elapsedSeconds: 0,
+    };
+
+    // 18.1 timeStepSeconds: недопустимые значения
+    for (const [label, badDt] of [
+      ['отрицательный шаг (-0.1)', -0.1],
+      ['нулевой шаг (0)', 0],
+      ['NaN', NaN],
+      ['бесконечность (+Infinity)', Infinity],
+      ['ниже минимального предела (0.001 < 0.005 с)', 0.001],
+      ['выше максимального предела устойчивости (1.0 > 0.5 с)', 1.0],
+    ] as const) {
+      let caught = false;
+      try {
+        integrateThermalStep(baseState, gaiwanProfile, 10, badDt);
+      } catch (err) {
+        if (err instanceof ThermalValidationError && err.code === 'INVALID_TIME_STEP') {
+          caught = true;
+        }
+      }
+      assert(suite, `timeStepSeconds: ${label} вызывает ThermalValidationError (INVALID_TIME_STEP)`, caught);
+    }
+
+    // 18.2 samplingIntervalSeconds: недопустимые значения
+    for (const [label, badSampling] of [
+      ['отрицательный интервал (-1.0)', -1.0],
+      ['нулевой интервал (0)', 0],
+      ['NaN', NaN],
+      ['бесконечность (+Infinity)', Infinity],
+    ] as const) {
+      let caught = false;
+      try {
+        integrateThermalStep(baseState, gaiwanProfile, 10, 0.1, badSampling);
+      } catch (err) {
+        if (err instanceof ThermalValidationError && err.code === 'INVALID_SAMPLING_INTERVAL') {
+          caught = true;
+        }
+      }
+      assert(suite, `samplingIntervalSeconds: ${label} вызывает ThermalValidationError (INVALID_SAMPLING_INTERVAL)`, caught);
+    }
+
+    // 18.3 Допустимые шаги успешно интегрируются
+    let validStepsSuccess = false;
+    try {
+      const resA = integrateThermalStep(baseState, gaiwanProfile, 5, 0.01, 1.0);
+      const resB = integrateThermalStep(baseState, gaiwanProfile, 5, 0.25, 2.0);
+      validStepsSuccess = resA.curvePoints.length > 0 && resB.curvePoints.length > 0;
+    } catch {
+      validStepsSuccess = false;
+    }
+    assert(suite, 'Корректные шаги dt = 0.01 с и 0.25 с успешно интегрируются без ошибок', validStepsSuccess);
+  }
+
+  // Тест 19: Валидация опций моделирования в BrewingThermalEngine
+  {
+    const suite = '19. Валидация опций моделирования в BrewingThermalEngine';
+    const engine = new BrewingThermalEngine();
+    const defaultGongfu = createDefaultSession('gongfu_cha', REFERENCE_TEAS[0].id) as GongfuSessionConfig;
+
+    // 19.1 interInfusionPauseSeconds
+    for (const [label, badPause] of [
+      ['отрицательная пауза (-10 с)', -10],
+      ['NaN', NaN],
+    ] as const) {
+      let caught = false;
+      try {
+        engine.simulateGongfu(defaultGongfu, { interInfusionPauseSeconds: badPause });
+      } catch (err) {
+        if (err instanceof ThermalValidationError && err.code === 'INVALID_PAUSE_DURATION') {
+          caught = true;
+        }
+      }
+      assert(suite, `options.interInfusionPauseSeconds: ${label} вызывает ThermalValidationError`, caught);
+    }
+
+    // 19.2 ambientTemperatureC
+    for (const [label, badAmbient] of [
+      ['ниже -50 °C (-80 °C)', -80],
+      ['выше 80 °C (95 °C)', 95],
+      ['NaN', NaN],
+    ] as const) {
+      let caught = false;
+      try {
+        engine.simulateGongfu(defaultGongfu, { ambientTemperatureC: badAmbient });
+      } catch (err) {
+        if (err instanceof ThermalValidationError && err.code === 'INVALID_AMBIENT_TEMPERATURE') {
+          caught = true;
+        }
+      }
+      assert(suite, `options.ambientTemperatureC: ${label} вызывает ThermalValidationError`, caught);
+    }
+
+    // 19.3 preheatedVesselTemperatureC
+    for (const [label, badPreheat] of [
+      ['отрицательная температура прогрева (-10 °C)', -10],
+      ['выше 150 °C (180 °C)', 180],
+      ['NaN', NaN],
+    ] as const) {
+      let caught = false;
+      try {
+        engine.simulateGongfu(defaultGongfu, { isVesselPreheated: true, preheatedVesselTemperatureC: badPreheat });
+      } catch (err) {
+        if (err instanceof ThermalValidationError && err.code === 'INVALID_PREHEATED_VESSEL_TEMPERATURE') {
+          caught = true;
+        }
+      }
+      assert(suite, `options.preheatedVesselTemperatureC: ${label} вызывает ThermalValidationError`, caught);
+    }
+
+    // 19.4 integratorTimeStepSeconds
+    for (const [label, badDt] of [
+      ['шаг 0.001 с (ниже минимума)', 0.001],
+      ['шаг 1.5 с (выше максимума)', 1.5],
+      ['NaN', NaN],
+    ] as const) {
+      let caught = false;
+      try {
+        engine.simulateGongfu(defaultGongfu, { integratorTimeStepSeconds: badDt });
+      } catch (err) {
+        if (err instanceof ThermalValidationError && err.code === 'INVALID_TIME_STEP') {
+          caught = true;
+        }
+      }
+      assert(suite, `options.integratorTimeStepSeconds: ${label} вызывает ThermalValidationError`, caught);
+    }
+  }
+
+  // Тест 20: Полная структурная валидация сценария Lazy Mug
+  {
+    const suite = '20. Структурная валидация сценария Lazy Mug';
+    const engine = new BrewingThermalEngine();
+    const defaultMugSession = createDefaultSession('lazy_mug', REFERENCE_TEAS[0].id) as LazyMugSessionConfig;
+
+    // 20.1 Пустая шкала событий
+    let caughtEmpty = false;
+    try {
+      engine.simulateLazyMug({ ...defaultMugSession, timelineEvents: [] });
+    } catch (err) {
+      if (err instanceof ThermalValidationError) caughtEmpty = true;
+    }
+    assert(suite, 'Пустая шкала событий вызывает ошибку валидации', caughtEmpty);
+
+    // 20.2 Менее 2 событий (только initial_pour без session_end)
+    let caughtSingleEvent = false;
+    try {
+      engine.simulateLazyMug({
+        ...defaultMugSession,
+        timelineEvents: [
+          { type: 'initial_pour', timestampSeconds: 0, waterVolumeMl: 200, waterTemperatureC: 90 },
+        ],
+      });
+    } catch (err) {
+      if (err instanceof TimelineChronologyError) caughtSingleEvent = true;
+    }
+    assert(suite, 'Шкала только из одного события initial_pour (без session_end) отклоняется', caughtSingleEvent);
+
+    // 20.3 Первое событие не initial_pour
+    let caughtNotInitialPour = false;
+    try {
+      engine.simulateLazyMug({
+        ...defaultMugSession,
+        timelineEvents: [
+          { type: 'sip_consumption', timestampSeconds: 0, consumedVolumeMl: 50 },
+          { type: 'session_end', timestampSeconds: 300 },
+        ],
+      });
+    } catch (err) {
+      if (err instanceof TimelineChronologyError) caughtNotInitialPour = true;
+    }
+    assert(suite, 'Первое событие, отличное от initial_pour, вызывает TimelineChronologyError', caughtNotInitialPour);
+
+    // 20.4 initial_pour с timestampSeconds > 0
+    let caughtInitialPourDelayed = false;
+    try {
+      engine.simulateLazyMug({
+        ...defaultMugSession,
+        timelineEvents: [
+          { type: 'initial_pour', timestampSeconds: 15, waterVolumeMl: 200, waterTemperatureC: 90 },
+          { type: 'session_end', timestampSeconds: 300 },
+        ],
+      });
+    } catch (err) {
+      if (err instanceof TimelineChronologyError) caughtInitialPourDelayed = true;
+    }
+    assert(suite, 'initial_pour с меткой времени t > 0 вызывает TimelineChronologyError', caughtInitialPourDelayed);
+
+    // 20.5 Последнее событие не session_end
+    let caughtMissingSessionEnd = false;
+    try {
+      engine.simulateLazyMug({
+        ...defaultMugSession,
+        timelineEvents: [
+          { type: 'initial_pour', timestampSeconds: 0, waterVolumeMl: 200, waterTemperatureC: 90 },
+          { type: 'water_refill', timestampSeconds: 120, addedWaterVolumeMl: 50, addedWaterTemperatureC: 90 },
+        ],
+      });
+    } catch (err) {
+      if (err instanceof TimelineChronologyError) caughtMissingSessionEnd = true;
+    }
+    assert(suite, 'Шкала без session_end в конце вызывает TimelineChronologyError', caughtMissingSessionEnd);
+
+    // 20.6 Повторный initial_pour
+    let caughtSecondInitialPour = false;
+    try {
+      engine.simulateLazyMug({
+        ...defaultMugSession,
+        timelineEvents: [
+          { type: 'initial_pour', timestampSeconds: 0, waterVolumeMl: 150, waterTemperatureC: 90 },
+          { type: 'initial_pour', timestampSeconds: 60, waterVolumeMl: 100, waterTemperatureC: 90 },
+          { type: 'session_end', timestampSeconds: 300 },
+        ],
+      });
+    } catch (err) {
+      if (err instanceof TimelineChronologyError) caughtSecondInitialPour = true;
+    }
+    assert(suite, 'Повторный initial_pour вызывает TimelineChronologyError', caughtSecondInitialPour);
+
+    // 20.7 Неположительный объём долива воды (<= 0)
+    let caughtZeroRefill = false;
+    try {
+      engine.simulateLazyMug({
+        ...defaultMugSession,
+        timelineEvents: [
+          { type: 'initial_pour', timestampSeconds: 0, waterVolumeMl: 200, waterTemperatureC: 90 },
+          { type: 'water_refill', timestampSeconds: 60, addedWaterVolumeMl: 0, addedWaterTemperatureC: 90 },
+          { type: 'session_end', timestampSeconds: 300 },
+        ],
+      });
+    } catch (err) {
+      if (err instanceof ThermalValidationError) caughtZeroRefill = true;
+    }
+    assert(suite, 'Долив нулевого объёма воды (0 мл) вызывает ThermalValidationError', caughtZeroRefill);
+
+    // 20.8 Неположительный объём отпивания (<= 0)
+    let caughtZeroSip = false;
+    try {
+      engine.simulateLazyMug({
+        ...defaultMugSession,
+        timelineEvents: [
+          { type: 'initial_pour', timestampSeconds: 0, waterVolumeMl: 200, waterTemperatureC: 90 },
+          { type: 'sip_consumption', timestampSeconds: 60, consumedVolumeMl: -10 },
+          { type: 'session_end', timestampSeconds: 300 },
+        ],
+      });
+    } catch (err) {
+      if (err instanceof ThermalValidationError) caughtZeroSip = true;
+    }
+    assert(suite, 'Отрицательный объём отпивания (-10 мл) вызывает ThermalValidationError', caughtZeroSip);
+
+    // 20.9 Температура долива воды за пределами 0–100 °C
+    let caughtBadRefillTemp = false;
+    try {
+      engine.simulateLazyMug({
+        ...defaultMugSession,
+        timelineEvents: [
+          { type: 'initial_pour', timestampSeconds: 0, waterVolumeMl: 200, waterTemperatureC: 90 },
+          { type: 'water_refill', timestampSeconds: 60, addedWaterVolumeMl: 50, addedWaterTemperatureC: 105 },
+          { type: 'session_end', timestampSeconds: 300 },
+        ],
+      });
+    } catch (err) {
+      if (err instanceof ThermalRangeError) caughtBadRefillTemp = true;
+    }
+    assert(suite, 'Температура долива 105 °C вызывает ThermalRangeError', caughtBadRefillTemp);
+  }
+
+  // Тест 21: Валидация специфических параметров Лю Гэнь Пао
+  {
+    const suite = '21. Валидация специфических параметров метода Лю Гэнь Пао';
+    const engine = new BrewingThermalEngine();
+    const defaultLiuSession = createDefaultSession('liu_gen_pao', REFERENCE_TEAS[0].id) as LiuGenPaoSessionConfig;
+
+    // 21.1 Недопустимая доля удерживаемого корня (retainedLiquorFractionOfTotal)
+    for (const [label, badFraction] of [
+      ['отрицательная доля (-0.2)', -0.2],
+      ['доля >= 1.0 (1.0)', 1.0],
+      ['доля > 1.0 (1.5)', 1.5],
+      ['NaN', NaN],
+    ] as const) {
+      let caught = false;
+      try {
+        engine.simulateLiuGenPao({
+          ...defaultLiuSession,
+          steps: [
+            {
+              stepNumber: 1,
+              infusionTimeSeconds: 20,
+              addedWaterVolumeMl: 80,
+              retainedLiquorFractionOfTotal: badFraction,
+              addedWaterTemperatureC: 90,
+            },
+          ],
+        });
+      } catch (err) {
+        if (err instanceof ThermalValidationError && err.code === 'INVALID_RETAINED_FRACTION') {
+          caught = true;
+        }
+      }
+      assert(suite, `retainedLiquorFractionOfTotal: ${label} вызывает ThermalValidationError (без скрытого Math.min/Math.max)`, caught);
+    }
+
+    // 21.2 Неположительный объём доливаемой воды
+    let caughtBadAddedVolume = false;
+    try {
+      engine.simulateLiuGenPao({
+        ...defaultLiuSession,
+        steps: [
+          {
+            stepNumber: 1,
+            infusionTimeSeconds: 20,
+            addedWaterVolumeMl: 0,
+            retainedLiquorFractionOfTotal: 0.5,
+            addedWaterTemperatureC: 90,
+          },
+        ],
+      });
+    } catch (err) {
+      if (err instanceof ThermalValidationError && err.code === 'INVALID_ADDED_VOLUME') {
+        caughtBadAddedVolume = true;
+      }
+    }
+    assert(suite, 'addedWaterVolumeMl = 0 вызывает ThermalValidationError (INVALID_ADDED_VOLUME)', caughtBadAddedVolume);
+
+    // 21.3 Температура долива воды за пределами 0–100 °C
+    let caughtBadLiuTemp = false;
+    try {
+      engine.simulateLiuGenPao({
+        ...defaultLiuSession,
+        steps: [
+          {
+            stepNumber: 1,
+            infusionTimeSeconds: 20,
+            addedWaterVolumeMl: 80,
+            retainedLiquorFractionOfTotal: 0.5,
+            addedWaterTemperatureC: -5,
+          },
+        ],
+      });
+    } catch (err) {
+      if (err instanceof ThermalRangeError) {
+        caughtBadLiuTemp = true;
+      }
+    }
+    assert(suite, 'addedWaterTemperatureC = -5 °C в Лю Гэнь Пао вызывает ThermalRangeError', caughtBadLiuTemp);
   }
 
   return results;

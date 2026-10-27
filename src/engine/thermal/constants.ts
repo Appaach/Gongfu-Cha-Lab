@@ -80,3 +80,15 @@ export const DEFAULT_LIU_GEN_PAO_PAUSE_SECONDS = 0.0;
  * и устойчивость без численных осцилляций.
  */
 export const DEFAULT_INTEGRATOR_TIME_STEP_SECONDS = 0.1;
+
+/**
+ * Минимально допустимый шаг численного интегрирования (секунды).
+ * Предотвращает избыточные циклы вычислений при dt -> 0.
+ */
+export const MIN_INTEGRATOR_TIME_STEP_SECONDS = 0.005;
+
+/**
+ * Максимально допустимый шаг численного интегрирования (секунды).
+ * Ограничен условием устойчивости схемы Хойна (dt < 2*τ_min) и контролем погрешности O(dt²).
+ */
+export const MAX_INTEGRATOR_TIME_STEP_SECONDS = 0.5;

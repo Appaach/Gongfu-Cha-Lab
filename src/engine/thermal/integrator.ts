@@ -7,6 +7,8 @@ import {
   SPECIFIC_HEAT_WATER_J_PER_KG_K,
   WATER_DENSITY_KG_PER_ML,
   DEFAULT_INTEGRATOR_TIME_STEP_SECONDS,
+  MIN_INTEGRATOR_TIME_STEP_SECONDS,
+  MAX_INTEGRATOR_TIME_STEP_SECONDS,
 } from './constants.ts';
 import {
   ThermalRangeError,
@@ -214,6 +216,57 @@ export function integrateThermalStep(
     tLiquid = initialState.liquidTemperatureC;
   }
 
+  // 5. Строгая валидация тепловых проводимостей профиля
+  // Ноль допустим как физическое допущение об отсутствии теплообмена (например, адиабатическая изоляция).
+  // Отрицательные, NaN и бесконечные значения строго запрещены и вызывают типизированную ошибку.
+  if (!Number.isFinite(profile.conductanceLiquidVesselWPerK) || profile.conductanceLiquidVesselWPerK < 0) {
+    throw new ThermalValidationError(
+      `Коэффициент теплопроводности жидкость–сосуд должен быть конечным неотрицательным числом: ${profile.conductanceLiquidVesselWPerK} Вт/К. Недопустимо скрыто заменять его нулём.`,
+      'INVALID_CONDUCTANCE',
+      'conductanceLiquidVesselWPerK',
+      profile.conductanceLiquidVesselWPerK
+    );
+  }
+  if (!Number.isFinite(profile.conductanceVesselAmbientWPerK) || profile.conductanceVesselAmbientWPerK < 0) {
+    throw new ThermalValidationError(
+      `Коэффициент теплопроводности сосуд–среда должен быть конечным неотрицательным числом: ${profile.conductanceVesselAmbientWPerK} Вт/К. Недопустимо скрыто заменять его нулём.`,
+      'INVALID_CONDUCTANCE',
+      'conductanceVesselAmbientWPerK',
+      profile.conductanceVesselAmbientWPerK
+    );
+  }
+  if (!Number.isFinite(profile.conductanceLiquidAmbientWPerK) || profile.conductanceLiquidAmbientWPerK < 0) {
+    throw new ThermalValidationError(
+      `Коэффициент теплопроводности жидкость–среда должен быть конечным неотрицательным числом: ${profile.conductanceLiquidAmbientWPerK} Вт/К. Недопустимо скрыто заменять его нулём.`,
+      'INVALID_CONDUCTANCE',
+      'conductanceLiquidAmbientWPerK',
+      profile.conductanceLiquidAmbientWPerK
+    );
+  }
+
+  // 6. Строгая валидация параметров численного интегрирования (запрет скрытого ограничения через Math.min/Math.max)
+  if (
+    !Number.isFinite(timeStepSeconds) ||
+    timeStepSeconds < MIN_INTEGRATOR_TIME_STEP_SECONDS ||
+    timeStepSeconds > MAX_INTEGRATOR_TIME_STEP_SECONDS
+  ) {
+    throw new ThermalValidationError(
+      `Шаг численного интегрирования (${timeStepSeconds} с) выходит за допустимый диапазон [${MIN_INTEGRATOR_TIME_STEP_SECONDS}, ${MAX_INTEGRATOR_TIME_STEP_SECONDS}] с.`,
+      'INVALID_TIME_STEP',
+      'timeStepSeconds',
+      timeStepSeconds
+    );
+  }
+
+  if (!Number.isFinite(samplingIntervalSeconds) || samplingIntervalSeconds <= 0) {
+    throw new ThermalValidationError(
+      `Интервал дискретизации точек кривой должен быть конечным строго положительным числом (> 0 с): ${samplingIntervalSeconds} с.`,
+      'INVALID_SAMPLING_INTERVAL',
+      'samplingIntervalSeconds',
+      samplingIntervalSeconds
+    );
+  }
+
   // Теплоёмкость стенок: C_vessel = m_kg * c_p [Дж/К]
   const vesselMassKg = profile.vesselMassGrams * 0.001;
   const cVessel = vesselMassKg * profile.materialSpecificHeatJPerKgK;
@@ -222,9 +275,10 @@ export function integrateThermalStep(
   const liquidMassKg = volumeMl * WATER_DENSITY_KG_PER_ML;
   const cLiquid = liquidMassKg * SPECIFIC_HEAT_WATER_J_PER_KG_K;
 
-  const gLv = Math.max(0, profile.conductanceLiquidVesselWPerK);
-  const gVa = Math.max(0, profile.conductanceVesselAmbientWPerK);
-  const gLa = Math.max(0, profile.conductanceLiquidAmbientWPerK);
+  // Проводимости используются напрямую без негласного подавления через Math.max(0, ...)
+  const gLv = profile.conductanceLiquidVesselWPerK;
+  const gVa = profile.conductanceVesselAmbientWPerK;
+  const gLa = profile.conductanceLiquidAmbientWPerK;
 
   const curvePoints: ThermalSimulationPoint[] = [];
 
@@ -255,10 +309,10 @@ export function integrateThermalStep(
     };
   }
 
-  // Шаг интегрирования
-  const dt = Math.min(0.2, Math.max(0.005, timeStepSeconds));
+  // Шаг интегрирования dt используется напрямую согласно проверенному значению
+  const dt = timeStepSeconds;
   let currentTime = 0;
-  let nextSampleTime = Math.max(0.1, samplingIntervalSeconds);
+  let nextSampleTime = samplingIntervalSeconds;
 
   let minLiquid = tLiquid;
   let maxLiquid = tLiquid;
