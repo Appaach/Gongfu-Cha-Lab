@@ -13,6 +13,7 @@ import {
 import {
   ThermalRangeError,
   ThermalValidationError,
+  ThermalInstabilityError,
 } from './errors.ts';
 import type {
   IntegrationStepResult,
@@ -309,6 +310,36 @@ export function integrateThermalStep(
     };
   }
 
+  // 7. Расчёт критерия численной устойчивости явной схемы Хойна (RK2)
+  // Для линейной системы ОДУ устойчивость требует |lambda_max| * dt <= 2, то есть dt <= 2 * tau_min.
+  let maxStableDtSeconds = Infinity;
+  if (volumeMl === 0 || tLiquid === null) {
+    if (gVa > 0 && cVessel > 0) {
+      const lambdaAbs = gVa / cVessel;
+      maxStableDtSeconds = 2.0 / lambdaAbs;
+    }
+  } else {
+    if (cLiquid > 0 && cVessel > 0) {
+      const a11 = (gLv + gLa) / cLiquid;
+      const a22 = (gLv + gVa) / cVessel;
+      const a12a21 = (gLv * gLv) / (cLiquid * cVessel);
+      const trace = a11 + a22;
+      const discr = Math.max(0, (a11 - a22) * (a11 - a22) + 4 * a12a21);
+      const lambdaMaxAbs = (trace + Math.sqrt(discr)) / 2;
+      if (lambdaMaxAbs > 0) {
+        maxStableDtSeconds = 2.0 / lambdaMaxAbs;
+      }
+    }
+  }
+
+  if (timeStepSeconds > maxStableDtSeconds) {
+    throw new ThermalInstabilityError(
+      `Выбранный шаг численного интегрирования (${timeStepSeconds} с) превышает предел устойчивости схемы Хойна (${maxStableDtSeconds.toFixed(4)} с, tau_min = ${(maxStableDtSeconds / 2).toFixed(4)} с). Схема приведёт к осцилляциям или расходимости. Скрытая коррекция запрещена.`,
+      timeStepSeconds,
+      maxStableDtSeconds
+    );
+  }
+
   // Шаг интегрирования dt используется напрямую согласно проверенному значению
   const dt = timeStepSeconds;
   let currentTime = 0;
@@ -318,8 +349,6 @@ export function integrateThermalStep(
   let maxLiquid = tLiquid;
   let minVessel = tVessel;
   let maxVessel = tVessel;
-
-  let hadClippingWarning = false;
 
   // Случай А: Сосуд пуст (volumeMl === 0) — только остывание стенок на воздухе
   if (volumeMl === 0 || tLiquid === null) {
@@ -336,13 +365,17 @@ export function integrateThermalStep(
 
       tVessel += (step / 2) * (dTv1 + dTv2);
 
-      // Контроль физических границ стенок
-      if (tVessel < lowerBoundVessel || tVessel > upperBoundVessel) {
-        if (!hadClippingWarning) {
-          warnings.push(`Численная стабилизация: температура стенок была удержана в физических границах [${lowerBoundVessel.toFixed(1)}, ${upperBoundVessel.toFixed(1)}] °C.`);
-          hadClippingWarning = true;
-        }
-        tVessel = Math.min(upperBoundVessel, Math.max(lowerBoundVessel, tVessel));
+      // Контроль численной устойчивости: выход за пределы или потеря конечности строго запрещены
+      if (
+        !Number.isFinite(tVessel) ||
+        tVessel < lowerBoundVessel - 1e-4 ||
+        tVessel > upperBoundVessel + 1e-4
+      ) {
+        throw new ThermalInstabilityError(
+          `Численная нестабильность схемы при dt=${step} с: температура стенок (${tVessel} °C) вышла за физические границы [${lowerBoundVessel.toFixed(1)}, ${upperBoundVessel.toFixed(1)}] °C или потеряла конечность. Скрытая коррекция запрещена.`,
+          step,
+          maxStableDtSeconds
+        );
       }
 
       currentTime += step;
@@ -409,21 +442,18 @@ export function integrateThermalStep(
 
     // Контроль физических границ 2-го начала термодинамики
     if (
-      tLiquid < lowerBound ||
-      tLiquid > upperBound ||
-      tVessel < lowerBound ||
-      tVessel > upperBound ||
       !Number.isFinite(tLiquid) ||
-      !Number.isFinite(tVessel)
+      !Number.isFinite(tVessel) ||
+      tLiquid < lowerBound - 1e-4 ||
+      tLiquid > upperBound + 1e-4 ||
+      tVessel < lowerBound - 1e-4 ||
+      tVessel > upperBound + 1e-4
     ) {
-      if (!hadClippingWarning) {
-        warnings.push(
-          `Численная стабилизация: зафиксировано удержание температур в термодинамических границах [${lowerBound.toFixed(1)}, ${upperBound.toFixed(1)}] °C (шаг dt=${dt} с).`
-        );
-        hadClippingWarning = true;
-      }
-      tLiquid = Math.min(upperBound, Math.max(lowerBound, Number.isFinite(tLiquid) ? tLiquid : tAmbient));
-      tVessel = Math.min(upperBound, Math.max(lowerBound, Number.isFinite(tVessel) ? tVessel : tAmbient));
+      throw new ThermalInstabilityError(
+        `Численная нестабильность схемы при dt=${step} с: температура жидкости (${tLiquid} °C) или стенок (${tVessel} °C) вышла за термодинамические границы [${lowerBound.toFixed(1)}, ${upperBound.toFixed(1)}] °C или потеряла конечность. Скрытая коррекция запрещена.`,
+        step,
+        maxStableDtSeconds
+      );
     }
 
     currentTime += step;

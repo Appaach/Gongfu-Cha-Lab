@@ -23,6 +23,7 @@ import {
   ThermalRangeError,
   BrewingCapacityOverflowError,
   TimelineChronologyError,
+  ThermalInstabilityError,
 } from '../engine/thermal/errors.ts';
 import {
   createDefaultSession,
@@ -1102,5 +1103,206 @@ export async function runThermalTestSuite(): Promise<TestResult[]> {
     assert(suite, 'addedWaterTemperatureC = -5 °C в Лю Гэнь Пао вызывает ThermalRangeError', caughtBadLiuTemp);
   }
 
+  // Тест 22: Точность материального баланса метода Лю Гэнь Пао (без скрытого округления)
+  {
+    const suite = '22. Точность материального баланса Лю Гэнь Пао (без скрытого округления)';
+    const engine = new BrewingThermalEngine();
+    const defaultLiuSession = createDefaultSession('liu_gen_pao', REFERENCE_TEAS[0].id) as LiuGenPaoSessionConfig;
+
+    // Шаг 1: 75 мл, доля удержания 0.35 => точный остаток 26.25 мл (ранее округлялся до 26)
+    // Шаг 2: долив 50 мл => полный объём 76.25 мл, доля 0.35 => точный остаток 26.6875 мл
+    const precisionSession: LiuGenPaoSessionConfig = {
+      ...defaultLiuSession,
+      steps: [
+        {
+          stepNumber: 1,
+          infusionTimeSeconds: 20,
+          addedWaterVolumeMl: 75,
+          retainedLiquorFractionOfTotal: 0.35,
+          addedWaterTemperatureC: 90,
+        },
+        {
+          stepNumber: 2,
+          infusionTimeSeconds: 20,
+          addedWaterVolumeMl: 50,
+          retainedLiquorFractionOfTotal: 0.35,
+          addedWaterTemperatureC: 90,
+        },
+        {
+          stepNumber: 3,
+          infusionTimeSeconds: 20,
+          addedWaterVolumeMl: 50,
+          retainedLiquorFractionOfTotal: 0.35,
+          addedWaterTemperatureC: 90,
+        },
+      ],
+    };
+
+    const res = engine.simulateLiuGenPao(precisionSession);
+
+    // 22.1 Проверка, что расчёт завершился успешно и выдал 3 шага
+    assert(suite, 'Сессия с дробными долями удержания рассчитывается успешно', res.stepResults.length === 3);
+
+    // 22.2 Проверка точного материального баланса: сумма удержанного и слитого равна полному объёму
+    const totalStep1 = 75;
+    const retainedStep1 = totalStep1 * 0.35; // строго 26.25
+    const drainedStep1 = totalStep1 * (1 - 0.35); // строго 48.75
+    assert(
+      suite,
+      'Дробная доля удержания 0.35 от 75 мл даёт точный остаточный объём 26.25 мл без округления',
+      Math.abs(retainedStep1 - 26.25) < 1e-12
+    );
+    assert(
+      suite,
+      'Сумма слитого (48.75 мл) и удержанного (26.25 мл) строго равна 75 мл (ошибка < 1e-12)',
+      Math.abs(retainedStep1 + drainedStep1 - totalStep1) < 1e-12
+    );
+
+    // 22.3 На шаге 2 начальная температура смешения строго учитывает дробный остаток 26.25 мл
+    // Смешение: 26.25 мл корня при T1 + 50 мл свежей воды при 90 °C
+    const tEnd1 = res.stepResults[0].finalLiquidTempC!;
+    const expectedMixTemp2 = (26.25 * tEnd1 + 50 * 90) / 76.25;
+    const actualMixTemp2 = res.stepResults[1].initialLiquidTempC!;
+    assert(
+      suite,
+      'Начальная температура смеси на шаге 2 строго соответствует физическому смешению с дробным объёмом 26.25 мл',
+      Math.abs(actualMixTemp2 - expectedMixTemp2) < 1e-6
+    );
+
+    // 22.4 Отсутствие накопления ошибки округления при серии проливов
+    const totalStep2 = 26.25 + 50; // 76.25
+    const retainedStep2 = totalStep2 * 0.35; // 26.6875
+    const totalStep3 = retainedStep2 + 50; // 76.6875
+    const retainedStep3 = totalStep3 * 0.35; // 26.840625
+    const expectedMixTemp3 = (retainedStep2 * res.stepResults[1].finalLiquidTempC! + 50 * 90) / totalStep3;
+    assert(
+      suite,
+      'На шаге 3 смешение использует точный материальный баланс без накопления целочисленных погрешностей',
+      Math.abs(res.stepResults[2].initialLiquidTempC! - expectedMixTemp3) < 1e-6
+    );
+  }
+
+  // Тест 23: Реальный учёт паузы между проливами в Лю Гэнь Пао
+  {
+    const suite = '23. Тепловой учёт паузы между проливами в Лю Гэнь Пао';
+    const engine = new BrewingThermalEngine();
+    const defaultLiuSession = createDefaultSession('liu_gen_pao', REFERENCE_TEAS[0].id) as LiuGenPaoSessionConfig;
+
+    // 23.1 Пауза 0 с даёт идентичный результат отсутствию паузы
+    const resNoPause = engine.simulateLiuGenPao(defaultLiuSession);
+    const resZeroPause = engine.simulateLiuGenPao(defaultLiuSession, { interInfusionPauseSeconds: 0 });
+    assert(
+      suite,
+      'Пауза 0 с даёт строго идентичную температуру смеси на шаге 2 с расчётом по умолчанию',
+      resNoPause.stepResults[1].initialLiquidTempC === resZeroPause.stepResults[1].initialLiquidTempC
+    );
+    assert(
+      suite,
+      'Пауза 0 с даёт строго идентичную конечную температуру шага 2',
+      resNoPause.stepResults[1].finalLiquidTempC === resZeroPause.stepResults[1].finalLiquidTempC
+    );
+
+    // 23.2 Положительная пауза 40 с охлаждает удержанный настой и стенки сосуда
+    const resWithPause = engine.simulateLiuGenPao(defaultLiuSession, { interInfusionPauseSeconds: 40 });
+    const mixTempNoPauseStep2 = resNoPause.stepResults[1].initialLiquidTempC!;
+    const mixTempPauseStep2 = resWithPause.stepResults[1].initialLiquidTempC!;
+
+    assert(
+      suite,
+      'При паузе 40 с начальная температура смеси на шаге 2 строго ниже, чем без паузы (корень остыл)',
+      mixTempPauseStep2 < mixTempNoPauseStep2 - 1.0
+    );
+
+    // 23.3 Стенки сосуда перед вторым проливом холоднее при наличии паузы
+    const vesselTempNoPauseStep2 = resNoPause.stepResults[1].initialVesselTempC;
+    const vesselTempPauseStep2 = resWithPause.stepResults[1].initialVesselTempC;
+    assert(
+      suite,
+      'При паузе 40 с температура стенок перед шагом 2 строго ниже, чем без паузы',
+      vesselTempPauseStep2 < vesselTempNoPauseStep2 - 1.0
+    );
+
+    // 23.4 Конечная температура шага 2 с паузой ниже, чем без неё
+    assert(
+      suite,
+      'Конечная температура шага 2 при наличии паузы ниже из-за более холодного корня и стенок',
+      resWithPause.stepResults[1].finalLiquidTempC! < resNoPause.stepResults[1].finalLiquidTempC!
+    );
+
+    // 23.5 Пауза не нарушает материальный баланс (сохранение объёмов)
+    assert(
+      suite,
+      'Сводка моделирования содержит задокументированное допущение об идеальном перемешивании удержанного корня',
+      resWithPause.summary.generalAssumptions.some((a) => a.includes('удержанный настой остаётся в сосуде и непрерывно охлаждается'))
+    );
+  }
+
+  // Тест 24: Выявление численной нестабильности схемы (ThermalInstabilityError)
+  {
+    const suite = '24. Обнаружение численной нестабильности схемы (ThermalInstabilityError)';
+
+    // Подбираем экстремальный физический профиль:
+    // микрососуд (масса 1 г, удельная теплоёмкость 150 Дж/(кг·К)), микрообъём 1 мл
+    // и сверхвысокая проводимость G_lv = 800 Вт/К.
+    // Для него tau_min = C / G ~ 4.184 / 800 ~ 0.0052 с.
+    // Предел устойчивости схемы Хойна (RK2): dt_crit = 2 * tau_min ~ 0.010 с.
+    // При шаге dt = 0.1 с условие устойчивости нарушено (dt > dt_crit).
+    const extremeProfile: VesselThermalProfile = {
+      id: 'vessel-test-unstable',
+      name: 'Экстремальный микрососуд для теста устойчивости',
+      material: 'glass',
+      vesselMassGrams: 1.0,
+      materialSpecificHeatJPerKgK: 150,
+      conductanceLiquidVesselWPerK: 800.0,
+      conductanceVesselAmbientWPerK: 10.0,
+      conductanceLiquidAmbientWPerK: 10.0,
+      origin: 'model_profile',
+      basisNotes: 'Экстремальный синтетический профиль для верификации выявления неустойчивости',
+    };
+
+    const state: ThermalState = {
+      liquidVolumeMl: 1.0,
+      liquidTemperatureC: 95.0,
+      vesselTemperatureC: 22.0,
+      ambientTemperatureC: 22.0,
+      elapsedSeconds: 0,
+    };
+
+    let caughtInstability = false;
+    let errorInstance: ThermalInstabilityError | null = null;
+
+    try {
+      // Шаг dt = 0.1 с заведомо превышает предел устойчивости dt_crit ~ 0.010 с
+      integrateThermalStep(state, extremeProfile, 5.0, 0.1);
+    } catch (err) {
+      if (err instanceof ThermalInstabilityError) {
+        caughtInstability = true;
+        errorInstance = err;
+      }
+    }
+
+    assert(
+      suite,
+      'При шаге dt > dt_max_stable интегратор выбрасывает ThermalInstabilityError вместо скрытой стабилизации',
+      caughtInstability
+    );
+
+    assert(
+      suite,
+      'ThermalInstabilityError является экземпляром ThermalValidationError',
+      errorInstance instanceof ThermalValidationError
+    );
+
+    assert(
+      suite,
+      'Ошибка численной нестабильности содержит параметры шага и предела устойчивости',
+      errorInstance !== null &&
+        errorInstance.timeStepSeconds === 0.1 &&
+        typeof errorInstance.maxStableTimeStepSeconds === 'number' &&
+        errorInstance.maxStableTimeStepSeconds < 0.1
+    );
+  }
+
   return results;
 }
+

@@ -24,6 +24,7 @@ import {
   TimelineChronologyError,
   ThermalValidationError,
   ThermalRangeError,
+  ThermalInstabilityError,
 } from './errors.ts';
 import { getVesselThermalProfile } from './profiles.ts';
 import {
@@ -416,10 +417,37 @@ export class BrewingThermalEngine {
       });
 
       // 3. Разделение: слитая часть vs удержанный корень настоя
+      // Точный физический материальный баланс без округления промежуточных объёмов (округление только в UI)
       const retainedFraction = step.retainedLiquorFractionOfTotal;
-      currentRetainedVolumeMl = Math.round(mixedVolume * retainedFraction);
+      currentRetainedVolumeMl = mixedVolume * retainedFraction;
       currentRetainedTempC = integration.finalState.liquidTemperatureC;
       currentVesselTemp = integration.finalState.vesselTemperatureC;
+
+      // 4. Пауза между проливами Лю Гэнь Пао
+      // При interPause = 0 сохраняется непрерывное заваривание без паузы.
+      // При interPause > 0 удержанный свободный настой остаётся в сосуде и охлаждается вместе со стенками.
+      // Сосуд НЕ моделируется как пустой.
+      // Модельные допущения:
+      // - перемешивание удержанного настоя считается идеальным;
+      // - отдельное время слива настоя пока не моделируется.
+      if (i < session.steps.length - 1 && interPause > 0) {
+        const pauseState = {
+          liquidVolumeMl: currentRetainedVolumeMl,
+          liquidTemperatureC: currentRetainedTempC,
+          vesselTemperatureC: currentVesselTemp,
+          ambientTemperatureC: ambientTemp,
+          elapsedSeconds: 0,
+        };
+        const pauseIntegration = integrateThermalStep(
+          pauseState,
+          profile,
+          interPause,
+          dt,
+          Math.max(1, Math.round(interPause / 20))
+        );
+        currentRetainedTempC = pauseIntegration.finalState.liquidTemperatureC;
+        currentVesselTemp = pauseIntegration.finalState.vesselTemperatureC;
+      }
     }
 
     const summary: SessionThermalSummary = {
@@ -432,7 +460,9 @@ export class BrewingThermalEngine {
       generalAssumptions: [
         `Двухузловая модель сосредоточенных теплоёмкостей Лю Гэнь Пао.`,
         `Температура смеси на каждом шаге рассчитывается по балансу энергии смешения доливаемой воды и сохранённого корня настоя.`,
-        `Пауза между проливами Лю Гэнь Пао принята равной ${interPause} с.`,
+        interPause > 0
+          ? `Пауза между проливами Лю Гэнь Пао принята равной ${interPause} с: удержанный настой остаётся в сосуде и непрерывно охлаждается со стенками (перемешивание считается идеальным, отдельное время слива пока не моделируется).`
+          : `Пауза между проливами Лю Гэнь Пао принята равной 0 с (непрерывная серия доливов).`,
         `Стенки сосуда сохраняют текущую температуру в момент долива.`,
         `Профиль сосуда: ${profile.name} (c_p = ${profile.materialSpecificHeatJPerKgK} Дж/(кг·К)).`,
       ],

@@ -65,3 +65,24 @@ export class TimelineChronologyError extends ThermalValidationError {
     this.eventIndex = eventIndex;
   }
 }
+
+/**
+ * Ошибка численной нестабильности схемы интегрирования тепловой системы.
+ * Возникает при нарушении условия устойчивости схемы (dt > dt_max_stable = 2 * tau_min)
+ * либо при выходе расчётных температур за физические термодинамические границы.
+ */
+export class ThermalInstabilityError extends ThermalValidationError {
+  readonly timeStepSeconds: number;
+  readonly maxStableTimeStepSeconds?: number;
+
+  constructor(
+    message: string,
+    timeStepSeconds: number,
+    maxStableTimeStepSeconds?: number
+  ) {
+    super(message, 'THERMAL_INSTABILITY_ERROR', 'timeStepSeconds', timeStepSeconds);
+    this.name = 'ThermalInstabilityError';
+    this.timeStepSeconds = timeStepSeconds;
+    this.maxStableTimeStepSeconds = maxStableTimeStepSeconds;
+  }
+}
