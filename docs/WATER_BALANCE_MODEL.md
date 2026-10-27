@@ -93,28 +93,27 @@
 Интерстициальное удержание представляет собой капиллярный предел: жидкость, которую гравитация **не способна удалить** через щель крышки при полном переворачивании сосуда.
 Если пользователь оставляет в сосуде объём $V_{\text{root, target}}$, превышающий объём межчастичных капилляров, листья остаются погруженными в этот придонный слой жидкости. Жидкость в межчастичных зазорах является неотъемлемой частью этого же самого остаточного объёма!
 
-### Математическое правило
-Пусть перед сливом объём свободного настоя равен $V_{\text{free, pre}}$.
-Заданная рецептом целевая доля удержания корня $r \in [0, 1)$ определяет целевой остаточный объём:
-$$V_{\text{root, target}} = r \cdot V_{\text{free, pre}}$$
-
-Фактический объём жидкости, остающейся в сосуде после слива ($V_{\text{retained, actual}}$), равен максимуму из технологической цели и физического капиллярного предела:
-$$V_{\text{retained, actual}} = \max\left(V_{\text{root, target}},\, V_{\text{interstitial}}\right)$$
-
-Фактически сливаемый объём настоя ($V_{\text{drained, actual}}$) строго равен:
-$$V_{\text{drained, actual}} = V_{\text{free, pre}} - V_{\text{retained, actual}}$$
+### Терминология и математическое правило
+- `freeWaterVolumeMl` / `freeWaterBeforeDrainMl` — весь свободный настой вне внутренней водной фазы листа, включая жидкость в межчастичных зазорах;
+- `capillaryHoldUpCapacityMl` — оценочная максимальная ёмкость удержания свободной жидкости капиллярами после гравитационного слива;
+- `targetRootVolumeMl` — объём свободного настоя, который предписывает оставить рецепт:
+  $$V_{\text{root, target}} = r \cdot V_{\text{free, pre}}$$
+- `actualRetainedFreeWaterMl` — реальный остаток свободного настоя после слива с учётом технологической цели, капиллярной ёмкости и доступного объёма:
+  $$V_{\text{retained, actual}} = \min\left(V_{\text{free, pre}},\, \max(V_{\text{root, target}},\, V_{\text{interstitial}})\right)$$
+- `drainedFreeWaterMl` — фактически сливаемый объём настоя:
+  $$V_{\text{drained, actual}} = V_{\text{free, pre}} - V_{\text{retained, actual}}$$
 
 ### Следствия правила:
 1. **Гунфу Ча (полный слив)**: $r = 0 \implies V_{\text{root, target}} = 0$.
-   $$V_{\text{retained, actual}} = \max(0,\, V_{\text{interstitial}}) = V_{\text{interstitial}}$$
-   $$V_{\text{drained, actual}} = V_{\text{free, pre}} - V_{\text{interstitial}}$$
-   Сливается вся свободная жидкость за вычетом капиллярно удерживаемой влаги.
+   $$V_{\text{retained, actual}} = \min(V_{\text{free, pre}},\, \max(0,\, V_{\text{interstitial}})) = \min(V_{\text{free, pre}},\, V_{\text{interstitial}})$$
+   $$V_{\text{drained, actual}} = V_{\text{free, pre}} - V_{\text{retained, actual}}$$
+   Сливается вся свободная жидкость за вычетом капиллярно удерживаемой влаги. Если доступной воды меньше капиллярной ёмкости, слив равен 0, фиктивная вода не генерируется.
 2. **Лю Гэнь Пао (сохранение корней)**:
-   - Если $V_{\text{root, target}} \ge V_{\text{interstitial}}$, то $V_{\text{retained, actual}} = V_{\text{root, target}}$. Никакого дополнительного сложения с $V_{\text{interstitial}}$ не происходит.
-   - Если пользователь по ошибке задал слишком малую долю удержания, при которой $V_{\text{root, target}} < V_{\text{interstitial}}$, физика капиллярного удерживания ограничивает слив: в сосуде останется не менее $V_{\text{interstitial}}$.
+   - Если $V_{\text{root, target}} \ge V_{\text{interstitial}}$, то $V_{\text{retained, actual}} = \min(V_{\text{free, pre}}, V_{\text{root, target}}) = V_{\text{root, target}}$. Никакого дополнительного сложения с $V_{\text{interstitial}}$ не происходит.
+   - Если пользователь задал долю удержания ниже капиллярного порога ($V_{\text{root, target}} < V_{\text{interstitial}}$), физика капиллярного удерживания оставляет в сосуде не менее $V_{\text{interstitial}}$.
 3. **Строгое сохранение массы**:
    $$V_{\text{drained, actual}} + V_{\text{retained, actual}} \equiv V_{\text{free, pre}}$$
-   с абсолютной точностью (погрешность округления $< 10^{-12}\text{ мл}$).
+   с абсолютной точностью машинного эпсилон ($< 10^{-12}\text{ мл}$).
 
 ---
 
@@ -249,8 +248,40 @@ $$\sum_{k=1}^N m_{\text{added}, k} \equiv m_{\text{abs}}(t_N) + m_{\text{retaine
 
 ## 9. План поэтапной реализации этапа 2B
 
-- **Этап 2B.0 (Текущий)**: Аудит данных, формулировка компартментов, уравнений сохранения массы и ограничений в `docs/WATER_BALANCE_MODEL.md`.
-- **Этап 2B.1**: Реализация чистых функций водного баланса (без кинетики) и 100% покрытие модульными тестами инвариантов сохранения массы для всех трёх методов.
-- **Этап 2B.2**: Реализация кинетики гидратации $m_{\text{abs}}(t)$ с поддержкой размерных параметров и строгой обработкой статуса `unknown` (без эвристической подмены на секунды).
+- **Этап 2B.0 (Выполнено)**: Аудит данных, формулировка компартментов, уравнений сохранения массы и ограничений в `docs/WATER_BALANCE_MODEL.md`.
+- **Этап 2B.1 (Выполнено)**: Реализация чистых функций водного баланса (`src/engine/water-balance/`) и 100% покрытие модульными тестами инвариантов сохранения массы для всех трёх методов (27 проверок).
+- **Этап 2B.2 (Следующий этап)**: Реализация кинетики гидратации $m_{\text{abs}}(t)$ с поддержкой размерных параметров и строгой обработкой статуса `unknown` (без эвристической подмены на секунды).
 - **Этап 2B.3**: Подключение водного баланса к сценариям симулятора заваривания с согласованием материальных потоков и подготовкой интерфейсов для теплового взаимодействия.
 - **Последующие этапы**: Тепловой баланс влажного листа (учёт теплоёмкости $C_{\text{leaf}} = m_{\text{dry}} c_{p, \text{dry}} + m_{\text{abs}} c_{p, \text{water}}$) и экспериментальная калибровка гидравлического сопротивления.
+
+---
+
+## 10. Реализованный API водного баланса (`src/engine/water-balance/`)
+
+Модуль спроектирован в виде детерминированных чистых функций, полностью изолированных от теплового ядра, React, DOM и состояния сессии:
+
+1. `calculateMaxAbsorbedWater(dryLeafMassGrams: number, maxAbsorptionRatioGramsPerGram: number): number`
+   - Рассчитывает предельную влагоёмкость $m_{\text{abs, max}} = m_{\text{dry}} \cdot R_{\text{abs, max}}$ (г).
+   - Строгая валидация: $m_{\text{dry}} > 0$, $R_{\text{abs, max}} \ge 0$. Не рассчитывает скорость.
+
+2. `applyWaterAbsorption(params: WaterAbsorptionParams): ApplyAbsorptionResult`
+   - Переносит воду из свободного компартмента $V_{\text{free}}$ в связанную матрицу листа $m_{\text{abs}}$.
+   - Ограничивает поглощение остаточной влагоёмкостью листа и доступной свободной водой в сосуде.
+   - Возвращает `limitingFactor` (`unconstrained`, `limited_by_leaf_capacity`, `limited_by_available_free_water`, `limited_by_both`, `zero_requested`).
+   - Гарантирует сохранение массы: $\Delta m = 0$ с машинной точностью.
+
+3. `solveLiquorDrain(params: DrainParams): DrainResult`
+   - Рассчитывает слив свободного настоя с учётом цели рецепта ($r$) и капиллярного порога ($V_{\text{interstitial}}$).
+   - Вычисляет: $V_{\text{retained, actual}} = \min(V_{\text{free, pre}}, \max(r \cdot V_{\text{free, pre}}, V_{\text{interstitial}}))$.
+   - Возвращает слитый объём $V_{\text{drained}} = V_{\text{free, pre}} - V_{\text{retained, actual}}$ и лимитирующий фактор (`exact_target`, `governed_by_capillary_hold_up`, `insufficient_water_for_capillary_hold_up`, `zero_water`).
+   - При `capillaryHoldUpCapacityMl === null` выбрасывает `UnknownCapillaryHoldUpError` (Unknown ≠ 0).
+
+4. `addWater(currentFreeWaterGrams, addedWaterGrams, density?): { newFreeWaterGrams, newFreeWaterVolumeMl }`
+   - Добавляет порцию свежей воды к свободной фазе.
+
+5. `consumeFreeWater(currentFreeWaterGrams, consumedWaterGrams, density?): { newFreeWaterGrams, newFreeWaterVolumeMl, actualConsumedGrams }`
+   - Моделирует отпивание из свободной фазы кружки без изменения поглощённой листом воды $m_{\text{abs}}$.
+   - При попытке отпить больше доступного выбрасывает `InsufficientFreeWaterError`.
+
+6. `convertVolumeToMass` / `convertMassToVolume`
+   - Конверсия с явным указанием принятой плотности $\rho_w = 1.0\text{ г/мл}$ (инженерное допущение).

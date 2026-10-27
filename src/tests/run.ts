@@ -5,14 +5,17 @@
 
 import { runDomainTestSuite } from './domain.test.ts';
 import { runThermalTestSuite } from './thermal.test.ts';
+import { runWaterBalanceTestSuite } from './waterBalance.test.ts';
 
 async function main() {
   console.log('--- Запуск верификации предметных инвариантов Gongfu Cha Lab ---');
   const domainResults = await runDomainTestSuite();
   console.log('--- Запуск верификации теплового ядра (Этап 2A) ---');
   const thermalResults = await runThermalTestSuite();
+  console.log('--- Запуск верификации водного баланса (Этап 2B.1) ---');
+  const waterBalanceResults = await runWaterBalanceTestSuite();
 
-  const results = [...domainResults, ...thermalResults];
+  const results = [...domainResults, ...thermalResults, ...waterBalanceResults];
   let failures = 0;
 
   for (const r of results) {
