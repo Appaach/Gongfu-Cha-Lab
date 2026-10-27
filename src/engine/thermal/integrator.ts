@@ -311,7 +311,14 @@ export function integrateThermalStep(
   }
 
   // 7. Расчёт критерия численной устойчивости явной схемы Хойна (RK2)
-  // Для линейной системы ОДУ устойчивость требует |lambda_max| * dt <= 2, то есть dt <= 2 * tau_min.
+  // Для линейной системы ОДУ устойчивость требует |lambda_max| * dt < 2 (то есть dt < 2 * tau_min).
+  // Точная граница dt = 2 / |lambda_max| соответствует нейтральной границе устойчивости (|1 + z + z^2/2| = 1),
+  // где возмущения не затухают, а сохраняются в виде незатухающих осцилляций.
+  // Для строгого асимптотического затухания шаг обязан быть строго меньше предела (timeStepSeconds < maxStableDtSeconds).
+  // При timeStepSeconds >= maxStableDtSeconds шаг строго отклоняется.
+  //
+  // ВАЖНО: Выполнение критерия численной устойчивости является математическим условием предотвращения
+  // вычислительной расходимости схемы интегрирования и НЕ является доказательством экспериментальной точности модели.
   let maxStableDtSeconds = Infinity;
   if (volumeMl === 0 || tLiquid === null) {
     if (gVa > 0 && cVessel > 0) {
@@ -332,9 +339,9 @@ export function integrateThermalStep(
     }
   }
 
-  if (timeStepSeconds > maxStableDtSeconds) {
+  if (timeStepSeconds >= maxStableDtSeconds) {
     throw new ThermalInstabilityError(
-      `Выбранный шаг численного интегрирования (${timeStepSeconds} с) превышает предел устойчивости схемы Хойна (${maxStableDtSeconds.toFixed(4)} с, tau_min = ${(maxStableDtSeconds / 2).toFixed(4)} с). Схема приведёт к осцилляциям или расходимости. Скрытая коррекция запрещена.`,
+      `Выбранный шаг численного интегрирования (${timeStepSeconds} с) достигает или превышает критический предел устойчивости схемы Хойна (${maxStableDtSeconds.toFixed(4)} с, tau_min = ${(maxStableDtSeconds / 2).toFixed(4)} с). При dt >= 2/|lambda_max| схема теряет строгое затухание (на границе возникают незатухающие осцилляции). Скрытая коррекция запрещена. Выполнение условия устойчивости не является доказательством экспериментальной точности модели.`,
       timeStepSeconds,
       maxStableDtSeconds
     );
@@ -358,21 +365,36 @@ export function integrateThermalStep(
     while (currentTime < durationSeconds) {
       const step = Math.min(dt, durationSeconds - currentTime);
 
-      // Производная для стенок: dTv/dt = -gVa * (Tv - Ta) / cVessel
+      // Производная для стенок: dTv1/dt = -gVa * (Tv - Ta) / cVessel
       const dTv1 = -gVa * (tVessel - tAmbient) / cVessel;
       const tvPredict = tVessel + step * dTv1;
+
+      // Проверка прогнозного состояния (Predictor) схемы Хойна:
+      // Выход за физические границы пассивной системы или потеря конечности строго запрещены
+      if (
+        !Number.isFinite(tvPredict) ||
+        tvPredict < lowerBoundVessel - 1e-4 ||
+        tvPredict > upperBoundVessel + 1e-4
+      ) {
+        throw new ThermalInstabilityError(
+          `Численная нестабильность схемы при dt=${step} с: прогнозная температура стенок tvPredict (${tvPredict} °C) вышла за физические границы пассивной системы [${lowerBoundVessel.toFixed(1)}, ${upperBoundVessel.toFixed(1)}] °C или потеряла конечность. Скрытая коррекция запрещена.`,
+          step,
+          maxStableDtSeconds
+        );
+      }
+
       const dTv2 = -gVa * (tvPredict - tAmbient) / cVessel;
 
       tVessel += (step / 2) * (dTv1 + dTv2);
 
-      // Контроль численной устойчивости: выход за пределы или потеря конечности строго запрещены
+      // Контроль корректора (Corrector): выход за пределы или потеря конечности строго запрещены
       if (
         !Number.isFinite(tVessel) ||
         tVessel < lowerBoundVessel - 1e-4 ||
         tVessel > upperBoundVessel + 1e-4
       ) {
         throw new ThermalInstabilityError(
-          `Численная нестабильность схемы при dt=${step} с: температура стенок (${tVessel} °C) вышла за физические границы [${lowerBoundVessel.toFixed(1)}, ${upperBoundVessel.toFixed(1)}] °C или потеряла конечность. Скрытая коррекция запрещена.`,
+          `Численная нестабильность схемы при dt=${step} с: итоговая температура стенок (${tVessel} °C) вышла за физические границы [${lowerBoundVessel.toFixed(1)}, ${upperBoundVessel.toFixed(1)}] °C или потеряла конечность. Скрытая коррекция запрещена.`,
           step,
           maxStableDtSeconds
         );
@@ -435,12 +457,29 @@ export function integrateThermalStep(
     const tlPredict = tLiquid + step * k1.dTl;
     const tvPredict = tVessel + step * k1.dTv;
 
+    // Проверка прогнозного состояния (Predictor) схемы Хойна:
+    // Конечность и физическая допустимость температур пассивной тепловой системы
+    if (
+      !Number.isFinite(tlPredict) ||
+      !Number.isFinite(tvPredict) ||
+      tlPredict < lowerBound - 1e-4 ||
+      tlPredict > upperBound + 1e-4 ||
+      tvPredict < lowerBound - 1e-4 ||
+      tvPredict > upperBound + 1e-4
+    ) {
+      throw new ThermalInstabilityError(
+        `Численная нестабильность схемы при dt=${step} с: прогнозная температура жидкости tlPredict (${tlPredict} °C) или стенок tvPredict (${tvPredict} °C) вышла за термодинамические границы пассивной системы [${lowerBound.toFixed(1)}, ${upperBound.toFixed(1)}] °C или потеряла конечность. Скрытая коррекция запрещена.`,
+        step,
+        maxStableDtSeconds
+      );
+    }
+
     const k2 = computeDerivatives(tlPredict, tvPredict);
 
     tLiquid += (step / 2) * (k1.dTl + k2.dTl);
     tVessel += (step / 2) * (k1.dTv + k2.dTv);
 
-    // Контроль физических границ 2-го начала термодинамики
+    // Контроль физических границ 2-го начала термодинамики после корректирующего шага (Corrector)
     if (
       !Number.isFinite(tLiquid) ||
       !Number.isFinite(tVessel) ||
@@ -450,7 +489,7 @@ export function integrateThermalStep(
       tVessel > upperBound + 1e-4
     ) {
       throw new ThermalInstabilityError(
-        `Численная нестабильность схемы при dt=${step} с: температура жидкости (${tLiquid} °C) или стенок (${tVessel} °C) вышла за термодинамические границы [${lowerBound.toFixed(1)}, ${upperBound.toFixed(1)}] °C или потеряла конечность. Скрытая коррекция запрещена.`,
+        `Численная нестабильность схемы при dt=${step} с: итоговая температура жидкости (${tLiquid} °C) или стенок (${tVessel} °C) вышла за термодинамические границы [${lowerBound.toFixed(1)}, ${upperBound.toFixed(1)}] °C или потеряла конечность. Скрытая коррекция запрещена.`,
         step,
         maxStableDtSeconds
       );

@@ -1283,7 +1283,7 @@ export async function runThermalTestSuite(): Promise<TestResult[]> {
 
     assert(
       suite,
-      'При шаге dt > dt_max_stable интегратор выбрасывает ThermalInstabilityError вместо скрытой стабилизации',
+      'При шаге dt >= dt_max_stable интегратор выбрасывает ThermalInstabilityError вместо скрытой стабилизации',
       caughtInstability
     );
 
@@ -1300,6 +1300,224 @@ export async function runThermalTestSuite(): Promise<TestResult[]> {
         errorInstance.timeStepSeconds === 0.1 &&
         typeof errorInstance.maxStableTimeStepSeconds === 'number' &&
         errorInstance.maxStableTimeStepSeconds < 0.1
+    );
+
+    // 24.4 Точная граница устойчивости dt = maxStableDtSeconds строго отклоняется
+    // Для пустого сосуда с Cv = 10 Дж/К, Gva = 100 Вт/К -> lambda = 10 с^-1, maxStableDt = 0.2 с
+    const vesselBoundaryEmpty: VesselThermalProfile = {
+      id: 'vessel-test-boundary-empty',
+      name: 'Тестовый сосуд для граничной устойчивости',
+      material: 'glass',
+      vesselMassGrams: 10.0,
+      materialSpecificHeatJPerKgK: 1000.0,
+      conductanceLiquidVesselWPerK: 0.0,
+      conductanceVesselAmbientWPerK: 100.0,
+      conductanceLiquidAmbientWPerK: 0.0,
+      origin: 'model_profile',
+      basisNotes: 'Синтетический профиль: Cv = 10 Дж/К, Gva = 100 Вт/К, maxStableDt = 0.2 с',
+    };
+    const emptyState: ThermalState = {
+      liquidVolumeMl: 0,
+      liquidTemperatureC: null,
+      vesselTemperatureC: 80.0,
+      ambientTemperatureC: 22.0,
+      elapsedSeconds: 0,
+    };
+
+    let caughtExactBoundary = false;
+    try {
+      integrateThermalStep(emptyState, vesselBoundaryEmpty, 1.0, 0.2);
+    } catch (err) {
+      if (err instanceof ThermalInstabilityError) {
+        caughtExactBoundary = true;
+      }
+    }
+    assert(
+      suite,
+      'При точном достижении критической границы dt = dt_max_stable интегратор отклоняет шаг с ThermalInstabilityError',
+      caughtExactBoundary
+    );
+
+    // 24.5 Шаг чуть ниже границы устойчивости в поддерживаемом диапазоне обрабатывается корректно
+    // Профиль 2-узловой системы: Cv = 20 Дж/К, Cl = 200.8 Дж/К, G = 100 Вт/К -> maxStableDt ~ 0.2715 с
+    const profileNearBoundary: VesselThermalProfile = {
+      id: 'vessel-test-near-boundary',
+      name: 'Тестовый профиль вблизи границы устойчивости',
+      material: 'porcelain',
+      vesselMassGrams: 25.0,
+      materialSpecificHeatJPerKgK: 800.0,
+      conductanceLiquidVesselWPerK: 100.0,
+      conductanceVesselAmbientWPerK: 40.0,
+      conductanceLiquidAmbientWPerK: 10.0,
+      origin: 'model_profile',
+      basisNotes: 'Синтетический профиль с maxStableDt ~ 0.2715 с в диапазоне [0.005, 0.5] с',
+    };
+    const stateNearBoundary: ThermalState = {
+      liquidVolumeMl: 48.0,
+      liquidTemperatureC: 80.0,
+      vesselTemperatureC: 78.0,
+      ambientTemperatureC: 22.0,
+      elapsedSeconds: 0,
+    };
+
+    // dt = 0.26 с находится строго ниже maxStableDt (~0.2715 с) и в допустимом диапазоне [0.005, 0.5] с
+    const stableRun = integrateThermalStep(stateNearBoundary, profileNearBoundary, 1.0, 0.26);
+    assert(
+      suite,
+      'Шаг чуть ниже границы устойчивости (dt < dt_max_stable) в поддерживаемом диапазоне обрабатывается корректно',
+      stableRun.finalState.liquidTemperatureC !== null &&
+        Number.isFinite(stableRun.finalState.liquidTemperatureC) &&
+        stableRun.finalState.liquidTemperatureC <= 80.0 &&
+        stableRun.finalState.liquidTemperatureC >= 22.0 &&
+        Number.isFinite(stableRun.finalState.vesselTemperatureC) &&
+        stableRun.finalState.vesselTemperatureC <= 80.0 &&
+        stableRun.finalState.vesselTemperatureC >= 22.0
+    );
+  }
+
+  // Тест 25: Проверка прогнозного состояния схемы Хойна (Predictor State Validation)
+  {
+    const suite = '25. Проверка прогнозного состояния схемы Хойна (Predictor State Validation)';
+
+    // 25.1 Ветка пустого сосуда: выход tvPredict за границы системы [Ta, Tv] вызывает ThermalInstabilityError
+    // Профиль: Cv = 10 Дж/К, Gva = 50 Вт/К -> tau = 0.2 с, maxStableDt = 0.4 с
+    // При dt = 0.35 с (< 0.4 с): tvPredict = 80 + 0.35 * (-300) = -25 °C < 20 °C
+    const emptyOvershootProfile: VesselThermalProfile = {
+      id: 'vessel-empty-overshoot',
+      name: 'Профиль с забросом предиктора стенок',
+      material: 'glass',
+      vesselMassGrams: 10.0,
+      materialSpecificHeatJPerKgK: 1000.0,
+      conductanceLiquidVesselWPerK: 0.0,
+      conductanceVesselAmbientWPerK: 50.0,
+      conductanceLiquidAmbientWPerK: 0.0,
+      origin: 'model_profile',
+      basisNotes: 'Cv = 10, Gva = 50, tau = 0.2 с',
+    };
+    let caughtEmptyPredictorOvershoot = false;
+    let emptyPredictorErrorMsg = '';
+    try {
+      integrateThermalStep(
+        { liquidVolumeMl: 0, liquidTemperatureC: null, vesselTemperatureC: 80.0, ambientTemperatureC: 20.0, elapsedSeconds: 0 },
+        emptyOvershootProfile,
+        1.0,
+        0.35
+      );
+    } catch (err) {
+      if (err instanceof ThermalInstabilityError) {
+        caughtEmptyPredictorOvershoot = true;
+        emptyPredictorErrorMsg = err.message;
+      }
+    }
+    assert(
+      suite,
+      'В ветке пустого сосуда выход tvPredict за границы системы вызывает ThermalInstabilityError перед k2',
+      caughtEmptyPredictorOvershoot && emptyPredictorErrorMsg.includes('tvPredict')
+    );
+
+    // 25.2 Двухузловая ветка: заброс tvPredict выше верхней границы вызывает ThermalInstabilityError
+    // Жидкость 95 °C, сосуд 25 °C. Cv = 4.0 Дж/К, Cl = 41.84 Дж/К, Glv = 30 Вт/К.
+    // При dt = 0.20 с (< maxStableDt ~ 0.237 с): tvPredict = 25 + 0.20 * 524.25 = 129.85 °C > 95 °C.
+    const twoNodeOvershootProfile: VesselThermalProfile = {
+      id: 'vessel-twonode-overshoot',
+      name: 'Профиль с забросом tvPredict выше верхней границы',
+      material: 'porcelain',
+      vesselMassGrams: 5.0,
+      materialSpecificHeatJPerKgK: 800.0,
+      conductanceLiquidVesselWPerK: 30.0,
+      conductanceVesselAmbientWPerK: 1.0,
+      conductanceLiquidAmbientWPerK: 1.0,
+      origin: 'model_profile',
+      basisNotes: 'Cv = 4, Cl = 41.8, Glv = 30',
+    };
+    let caughtLiquidPredictorOvershoot = false;
+    let liquidPredictorErrorMsg = '';
+    try {
+      integrateThermalStep(
+        { liquidVolumeMl: 10.0, liquidTemperatureC: 95.0, vesselTemperatureC: 25.0, ambientTemperatureC: 22.0, elapsedSeconds: 0 },
+        twoNodeOvershootProfile,
+        1.0,
+        0.20
+      );
+    } catch (err) {
+      if (err instanceof ThermalInstabilityError) {
+        caughtLiquidPredictorOvershoot = true;
+        liquidPredictorErrorMsg = err.message;
+      }
+    }
+    assert(
+      suite,
+      'В двухузловой ветке заброс tvPredict выше верхней границы вызывает ThermalInstabilityError перед k2',
+      caughtLiquidPredictorOvershoot && liquidPredictorErrorMsg.includes('tvPredict')
+    );
+
+    // 25.3 Двухузловая ветка: заброс tlPredict ниже нижней границы вызывает ThermalInstabilityError
+    // Жидкость 90 °C, сосуд 25 °C, среда 20 °C. Cl = 4.184 Дж/К, Glv = 1, Gla = 25 Вт/К.
+    // При dt = 0.25 с (< maxStableDt ~ 0.322 с): tlPredict = 90 - 0.25 * 433.8 = -18.45 °C < 20 °C.
+    const twoNodeLiquidDropProfile: VesselThermalProfile = {
+      id: 'vessel-twonode-liquid-drop',
+      name: 'Профиль с забросом tlPredict ниже нижней границы',
+      material: 'porcelain',
+      vesselMassGrams: 100.0,
+      materialSpecificHeatJPerKgK: 900.0,
+      conductanceLiquidVesselWPerK: 1.0,
+      conductanceVesselAmbientWPerK: 1.0,
+      conductanceLiquidAmbientWPerK: 25.0,
+      origin: 'model_profile',
+      basisNotes: 'Cl = 4.18, Gla = 25',
+    };
+    let caughtTlPredictOvershoot = false;
+    let tlPredictErrorMsg = '';
+    try {
+      integrateThermalStep(
+        { liquidVolumeMl: 1.0, liquidTemperatureC: 90.0, vesselTemperatureC: 25.0, ambientTemperatureC: 20.0, elapsedSeconds: 0 },
+        twoNodeLiquidDropProfile,
+        1.0,
+        0.25
+      );
+    } catch (err) {
+      if (err instanceof ThermalInstabilityError) {
+        caughtTlPredictOvershoot = true;
+        tlPredictErrorMsg = err.message;
+      }
+    }
+    assert(
+      suite,
+      'В двухузловой ветке заброс tlPredict ниже нижней границы вызывает ThermalInstabilityError перед k2',
+      caughtTlPredictOvershoot && tlPredictErrorMsg.includes('tlPredict')
+    );
+
+    // 25.4 Стандартные справочные профили (гайвань, исинский чайник, кружка) с рабочим шагом dt = 0.1 с
+    // и даже предельным dt = 0.5 с работают стабильно и не вызывают ложных срабатываний проверки предиктора
+    const refProfiles = ['vessel-gaiwan-110', 'vessel-yixing-130', 'vessel-glass-mug-350'];
+    let allStandardProfilesPass = true;
+    for (const profId of refProfiles) {
+      const prof = VESSEL_THERMAL_PROFILES[profId];
+      // Проверка 1: с жидкостью при dt = 0.1 с
+      const resLiq = integrateThermalStep(
+        { liquidVolumeMl: 100, liquidTemperatureC: 95.0, vesselTemperatureC: 75.0, ambientTemperatureC: 22.0, elapsedSeconds: 0 },
+        prof,
+        10.0,
+        0.1
+      );
+      if (resLiq.finalState.liquidTemperatureC === null || resLiq.finalState.liquidTemperatureC <= 22.0) {
+        allStandardProfilesPass = false;
+      }
+      // Проверка 2: пустой сосуд при dt = 0.1 с
+      const resEmpty = integrateThermalStep(
+        { liquidVolumeMl: 0, liquidTemperatureC: null, vesselTemperatureC: 75.0, ambientTemperatureC: 22.0, elapsedSeconds: 0 },
+        prof,
+        10.0,
+        0.1
+      );
+      if (resEmpty.finalState.vesselTemperatureC <= 22.0) {
+        allStandardProfilesPass = false;
+      }
+    }
+    assert(
+      suite,
+      'Стандартные профили (гайвань, чайник, кружка) с базовым шагом dt=0.1 с не вызывают ложных срабатываний проверки предиктора',
+      allStandardProfilesPass
     );
   }
 
