@@ -619,20 +619,33 @@ export function simulateLazyMugWaterBalance(
     if (evt.type === 'sip_consumption') {
       const sip = evt as LazyMugSipEvent;
       consumedVol = sip.consumedVolumeMl;
-      consumedMass = convertVolumeToMass(consumedVol, density);
 
-      // Проверка: отпивание не может превышать фактически доступную свободную воду
-      if (consumedVol > currentFreeVolumeMl + 1e-9) {
+      // Строгая проверка: запрашиваемый объём отпивания не может превышать фактически доступную свободную воду.
+      // Превышение даже на величину менее 1e-9 мл строго отклоняется без скрытых допусков.
+      if (consumedVol > currentFreeVolumeMl) {
         throw new WaterBalanceValidationError(
-          `Объём отпивания (${consumedVol} мл) превышает фактически доступный объём свободной жидкости в кружке (${currentFreeVolumeMl.toFixed(2)} мл).`,
+          `Объём отпивания (${consumedVol} мл) превышает фактически доступный объём свободной жидкости в кружке (${currentFreeVolumeMl.toFixed(4)} мл).`,
           'SIP_EXCEEDS_AVAILABLE_FREE_WATER',
           `session.timelineEvents[${i}].consumedVolumeMl`,
           consumedVol
         );
       }
 
-      currentFreeGrams = Math.max(0, currentFreeGrams - consumedMass);
-      currentFreeVolumeMl = convertMassToVolume(currentFreeGrams, density);
+      // Точная обработка отпивания:
+      // При полном отпивании (запрошенный объём в точности равен доступному свободному объёму)
+      // вся свободная жидкость переходит в компартмент выпитой воды (m_free = 0, V_free = 0)
+      // без возникновения погрешностей неточного деления/умножения в арифметике IEEE 754.
+      // При частичном отпивании выполняется прямое вычитание выпитой массы без маскировки через Math.max.
+      if (consumedVol === currentFreeVolumeMl) {
+        consumedMass = currentFreeGrams;
+        currentFreeGrams = 0.0;
+        currentFreeVolumeMl = 0.0;
+      } else {
+        consumedMass = convertVolumeToMass(consumedVol, density);
+        currentFreeGrams = currentFreeGrams - consumedMass;
+        currentFreeVolumeMl = convertMassToVolume(currentFreeGrams, density);
+      }
+
       cumulativeConsumedMassGrams += consumedMass;
       cumulativeConsumedVolumeMl += consumedVol;
     } else if (evt.type === 'water_refill') {

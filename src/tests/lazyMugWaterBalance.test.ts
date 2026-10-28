@@ -499,6 +499,61 @@ export async function runLazyMugWaterBalanceTestSuite(): Promise<TestResult[]> {
       'Попытка выпить 200 мл при поглощении части воды листом отклоняется с SIP_EXCEEDS_AVAILABLE_FREE_WATER',
       caughtBorderSip
     );
+
+    // 7.3 Микро-превышение доступного объёма на 1e-10 мл (< 1e-9 мл) строго отклоняется
+    let caughtMicroOverflow = false;
+    let microOverflowField = '';
+    try {
+      const preSession = createTestLazyMugSession({
+        initialWaterVolumeMl: 200.0,
+        timelineEvents: [
+          {
+            type: 'initial_pour',
+            timestampSeconds: 0,
+            waterVolumeMl: 200.0,
+            waterTemperatureC: 85.0,
+          },
+          {
+            type: 'session_end',
+            timestampSeconds: 60,
+          },
+        ],
+      });
+      const preRes = simulateLazyMugWaterBalance(preSession, SYNTHETIC_LAZY_MUG_TEST_TEA, DEFAULT_OPTIONS);
+      const exactFree = preRes.finalFreeWaterVolumeMl!;
+
+      const session = createTestLazyMugSession({
+        initialWaterVolumeMl: 200.0,
+        timelineEvents: [
+          {
+            type: 'initial_pour',
+            timestampSeconds: 0,
+            waterVolumeMl: 200.0,
+            waterTemperatureC: 85.0,
+          },
+          {
+            type: 'sip_consumption',
+            timestampSeconds: 60,
+            consumedVolumeMl: exactFree + 1e-10, // микро-превышение на 1e-10 мл
+          },
+          {
+            type: 'session_end',
+            timestampSeconds: 120,
+          },
+        ],
+      });
+      simulateLazyMugWaterBalance(session, SYNTHETIC_LAZY_MUG_TEST_TEA, DEFAULT_OPTIONS);
+    } catch (err) {
+      if (err instanceof WaterBalanceValidationError && err.code === 'SIP_EXCEEDS_AVAILABLE_FREE_WATER') {
+        caughtMicroOverflow = true;
+        microOverflowField = err.field;
+      }
+    }
+    assert(
+      suite,
+      'Микро-превышение объёма отпивания (+1e-10 мл) строго отклоняется с SIP_EXCEEDS_AVAILABLE_FREE_WATER',
+      caughtMicroOverflow && microOverflowField === 'session.timelineEvents[1].consumedVolumeMl'
+    );
   }
 
   // =========================================================================
@@ -1395,6 +1450,11 @@ export async function runLazyMugWaterBalanceTestSuite(): Promise<TestResult[]> {
     );
     assert(
       suite,
+      'Причина ограничения на интервале без свободной воды равна limited_by_available_free_water',
+      refillEvt.hydrationStepResult?.limitingFactor === 'limited_by_available_free_water'
+    );
+    assert(
+      suite,
       'После долива 150 мл свободная вода становится 150 мл',
       (refillEvt.freeWaterVolumeMl ?? 0) === 150.0
     );
@@ -1407,6 +1467,157 @@ export async function runLazyMugWaterBalanceTestSuite(): Promise<TestResult[]> {
       suite,
       'Баланс массы сохраняется строго на протяжении всего сценария исчерпания и долива (< 1e-12 г)',
       (res.sessionMassConservationDeltaGrams ?? 1) < 1e-12
+    );
+  }
+
+  // =========================================================================
+  // 18. Пограничное прецизионное отпивание и переменная плотность (Этап 2B.3.2.2.1)
+  // =========================================================================
+  {
+    const suite = '18. Пограничное прецизионное отпивание и переменная плотность (Этап 2B.3.2.2.1)';
+    const customDensity = 1.025; // г/мл
+    const customOptions: LazyMugWaterBalanceOptions = {
+      assumedWaterDensityGPerMl: customDensity,
+    };
+
+    // 18.1 Полное отпивание при плотности 1.025 г/мл
+    const preCheckSession = createTestLazyMugSession({
+      initialWaterVolumeMl: 100.0,
+      timelineEvents: [
+        {
+          type: 'initial_pour',
+          timestampSeconds: 0,
+          waterVolumeMl: 100.0,
+          waterTemperatureC: 85.0,
+        },
+        {
+          type: 'session_end',
+          timestampSeconds: 60,
+        },
+      ],
+    });
+    const preRes = simulateLazyMugWaterBalance(preCheckSession, SYNTHETIC_LAZY_MUG_TEST_TEA, customOptions);
+    const exactFreeVol = preRes.finalFreeWaterVolumeMl!;
+    const exactFreeMass = preRes.finalFreeWaterMassGrams!;
+    const absBeforeSip = preRes.finalAbsorbedWaterGrams!;
+
+    const fullDrainSession = createTestLazyMugSession({
+      initialWaterVolumeMl: 100.0,
+      timelineEvents: [
+        {
+          type: 'initial_pour',
+          timestampSeconds: 0,
+          waterVolumeMl: 100.0,
+          waterTemperatureC: 85.0,
+        },
+        {
+          type: 'sip_consumption',
+          timestampSeconds: 60,
+          consumedVolumeMl: exactFreeVol,
+        },
+        {
+          type: 'session_end',
+          timestampSeconds: 120,
+        },
+      ],
+    });
+
+    const fullRes = simulateLazyMugWaterBalance(fullDrainSession, SYNTHETIC_LAZY_MUG_TEST_TEA, customOptions);
+    const sipEvent = fullRes.events[1];
+    const endEvent = fullRes.events[2];
+
+    assert(
+      suite,
+      'Полное отпивание при плотности 1.025 г/мл даёт свободную воду ровно 0 мл и 0 г',
+      sipEvent.freeWaterVolumeMl === 0.0 && sipEvent.freeWaterMassGrams === 0.0
+    );
+    assert(
+      suite,
+      'Выпитая масса при полном отпивании равна исходной массе свободной воды',
+      Math.abs((sipEvent.consumedWaterMassGrams ?? 0) - exactFreeMass) < 1e-12
+    );
+    assert(
+      suite,
+      'Поглощённая листом влага не изменяется вследствие самого события sip_consumption',
+      sipEvent.absorbedWaterGrams === absBeforeSip
+    );
+    assert(
+      suite,
+      'Интервал 60-120 с после полного отпивания имеет нулевое поглощение и limited_by_available_free_water',
+      endEvent.hydrationStepResult?.actualAbsorbedGrams === 0.0 &&
+        endEvent.hydrationStepResult?.limitingFactor === 'limited_by_available_free_water'
+    );
+    assert(
+      suite,
+      'Баланс массы всей сессии сохраняется с невязкой < 1e-12 г при плотности 1.025 г/мл',
+      (fullRes.sessionMassConservationDeltaGrams ?? 1) < 1e-12
+    );
+
+    // 18.2 Превышение на 1e-11 мл при плотности 1.025 г/мл строго отклоняется
+    let caughtExceedAtCustomDensity = false;
+    try {
+      const overflowSession = createTestLazyMugSession({
+        initialWaterVolumeMl: 100.0,
+        timelineEvents: [
+          {
+            type: 'initial_pour',
+            timestampSeconds: 0,
+            waterVolumeMl: 100.0,
+            waterTemperatureC: 85.0,
+          },
+          {
+            type: 'sip_consumption',
+            timestampSeconds: 60,
+            consumedVolumeMl: exactFreeVol + 1e-11,
+          },
+          {
+            type: 'session_end',
+            timestampSeconds: 120,
+          },
+        ],
+      });
+      simulateLazyMugWaterBalance(overflowSession, SYNTHETIC_LAZY_MUG_TEST_TEA, customOptions);
+    } catch (err) {
+      if (err instanceof WaterBalanceValidationError && err.code === 'SIP_EXCEEDS_AVAILABLE_FREE_WATER') {
+        caughtExceedAtCustomDensity = true;
+      }
+    }
+    assert(
+      suite,
+      'Превышение доступного объёма на 1e-11 мл при плотности 1.025 г/мл строго отклоняется',
+      caughtExceedAtCustomDensity
+    );
+
+    // 18.3 Частичное отпивание при плотности 1.025 г/мл
+    const partialSession = createTestLazyMugSession({
+      initialWaterVolumeMl: 100.0,
+      timelineEvents: [
+        {
+          type: 'initial_pour',
+          timestampSeconds: 0,
+          waterVolumeMl: 100.0,
+          waterTemperatureC: 85.0,
+        },
+        {
+          type: 'sip_consumption',
+          timestampSeconds: 60,
+          consumedVolumeMl: 40.0, // частичное отпивание
+        },
+        {
+          type: 'session_end',
+          timestampSeconds: 120,
+        },
+      ],
+    });
+    const partRes = simulateLazyMugWaterBalance(partialSession, SYNTHETIC_LAZY_MUG_TEST_TEA, customOptions);
+    const partSip = partRes.events[1];
+    const expectedRemainingFreeMass = exactFreeMass - (40.0 * customDensity);
+
+    assert(
+      suite,
+      'Частичное отпивание строго вычитает массу без Math.max и сохраняет баланс массы (< 1e-12 г)',
+      Math.abs((partSip.freeWaterMassGrams ?? 0) - expectedRemainingFreeMass) < 1e-12 &&
+        (partRes.sessionMassConservationDeltaGrams ?? 1) < 1e-12
     );
   }
 
