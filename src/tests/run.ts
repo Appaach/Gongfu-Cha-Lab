@@ -8,6 +8,7 @@ import { runThermalTestSuite } from './thermal.test.ts';
 import { runWaterBalanceTestSuite } from './waterBalance.test.ts';
 import { runHydrationKineticsTestSuite } from './hydrationKinetics.test.ts';
 import { runGongfuWaterBalanceTestSuite } from './gongfuWaterBalance.test.ts';
+import { runLiuGenPaoWaterBalanceTestSuite } from './liuGenPaoWaterBalance.test.ts';
 
 async function main() {
   console.log('--- Запуск верификации предметных инвариантов Gongfu Cha Lab ---');
@@ -20,6 +21,8 @@ async function main() {
   const hydrationKineticsResults = await runHydrationKineticsTestSuite();
   console.log('--- Запуск верификации водного баланса Гунфу Ча (Этап 2B.3.1) ---');
   const gongfuWaterBalanceResults = await runGongfuWaterBalanceTestSuite();
+  console.log('--- Запуск верификации водного баланса Лю Гэнь Пао (Этап 2B.3.2.1) ---');
+  const liuGenPaoWaterBalanceResults = await runLiuGenPaoWaterBalanceTestSuite();
 
   const results = [
     ...domainResults,
@@ -27,6 +30,7 @@ async function main() {
     ...waterBalanceResults,
     ...hydrationKineticsResults,
     ...gongfuWaterBalanceResults,
+    ...liuGenPaoWaterBalanceResults,
   ];
   let failures = 0;
 
