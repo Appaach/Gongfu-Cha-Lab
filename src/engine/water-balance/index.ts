@@ -9,3 +9,4 @@ export * from './balance.ts';
 export * from './hydrationKinetics.ts';
 export * from './gongfuWaterBalance.ts';
 export * from './liuGenPaoWaterBalance.ts';
+export * from './lazyMugWaterBalance.ts';
