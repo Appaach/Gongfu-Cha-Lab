@@ -705,5 +705,202 @@ export async function runLiuGenPaoWaterBalanceTestSuite(): Promise<TestResult[]>
     );
   }
 
+  // 16. Строгая проверка температуры долива Лю Гэнь Пао (Этап 2B.3.2.1.1)
+  {
+    const suite = '16. Строгая проверка температуры долива Лю Гэнь Пао (Этап 2B.3.2.1.1)';
+
+    // 16.1 Отсутствие температуры (undefined) отклоняется с INVALID_WATER_TEMPERATURE
+    let caughtUndefined = false;
+    try {
+      const session = createTestLiuGenPaoSession({
+        steps: [
+          {
+            stepNumber: 1,
+            infusionTimeSeconds: 20.0,
+            addedWaterVolumeMl: 100.0,
+            addedWaterTemperatureC: undefined as any,
+            retainedLiquorFractionOfTotal: 0.4,
+          },
+        ],
+      });
+      simulateLiuGenPaoWaterBalance(session, SYNTHETIC_LIU_GEN_PAO_TEST_TEA, DEFAULT_TEST_OPTIONS);
+    } catch (err) {
+      if (err instanceof WaterBalanceValidationError && err.code === 'INVALID_WATER_TEMPERATURE') {
+        caughtUndefined = true;
+      }
+    }
+    assert(
+      suite,
+      'Пропущенная температура (undefined) отклоняется с INVALID_WATER_TEMPERATURE',
+      caughtUndefined
+    );
+
+    // 16.2 null отклоняется с INVALID_WATER_TEMPERATURE
+    let caughtNull = false;
+    try {
+      const session = createTestLiuGenPaoSession({
+        steps: [
+          {
+            stepNumber: 1,
+            infusionTimeSeconds: 20.0,
+            addedWaterVolumeMl: 100.0,
+            addedWaterTemperatureC: null as any,
+            retainedLiquorFractionOfTotal: 0.4,
+          },
+        ],
+      });
+      simulateLiuGenPaoWaterBalance(session, SYNTHETIC_LIU_GEN_PAO_TEST_TEA, DEFAULT_TEST_OPTIONS);
+    } catch (err) {
+      if (err instanceof WaterBalanceValidationError && err.code === 'INVALID_WATER_TEMPERATURE') {
+        caughtNull = true;
+      }
+    }
+    assert(
+      suite,
+      'Значение null для температуры отклоняется с INVALID_WATER_TEMPERATURE',
+      caughtNull
+    );
+
+    // 16.3 NaN и Infinity отклоняются с INVALID_WATER_TEMPERATURE
+    let caughtNaN = false;
+    let caughtInfinity = false;
+    try {
+      const session = createTestLiuGenPaoSession({
+        steps: [
+          {
+            stepNumber: 1,
+            infusionTimeSeconds: 20.0,
+            addedWaterVolumeMl: 100.0,
+            addedWaterTemperatureC: NaN,
+            retainedLiquorFractionOfTotal: 0.4,
+          },
+        ],
+      });
+      simulateLiuGenPaoWaterBalance(session, SYNTHETIC_LIU_GEN_PAO_TEST_TEA, DEFAULT_TEST_OPTIONS);
+    } catch (err) {
+      if (err instanceof WaterBalanceValidationError && err.code === 'INVALID_WATER_TEMPERATURE') {
+        caughtNaN = true;
+      }
+    }
+    try {
+      const session = createTestLiuGenPaoSession({
+        steps: [
+          {
+            stepNumber: 1,
+            infusionTimeSeconds: 20.0,
+            addedWaterVolumeMl: 100.0,
+            addedWaterTemperatureC: Infinity,
+            retainedLiquorFractionOfTotal: 0.4,
+          },
+        ],
+      });
+      simulateLiuGenPaoWaterBalance(session, SYNTHETIC_LIU_GEN_PAO_TEST_TEA, DEFAULT_TEST_OPTIONS);
+    } catch (err) {
+      if (err instanceof WaterBalanceValidationError && err.code === 'INVALID_WATER_TEMPERATURE') {
+        caughtInfinity = true;
+      }
+    }
+    assert(
+      suite,
+      'Значения NaN и Infinity для температуры отклоняются с INVALID_WATER_TEMPERATURE',
+      caughtNaN && caughtInfinity
+    );
+
+    // 16.4 Строковое значение ("95") отклоняется с INVALID_WATER_TEMPERATURE
+    let caughtString = false;
+    try {
+      const session = createTestLiuGenPaoSession({
+        steps: [
+          {
+            stepNumber: 1,
+            infusionTimeSeconds: 20.0,
+            addedWaterVolumeMl: 100.0,
+            addedWaterTemperatureC: '95' as any,
+            retainedLiquorFractionOfTotal: 0.4,
+          },
+        ],
+      });
+      simulateLiuGenPaoWaterBalance(session, SYNTHETIC_LIU_GEN_PAO_TEST_TEA, DEFAULT_TEST_OPTIONS);
+    } catch (err) {
+      if (err instanceof WaterBalanceValidationError && err.code === 'INVALID_WATER_TEMPERATURE') {
+        caughtString = true;
+      }
+    }
+    assert(
+      suite,
+      'Строковое значение ("95") для температуры отклоняется с INVALID_WATER_TEMPERATURE',
+      caughtString
+    );
+
+    // 16.5 Граничные значения 0 °C и 100 °C являются валидными и успешно рассчитываются
+    let boundariesAccepted = false;
+    {
+      const session0 = createTestLiuGenPaoSession({
+        steps: [
+          {
+            stepNumber: 1,
+            infusionTimeSeconds: 20.0,
+            addedWaterVolumeMl: 100.0,
+            addedWaterTemperatureC: 0.0,
+            retainedLiquorFractionOfTotal: 0.4,
+          },
+        ],
+      });
+      const session100 = createTestLiuGenPaoSession({
+        steps: [
+          {
+            stepNumber: 1,
+            infusionTimeSeconds: 20.0,
+            addedWaterVolumeMl: 100.0,
+            addedWaterTemperatureC: 100.0,
+            retainedLiquorFractionOfTotal: 0.4,
+          },
+        ],
+      });
+      const balance0 = simulateLiuGenPaoWaterBalance(session0, SYNTHETIC_LIU_GEN_PAO_TEST_TEA, DEFAULT_TEST_OPTIONS);
+      const balance100 = simulateLiuGenPaoWaterBalance(session100, SYNTHETIC_LIU_GEN_PAO_TEST_TEA, DEFAULT_TEST_OPTIONS);
+      boundariesAccepted = balance0.status === 'calculated' && balance100.status === 'calculated';
+    }
+    assert(
+      suite,
+      'Граничные значения температуры 0 °C и 100 °C принимаются и рассчитываются успешно',
+      boundariesAccepted
+    );
+
+    // 16.6 Некорректная температура на шаге 2 после unknown_hydration_profile на шаге 1 отклоняется до блокировки
+    let caughtOnBlockedStep = false;
+    try {
+      const blockedSession = createTestLiuGenPaoSession({
+        teaId: REFERENCE_TEAS[0].id,
+        steps: [
+          {
+            stepNumber: 1,
+            infusionTimeSeconds: 20.0,
+            addedWaterVolumeMl: 100.0,
+            addedWaterTemperatureC: 95.0,
+            retainedLiquorFractionOfTotal: 0.4,
+          },
+          {
+            stepNumber: 2,
+            infusionTimeSeconds: 20.0,
+            addedWaterVolumeMl: 60.0,
+            addedWaterTemperatureC: -5.0,
+            retainedLiquorFractionOfTotal: 0.4,
+          },
+        ],
+      });
+      simulateLiuGenPaoWaterBalance(blockedSession, REFERENCE_TEAS[0], DEFAULT_TEST_OPTIONS);
+    } catch (err) {
+      if (err instanceof WaterBalanceValidationError && err.code === 'INVALID_WATER_TEMPERATURE') {
+        caughtOnBlockedStep = true;
+      }
+    }
+    assert(
+      suite,
+      'Невалидная температура на шаге 2 при unknown на шаге 1 строго отклоняется до ветки блокировки',
+      caughtOnBlockedStep
+    );
+  }
+
   return results;
 }

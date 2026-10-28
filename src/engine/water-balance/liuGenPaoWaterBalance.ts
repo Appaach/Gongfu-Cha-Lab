@@ -388,13 +388,13 @@ export function simulateLiuGenPaoWaterBalance(
       );
     }
     if (
-      step.addedWaterTemperatureC !== undefined &&
-      (!Number.isFinite(step.addedWaterTemperatureC) ||
-        step.addedWaterTemperatureC < 0 ||
-        step.addedWaterTemperatureC > 100)
+      typeof step.addedWaterTemperatureC !== 'number' ||
+      !Number.isFinite(step.addedWaterTemperatureC) ||
+      step.addedWaterTemperatureC < 0 ||
+      step.addedWaterTemperatureC > 100
     ) {
       throw new WaterBalanceValidationError(
-        `Температура доливаемой воды на шаге ${step.stepNumber} должна быть в диапазоне жидкой фазы [0, 100] °C: ${step.addedWaterTemperatureC} °C.`,
+        `Температура доливаемой воды на шаге ${step.stepNumber} должна быть конечным числом в диапазоне жидкой фазы [0, 100] °C: ${step.addedWaterTemperatureC} °C.`,
         'INVALID_WATER_TEMPERATURE',
         `session.steps[${i}].addedWaterTemperatureC`,
         step.addedWaterTemperatureC
