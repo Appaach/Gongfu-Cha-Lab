@@ -275,6 +275,14 @@ export function simulateGongfuWaterBalance(
       session.leafMassGrams
     );
   }
+  if (!session.vessel || !Number.isFinite(session.vessel.volumeMl) || session.vessel.volumeMl <= 0) {
+    throw new WaterBalanceValidationError(
+      `Вместимость заварочного сосуда должна быть строго положительным числом (> 0 мл): ${session.vessel?.volumeMl} мл.`,
+      'INVALID_VESSEL_VOLUME',
+      'session.vessel.volumeMl',
+      session.vessel?.volumeMl
+    );
+  }
   if (!session.steps || !Array.isArray(session.steps) || session.steps.length === 0) {
     throw new WaterBalanceValidationError(
       'Сессия Гунфу Ча должна содержать хотя бы один шаг заваривания.',
@@ -398,6 +406,25 @@ export function simulateGongfuWaterBalance(
     const freeWaterBeforeUptakeMassGrams = carriedFreeWaterGrams + freshWaterMassGrams;
     const freeWaterBeforeUptakeVolumeMl = convertMassToVolume(freeWaterBeforeUptakeMassGrams, density);
     const absorbedWaterBeforeStepGrams = accumulatedAbsorbedGrams;
+
+    // Контроль вместимости сосуда до расчёта поглощения воды (Этап 2B.3.1.1)
+    const vesselCapacityMl = session.vessel.volumeMl;
+    if (freshWaterVolumeMl > vesselCapacityMl + 1e-9) {
+      throw new WaterBalanceValidationError(
+        `Объём свежей заливки на шаге ${step.stepNumber} (${freshWaterVolumeMl} мл) превышает номинальную вместимость сосуда (${vesselCapacityMl} мл).`,
+        'VESSEL_CAPACITY_EXCEEDED',
+        `session.steps[${i}].pourWaterVolumeMl`,
+        freshWaterVolumeMl
+      );
+    }
+    if (freeWaterBeforeUptakeVolumeMl > vesselCapacityMl + 1e-9) {
+      throw new WaterBalanceValidationError(
+        `Суммарный объём свободной воды перед поглощением на шаге ${step.stepNumber} (${freeWaterBeforeUptakeVolumeMl} мл: свежая заливка ${freshWaterVolumeMl} мл + перенесённый остаток ${initialCarriedFreeWaterVolumeMl} мл) превышает вместимость сосуда (${vesselCapacityMl} мл).`,
+        'VESSEL_CAPACITY_EXCEEDED',
+        'freeWaterBeforeUptakeVolumeMl',
+        freeWaterBeforeUptakeVolumeMl
+      );
+    }
 
     // Шаг 1: Расчёт кинетики гидратации
     const kineticsResult = stepHydrationKinetics({

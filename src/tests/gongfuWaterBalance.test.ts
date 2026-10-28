@@ -454,5 +454,165 @@ export async function runGongfuWaterBalanceTestSuite(): Promise<TestResult[]> {
     );
   }
 
+  // Набор 11: Контроль номинальной вместимости заварочного сосуда (Этап 2B.3.1.1)
+  {
+    const suite = '11. Контроль номинальной вместимости заварочного сосуда (Этап 2B.3.1.1)';
+
+    // 11.1 Свежий пролив больше вместимости сосуда отклоняется до поглощения
+    let caughtFreshOverflow = false;
+    let freshOverflowCode = '';
+    try {
+      const overflowSession = createTestGongfuSession({
+        vessel: { ...DEFAULT_VESSELS[0], volumeMl: 110.0 }, // 110 мл
+        steps: [
+          { stepNumber: 1, infusionTimeSeconds: 15.0, pourWaterVolumeMl: 120.0, waterTemperatureC: 95.0 },
+        ],
+      });
+      simulateGongfuWaterBalance(overflowSession, SYNTHETIC_TEST_TEA, DEFAULT_TEST_OPTIONS);
+    } catch (err) {
+      if (err instanceof WaterBalanceValidationError) {
+        caughtFreshOverflow = true;
+        freshOverflowCode = err.code;
+      }
+    }
+    assert(
+      suite,
+      'Свежий пролив больше вместимости сосуда (120 мл > 110 мл) отклоняется с VESSEL_CAPACITY_EXCEEDED',
+      caughtFreshOverflow && freshOverflowCode === 'VESSEL_CAPACITY_EXCEEDED'
+    );
+
+    // 11.2 Свежий пролив плюс перенесённый капиллярный остаток больше вместимости сосуда отклоняется до гидратации
+    let caughtSumOverflow = false;
+    let sumOverflowCode = '';
+    try {
+      // Сосуд 110 мл, капиллярный остаток 6 мл
+      // Шаг 1: 100 мл (остаток после слива 6 мл)
+      // Шаг 2: 106 мл (106 мл <= 110 мл, но 106 + 6 = 112 мл > 110 мл)
+      const sumOverflowSession = createTestGongfuSession({
+        vessel: { ...DEFAULT_VESSELS[0], volumeMl: 110.0 },
+        steps: [
+          { stepNumber: 1, infusionTimeSeconds: 15.0, pourWaterVolumeMl: 100.0, waterTemperatureC: 95.0 },
+          { stepNumber: 2, infusionTimeSeconds: 20.0, pourWaterVolumeMl: 106.0, waterTemperatureC: 95.0 },
+        ],
+      });
+      simulateGongfuWaterBalance(sumOverflowSession, SYNTHETIC_TEST_TEA, DEFAULT_TEST_OPTIONS);
+    } catch (err) {
+      if (err instanceof WaterBalanceValidationError) {
+        caughtSumOverflow = true;
+        sumOverflowCode = err.code;
+      }
+    }
+    assert(
+      suite,
+      'Сумма свежей заливки и перенесённого остатка (106 + 6 = 112 мл > 110 мл) отклоняется с VESSEL_CAPACITY_EXCEEDED',
+      caughtSumOverflow && sumOverflowCode === 'VESSEL_CAPACITY_EXCEEDED'
+    );
+
+    // 11.3 Объём, в точности равный вместимости сосуда, успешно принимается
+    let exactCapacityPassed = false;
+    try {
+      // Сосуд 110 мл, капиллярный остаток 6 мл
+      // Шаг 1: ровно 110.0 мл (110.0 === 110.0)
+      // Шаг 2: ровно 104.0 мл (104.0 + 6.0 = 110.0 === 110.0)
+      const exactSession = createTestGongfuSession({
+        vessel: { ...DEFAULT_VESSELS[0], volumeMl: 110.0 },
+        steps: [
+          { stepNumber: 1, infusionTimeSeconds: 15.0, pourWaterVolumeMl: 110.0, waterTemperatureC: 95.0 },
+          { stepNumber: 2, infusionTimeSeconds: 20.0, pourWaterVolumeMl: 104.0, waterTemperatureC: 95.0 },
+        ],
+      });
+      const res = simulateGongfuWaterBalance(exactSession, SYNTHETIC_TEST_TEA, DEFAULT_TEST_OPTIONS);
+      if (
+        res.status === 'calculated' &&
+        res.steps.length === 2 &&
+        Math.abs((res.steps[0].freeWaterBeforeUptakeVolumeMl ?? 0) - 110.0) < 1e-9 &&
+        Math.abs((res.steps[1].freeWaterBeforeUptakeVolumeMl ?? 0) - 110.0) < 1e-9
+      ) {
+        exactCapacityPassed = true;
+      }
+    } catch {
+      exactCapacityPassed = false;
+    }
+    assert(
+      suite,
+      'Объём свободной воды, в точности равный вместимости сосуда (110.0 мл), успешно принимается',
+      exactCapacityPassed
+    );
+
+    // 11.4 Случай, когда кинетика поглотила бы избыток, но начальное переполнение строго отклоняется
+    let caughtKineticOverflowBeforeUptake = false;
+    let kineticOverflowCode = '';
+    try {
+      // Навеска 10.0 г, влагоёмкость 2.5 г/г -> максимальное поглощение 25.0 г воды.
+      // Сосуд 110 мл. Заливка 115 мл.
+      // Если бы поглощение рассчитывалось ДО проверки переполнения, свободная вода стала бы
+      // 115 - поглощение (~10-25 мл) = 90-105 мл < 110 мл.
+      // Но проверка ОБЯЗАНА сработать ДО поглощения и строго выбросить ошибку!
+      const absorbingSession = createTestGongfuSession({
+        leafMassGrams: 10.0,
+        vessel: { ...DEFAULT_VESSELS[0], volumeMl: 110.0 },
+        steps: [
+          { stepNumber: 1, infusionTimeSeconds: 60.0, pourWaterVolumeMl: 115.0, waterTemperatureC: 95.0 },
+        ],
+      });
+      simulateGongfuWaterBalance(absorbingSession, SYNTHETIC_TEST_TEA, DEFAULT_TEST_OPTIONS);
+    } catch (err) {
+      if (err instanceof WaterBalanceValidationError) {
+        caughtKineticOverflowBeforeUptake = true;
+        kineticOverflowCode = err.code;
+      }
+    }
+    assert(
+      suite,
+      'Начальное переполнение (115 мл > 110 мл) строго отклоняется до расчёта поглощения навеской',
+      caughtKineticOverflowBeforeUptake && kineticOverflowCode === 'VESSEL_CAPACITY_EXCEEDED'
+    );
+
+    // 11.5 Валидация недопустимой вместимости сосуда (INVALID_VESSEL_VOLUME)
+    let caughtZeroVessel = false;
+    try {
+      const zeroVesselSession = createTestGongfuSession({
+        vessel: { ...DEFAULT_VESSELS[0], volumeMl: 0 },
+      });
+      simulateGongfuWaterBalance(zeroVesselSession, SYNTHETIC_TEST_TEA, DEFAULT_TEST_OPTIONS);
+    } catch (err) {
+      if (err instanceof WaterBalanceValidationError && err.code === 'INVALID_VESSEL_VOLUME') {
+        caughtZeroVessel = true;
+      }
+    }
+    assert(
+      suite,
+      'Нулевая или отрицательная вместимость сосуда отклоняется с INVALID_VESSEL_VOLUME',
+      caughtZeroVessel
+    );
+
+    // 11.6 Сохранение цепочки блокировки (blocked_by_unknown_prior_state) без подстановки 0
+    let blockedChainPreserved = false;
+    {
+      const blockedSession = createTestGongfuSession({
+        teaId: REFERENCE_TEAS[0].id,
+        vessel: { ...DEFAULT_VESSELS[0], volumeMl: 110.0 },
+        steps: [
+          { stepNumber: 1, infusionTimeSeconds: 15.0, pourWaterVolumeMl: 100.0, waterTemperatureC: 95.0 },
+          { stepNumber: 2, infusionTimeSeconds: 20.0, pourWaterVolumeMl: 100.0, waterTemperatureC: 95.0 },
+        ],
+      });
+      const blockedBalance = simulateGongfuWaterBalance(blockedSession, REFERENCE_TEAS[0], DEFAULT_TEST_OPTIONS);
+      if (
+        blockedBalance.status === 'unknown_hydration_profile' &&
+        blockedBalance.steps[0].status === 'unknown_hydration_profile' &&
+        blockedBalance.steps[1].status === 'blocked_by_unknown_prior_state' &&
+        blockedBalance.steps[1].freeWaterBeforeUptakeVolumeMl === null
+      ) {
+        blockedChainPreserved = true;
+      }
+    }
+    assert(
+      suite,
+      'Неизвестное предыдущее состояние сохраняет цепочку blocked_by_unknown_prior_state без подстановки 0',
+      blockedChainPreserved
+    );
+  }
+
   return results;
 }
