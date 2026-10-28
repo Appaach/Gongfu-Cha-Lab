@@ -10,6 +10,7 @@ import {
   WaterBalanceValidationError,
 } from '../engine/water-balance/index.ts';
 import { createValueWithOrigin, ValueWithOrigin } from '../domain/tea/types.ts';
+import { validateTeaSample } from '../domain/tea/validation.ts';
 import { REFERENCE_TEAS } from '../data/referenceTeas.ts';
 import type { TestResult } from './domain.test.ts';
 
@@ -66,6 +67,16 @@ export async function runHydrationKineticsTestSuite(): Promise<TestResult[]> {
     // 1.5 Уже насыщенный лист
     const reqSaturated = calculateSaturationHydrationRequested(5.0, 12.5, 2.5, 0.05, 30.0);
     assert(suite, 'Для полностью насыщенного листа (m_abs = m_max) поглощение строго 0 г', reqSaturated === 0);
+
+    // 1.6 Численная устойчивость при сверхмалом k * dt (expm1 предотвращает катастрофическое сокращение)
+    // k = 1e-12 с^-1, dt = 1 с -> k*dt = 1e-12 (представимо в double, но 1 - exp(-x) теряет точность)
+    const reqTiny = calculateSaturationHydrationRequested(5.0, 0.0, 2.0, 1e-12, 1.0);
+    // Ожидаемое значение: 10 * 1e-12 = 1e-11 г
+    assert(
+      suite,
+      'При малом k*dt (1e-12) поглощение не округляется в 0 благодаря -Math.expm1(-k*dt)',
+      reqTiny > 0 && Math.abs(reqTiny - 1e-11) < 1e-15
+    );
   }
 
   // Набор 2: Физические свойства (монотонность, асимптотика, свойство полугруппы)
@@ -127,7 +138,7 @@ export async function runHydrationKineticsTestSuite(): Promise<TestResult[]> {
       'literature',
       's^-1',
       {
-        citation: 'Zhang et al., 2021. Moisture sorption kinetics of tea leaves. J Food Sci.',
+        citation: 'SYNTHETIC_TEST_LITERATURE_REF_RATE_K: синтетическая тестовая ссылка для верификации метаданных',
       }
     );
 
@@ -136,7 +147,7 @@ export async function runHydrationKineticsTestSuite(): Promise<TestResult[]> {
       'literature',
       'г/г',
       {
-        citation: 'ISO 1572: Tea — Determination of moisture content and absorption.',
+        citation: 'SYNTHETIC_TEST_LITERATURE_REF_CAPACITY: синтетическая тестовая ссылка для верификации метаданных',
       }
     );
 
@@ -257,7 +268,7 @@ export async function runHydrationKineticsTestSuite(): Promise<TestResult[]> {
       2.5,
       'literature',
       'г/г',
-      { citation: 'ISO 1572' }
+      { citation: 'SYNTHETIC_TEST_LITERATURE_REF_CAPACITY' }
     );
 
     // 4.1 Неизвестная константа скорости гидратации
@@ -346,6 +357,28 @@ export async function runHydrationKineticsTestSuite(): Promise<TestResult[]> {
       'Все 6 эталонных чаёв в REFERENCE_TEAS имеют статус unknown и возвращают unknown_hydration_profile',
       allReferenceTeasUnknown
     );
+
+    // 4.4 Аудит известного параметра при неизвестном втором параметре (Part A2)
+    const uncitedCapacity: ValueWithOrigin<number> = createValueWithOrigin(
+      2.5,
+      'literature',
+      'г/г'
+    );
+    const resAuditKnownWithUnknownK = stepHydrationKinetics({
+      dryLeafMassGrams: 5.0,
+      currentAbsorbedWaterGrams: 0.0,
+      availableFreeWaterGrams: 100.0,
+      maxAbsorptionRatio: uncitedCapacity,
+      hydrationRateConstant: unknownRateConst,
+      durationSeconds: 15.0,
+    });
+    assert(
+      suite,
+      'При неизвестном k аудит известной литературы без цитаты попадает в diagnostics',
+      resAuditKnownWithUnknownK.status === 'unknown_hydration_profile' &&
+        resAuditKnownWithUnknownK.diagnostics.some((d) => d.includes('citation') || d.includes('библиографическая')) &&
+        resAuditKnownWithUnknownK.diagnostics.some((d) => d.includes('Unknown ≠ 0'))
+    );
   }
 
   // Набор 5: Валидация входных данных и единиц измерения
@@ -353,13 +386,15 @@ export async function runHydrationKineticsTestSuite(): Promise<TestResult[]> {
     const suite = '5. Валидация входных данных и размерностей (строгие ошибки)';
 
     const validCapacity: ValueWithOrigin<number> = createValueWithOrigin(2.5, 'literature', 'г/г', {
-      citation: 'Test',
+      citation: 'SYNTHETIC_TEST_LITERATURE_REF_CAPACITY',
     });
 
     // 5.1 Отрицательное k
     let caughtNegativeK = false;
     try {
-      const negativeRate = createValueWithOrigin(-0.05, 'literature', 's^-1', { citation: 'Test' });
+      const negativeRate = createValueWithOrigin(-0.05, 'literature', 's^-1', {
+        citation: 'SYNTHETIC_TEST_LITERATURE_REF_RATE',
+      });
       stepHydrationKinetics({
         dryLeafMassGrams: 5.0,
         currentAbsorbedWaterGrams: 0.0,
@@ -378,7 +413,9 @@ export async function runHydrationKineticsTestSuite(): Promise<TestResult[]> {
     // 5.2 Отрицательное время контакта dt
     let caughtNegativeDt = false;
     try {
-      const validRate = createValueWithOrigin(0.05, 'literature', 's^-1', { citation: 'Test' });
+      const validRate = createValueWithOrigin(0.05, 'literature', 's^-1', {
+        citation: 'SYNTHETIC_TEST_LITERATURE_REF_RATE',
+      });
       stepHydrationKinetics({
         dryLeafMassGrams: 5.0,
         currentAbsorbedWaterGrams: 0.0,
@@ -397,7 +434,9 @@ export async function runHydrationKineticsTestSuite(): Promise<TestResult[]> {
     // 5.3 Недопустимая единица измерения скорости (например, мл или мин)
     let caughtInvalidUnit = false;
     try {
-      const invalidUnitRate = createValueWithOrigin(0.05, 'literature', 'мл', { citation: 'Test' });
+      const invalidUnitRate = createValueWithOrigin(0.05, 'literature', 'мл', {
+        citation: 'SYNTHETIC_TEST_LITERATURE_REF_RATE',
+      });
       stepHydrationKinetics({
         dryLeafMassGrams: 5.0,
         currentAbsorbedWaterGrams: 0.0,
@@ -414,7 +453,9 @@ export async function runHydrationKineticsTestSuite(): Promise<TestResult[]> {
     assert(suite, 'Несовместимая единица измерения k (мл) отклоняется с INVALID_UNIT', caughtInvalidUnit);
 
     // 5.4 Допустимые альтернативные единицы скорости: с^-1 (кириллица), 1/s, 1/с
-    const cyrillicRate = createValueWithOrigin(0.05, 'literature', 'с^-1', { citation: 'Test' });
+    const cyrillicRate = createValueWithOrigin(0.05, 'literature', 'с^-1', {
+      citation: 'SYNTHETIC_TEST_LITERATURE_REF_RATE',
+    });
     const resCyrillic = stepHydrationKinetics({
       dryLeafMassGrams: 5.0,
       currentAbsorbedWaterGrams: 0.0,
@@ -424,6 +465,40 @@ export async function runHydrationKineticsTestSuite(): Promise<TestResult[]> {
       durationSeconds: 10.0,
     });
     assert(suite, 'Кириллическая единица "с^-1" успешно принимается', resCyrillic.status === 'calculated');
+
+    // 5.5 Валидация образца чая (validateTeaSample): NaN, Infinity и неверные единицы (Part A3)
+    const teaWithNaN = {
+      ...REFERENCE_TEAS[0],
+      hydrationRateConstantPerSecond: createValueWithOrigin(NaN, 'measured', 's^-1'),
+    };
+    const issuesNaN = validateTeaSample(teaWithNaN);
+    assert(
+      suite,
+      'validateTeaSample: NaN в hydrationRateConstantPerSecond формирует ошибку валидации',
+      issuesNaN.some((i) => i.field === 'hydrationRateConstantPerSecond' && i.severity === 'error')
+    );
+
+    const teaWithInf = {
+      ...REFERENCE_TEAS[0],
+      hydrationRateConstantPerSecond: createValueWithOrigin(Infinity, 'measured', 's^-1'),
+    };
+    const issuesInf = validateTeaSample(teaWithInf);
+    assert(
+      suite,
+      'validateTeaSample: Infinity в hydrationRateConstantPerSecond формирует ошибку валидации',
+      issuesInf.some((i) => i.field === 'hydrationRateConstantPerSecond' && i.severity === 'error')
+    );
+
+    const teaWithBadUnit = {
+      ...REFERENCE_TEAS[0],
+      hydrationRateConstantPerSecond: createValueWithOrigin(0.05, 'measured', 'ml/s'),
+    };
+    const issuesBadUnit = validateTeaSample(teaWithBadUnit);
+    assert(
+      suite,
+      'validateTeaSample: несовместимая единица ml/s формирует ошибку валидации',
+      issuesBadUnit.some((i) => i.field === 'hydrationRateConstantPerSecond' && i.severity === 'error')
+    );
   }
 
   // Набор 6: Аудит происхождения данных и диагностика
@@ -432,7 +507,9 @@ export async function runHydrationKineticsTestSuite(): Promise<TestResult[]> {
 
     // 6.1 Литература без цитаты
     const litNoCitation = createValueWithOrigin(0.05, 'literature', 's^-1');
-    const capWithCitation = createValueWithOrigin(2.5, 'literature', 'г/г', { citation: 'ISO 1572' });
+    const capWithCitation = createValueWithOrigin(2.5, 'literature', 'г/г', {
+      citation: 'SYNTHETIC_TEST_LITERATURE_REF_CAPACITY',
+    });
     const resLitNoCite = stepHydrationKinetics({
       dryLeafMassGrams: 5.0,
       currentAbsorbedWaterGrams: 0.0,

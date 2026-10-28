@@ -161,13 +161,17 @@ export function calculateSaturationHydrationRequested(
   }
 
   const capacityDeficit = maxAbsorbed - currentAbsorbedWaterGrams;
-  const saturationFactor = 1 - Math.exp(-hydrationRateConstantPerSecond * durationSeconds);
+  // Численно устойчивое вычисление (1 - exp(-k * dt)) через -Math.expm1(-k * dt)
+  // предотвращает потерю значимости при малых положительных значениях (k * dt)
+  const saturationFactor = -Math.expm1(-hydrationRateConstantPerSecond * durationSeconds);
 
   return capacityDeficit * saturationFactor;
 }
 
 /**
- * Проверка метрологического происхождения параметра и формирование диагностических сообщений.
+ * Проверка наличия и полноты метаданных метрологического происхождения параметра.
+ * Примечание: функция проверяет наличие обязательных полей происхождения,
+ * но не подтверждает подлинность самих библиографических источников.
  */
 function auditParamProvenance(
   param: ValueWithOrigin<number>,
@@ -261,7 +265,16 @@ export function stepHydrationKinetics(
     );
   }
 
-  // 2. Проверка наличия и определенности размерных кинетических параметров
+  // 2. Аудит происхождения всех переданных параметров ДО проверки их полноты
+  // Позволяет зафиксировать замечания к известным метаданным, даже если другой параметр неизвестен
+  if (hydrationRateConstant) {
+    auditParamProvenance(hydrationRateConstant, 'hydrationRateConstant', diagnostics);
+  }
+  if (maxAbsorptionRatio) {
+    auditParamProvenance(maxAbsorptionRatio, 'maxAbsorptionRatio', diagnostics);
+  }
+
+  // 3. Проверка наличия и определённости размерных кинетических параметров
   const hasRateConstant =
     hydrationRateConstant !== null &&
     hydrationRateConstant !== undefined &&
@@ -344,11 +357,7 @@ export function stepHydrationKinetics(
     );
   }
 
-  // 4. Аудит происхождения данных
-  auditParamProvenance(hydrationRateConstant, 'hydrationRateConstant', diagnostics);
-  auditParamProvenance(maxAbsorptionRatio, 'maxAbsorptionRatio', diagnostics);
-
-  // 5. Аналитический расчёт запрошенного кинетикой поглощения
+  // 4. Аналитический расчёт запрошенного кинетикой поглощения
   const requestedAbsorptionGrams = calculateSaturationHydrationRequested(
     dryLeafMassGrams,
     currentAbsorbedWaterGrams,

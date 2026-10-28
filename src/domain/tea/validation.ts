@@ -12,6 +12,18 @@ export interface ValidationIssue {
 }
 
 /**
+ * Допустимые размерности для размерной константы скорости гидратации чайного листа.
+ */
+export const VALID_HYDRATION_RATE_UNITS = new Set([
+  's^-1',
+  'с^-1', // кириллица
+  '1/s',
+  '1/с',
+  's⁻¹',
+  'с⁻¹',
+]);
+
+/**
  * Валидация физических границ характеристик чайного листа.
  * Гарантирует, что введенные пользователем параметры не нарушают законы физики.
  */
@@ -45,8 +57,20 @@ export function validateTeaSample(tea: TeaSample): ValidationIssue[] {
   // Проверка размерной константы скорости гидратации (с⁻¹)
   if (tea.hydrationRateConstantPerSecond && isKnownValue(tea.hydrationRateConstantPerSecond)) {
     const val = tea.hydrationRateConstantPerSecond.value;
-    if (val < 0) {
-      issues.push({ field: 'hydrationRateConstantPerSecond', message: 'Константа скорости гидратации не может быть отрицательной', severity: 'error' });
+    if (!Number.isFinite(val) || val < 0) {
+      issues.push({
+        field: 'hydrationRateConstantPerSecond',
+        message: 'Константа скорости гидратации должна быть конечным неотрицательным числом (>= 0 с⁻¹)',
+        severity: 'error',
+      });
+    }
+    const unit = tea.hydrationRateConstantPerSecond.unit?.trim().toLowerCase();
+    if (!unit || !VALID_HYDRATION_RATE_UNITS.has(unit)) {
+      issues.push({
+        field: 'hydrationRateConstantPerSecond',
+        message: `Недопустимая единица измерения константы скорости гидратации: '${tea.hydrationRateConstantPerSecond.unit}'. Ожидается 's^-1' или 'с^-1'.`,
+        severity: 'error',
+      });
     }
   }
 
