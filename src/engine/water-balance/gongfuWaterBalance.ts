@@ -369,7 +369,20 @@ export function simulateGongfuWaterBalance(
     const freshWaterVolumeMl = step.pourWaterVolumeMl;
     const freshWaterMassGrams = convertVolumeToMass(freshWaterVolumeMl, density);
 
-    // Если предыдущий шаг не определил своё состояние, дальнейший расчёт численно блокируется
+    // Независимая проверка свежей заливки на непревышение номинальной вместимости сосуда
+    // Должна выполняться для каждого шага до ветки blocked_by_unknown_prior_state (Этап 2B.3.1.2)
+    const vesselCapacityMl = session.vessel.volumeMl;
+    if (freshWaterVolumeMl > vesselCapacityMl + 1e-9) {
+      throw new WaterBalanceValidationError(
+        `Объём свежей заливки на шаге ${step.stepNumber} (${freshWaterVolumeMl} мл) превышает номинальную вместимость сосуда (${vesselCapacityMl} мл).`,
+        'VESSEL_CAPACITY_EXCEEDED',
+        `session.steps[${i}].pourWaterVolumeMl`,
+        freshWaterVolumeMl
+      );
+    }
+
+    // Если предыдущий шаг не определил своё состояние, дальнейший расчёт численно блокируется.
+    // При этом неизвестный остаток не подменяется нулём, а суммарный объём не вычисляется (Unknown ≠ 0).
     if (isBlocked) {
       stepDiagnostics.push(blockReason);
       stepResults.push({
@@ -407,16 +420,7 @@ export function simulateGongfuWaterBalance(
     const freeWaterBeforeUptakeVolumeMl = convertMassToVolume(freeWaterBeforeUptakeMassGrams, density);
     const absorbedWaterBeforeStepGrams = accumulatedAbsorbedGrams;
 
-    // Контроль вместимости сосуда до расчёта поглощения воды (Этап 2B.3.1.1)
-    const vesselCapacityMl = session.vessel.volumeMl;
-    if (freshWaterVolumeMl > vesselCapacityMl + 1e-9) {
-      throw new WaterBalanceValidationError(
-        `Объём свежей заливки на шаге ${step.stepNumber} (${freshWaterVolumeMl} мл) превышает номинальную вместимость сосуда (${vesselCapacityMl} мл).`,
-        'VESSEL_CAPACITY_EXCEEDED',
-        `session.steps[${i}].pourWaterVolumeMl`,
-        freshWaterVolumeMl
-      );
-    }
+    // Контроль суммарного объёма свободной воды перед поглощением (Этап 2B.3.1.1)
     if (freeWaterBeforeUptakeVolumeMl > vesselCapacityMl + 1e-9) {
       throw new WaterBalanceValidationError(
         `Суммарный объём свободной воды перед поглощением на шаге ${step.stepNumber} (${freeWaterBeforeUptakeVolumeMl} мл: свежая заливка ${freshWaterVolumeMl} мл + перенесённый остаток ${initialCarriedFreeWaterVolumeMl} мл) превышает вместимость сосуда (${vesselCapacityMl} мл).`,

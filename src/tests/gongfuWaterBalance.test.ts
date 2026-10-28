@@ -614,5 +614,95 @@ export async function runGongfuWaterBalanceTestSuite(): Promise<TestResult[]> {
     );
   }
 
+  // Набор 12: Независимая проверка свежей заливки при неизвестном состоянии (Этап 2B.3.1.2)
+  {
+    const suite = '12. Независимая проверка свежей заливки при неизвестном состоянии (Этап 2B.3.1.2)';
+
+    // 12.1 Предыдущий шаг имеет неизвестную гидратацию, а на следующем шаге свежая заливка превышает вместимость сосуда
+    let caughtOverflowOnBlockedStep = false;
+    let overflowCode = '';
+    try {
+      const sessionWithUnknownStep1 = createTestGongfuSession({
+        teaId: REFERENCE_TEAS[0].id,
+        vessel: { ...DEFAULT_VESSELS[0], volumeMl: 110.0 },
+        steps: [
+          { stepNumber: 1, infusionTimeSeconds: 15.0, pourWaterVolumeMl: 100.0, waterTemperatureC: 95.0 }, // допустимо (<= 110 мл), статус unknown_hydration_profile
+          { stepNumber: 2, infusionTimeSeconds: 20.0, pourWaterVolumeMl: 150.0, waterTemperatureC: 95.0 }, // переполнение (> 110 мл)
+        ],
+      });
+      simulateGongfuWaterBalance(sessionWithUnknownStep1, REFERENCE_TEAS[0], DEFAULT_TEST_OPTIONS);
+    } catch (err) {
+      if (err instanceof WaterBalanceValidationError) {
+        caughtOverflowOnBlockedStep = true;
+        overflowCode = err.code;
+      }
+    }
+    assert(
+      suite,
+      'Предыдущий шаг имеет unknown_hydration_profile, но переполнение свежей заливки шага 2 (150 > 110 мл) отклоняется с VESSEL_CAPACITY_EXCEEDED',
+      caughtOverflowOnBlockedStep && overflowCode === 'VESSEL_CAPACITY_EXCEEDED'
+    );
+
+    // 12.2 Предыдущий шаг имеет неизвестную капиллярную ёмкость, а свежая заливка шага 2 превышает вместимость
+    let caughtOverflowOnCapillaryUnknown = false;
+    let capillaryOverflowCode = '';
+    try {
+      const sessionWithUnknownCap = createTestGongfuSession({
+        vessel: { ...DEFAULT_VESSELS[0], volumeMl: 110.0 },
+        steps: [
+          { stepNumber: 1, infusionTimeSeconds: 15.0, pourWaterVolumeMl: 100.0, waterTemperatureC: 95.0 },
+          { stepNumber: 2, infusionTimeSeconds: 20.0, pourWaterVolumeMl: 130.0, waterTemperatureC: 95.0 },
+        ],
+      });
+      simulateGongfuWaterBalance(sessionWithUnknownCap, SYNTHETIC_TEST_TEA, {
+        capillaryHoldUpCapacityMl: null, // капиллярный остаток неизвестен
+      });
+    } catch (err) {
+      if (err instanceof WaterBalanceValidationError) {
+        caughtOverflowOnCapillaryUnknown = true;
+        capillaryOverflowCode = err.code;
+      }
+    }
+    assert(
+      suite,
+      'Предыдущий шаг имеет unknown_capillary_hold_up, но переполнение свежей заливки шага 2 (130 > 110 мл) отклоняется с VESSEL_CAPACITY_EXCEEDED',
+      caughtOverflowOnCapillaryUnknown && capillaryOverflowCode === 'VESSEL_CAPACITY_EXCEEDED'
+    );
+
+    // 12.3 Предыдущий шаг имеет неизвестное состояние, но свежая заливка следующего шага сама по себе допустима
+    let validBlockedChain = false;
+    {
+      const validBlockedSession = createTestGongfuSession({
+        teaId: REFERENCE_TEAS[0].id,
+        vessel: { ...DEFAULT_VESSELS[0], volumeMl: 110.0 },
+        steps: [
+          { stepNumber: 1, infusionTimeSeconds: 15.0, pourWaterVolumeMl: 100.0, waterTemperatureC: 95.0 },
+          { stepNumber: 2, infusionTimeSeconds: 20.0, pourWaterVolumeMl: 95.0, waterTemperatureC: 95.0 },
+        ],
+      });
+      const balance = simulateGongfuWaterBalance(validBlockedSession, REFERENCE_TEAS[0], DEFAULT_TEST_OPTIONS);
+      const s2 = balance.steps[1];
+      if (
+        balance.status === 'unknown_hydration_profile' &&
+        balance.steps[0].status === 'unknown_hydration_profile' &&
+        s2.status === 'blocked_by_unknown_prior_state' &&
+        s2.freshWaterVolumeMl === 95.0 &&
+        s2.initialCarriedFreeWaterVolumeMl === null &&
+        s2.freeWaterBeforeUptakeVolumeMl === null &&
+        s2.freeWaterBeforeUptakeMassGrams === null &&
+        s2.absorbedWaterBeforeStepGrams === null &&
+        s2.drainedLiquorVolumeMl === null &&
+        s2.retainedLiquorVolumeMl === null
+      ) {
+        validBlockedChain = true;
+      }
+    }
+    assert(
+      suite,
+      'При допустимой свежей заливке (95 <= 110 мл) шаг 2 сохраняет blocked_by_unknown_prior_state и null для зависимых масс',
+      validBlockedChain
+    );
+  }
+
   return results;
 }
