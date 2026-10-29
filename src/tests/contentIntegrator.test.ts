@@ -321,6 +321,7 @@ export async function runContentIntegratorTestSuite(): Promise<TestResult[]> {
       {
         ...validWetBaseState,
         freeWaterMassGrams: null,
+        liquidTemperatureC: null,
       },
       gaiwanProfile,
       undefined,
@@ -436,13 +437,16 @@ export async function runContentIntegratorTestSuite(): Promise<TestResult[]> {
 
     const eInitial =
       cContents * validWetBaseState.contentTemperatureC! +
-      cVessel * validWetBaseState.vesselTemperatureC;
+      cVessel * validWetBaseState.vesselTemperatureC!;
 
     const eFinal =
-      cContents * resEnergy.finalState.contentTemperatureC! +
-      cVessel * resEnergy.finalState.vesselTemperatureC;
+      cContents * resEnergy.finalState.contentTemperatureC!;
+    const eFinalTotal =
+      resEnergy.finalState.vesselTemperatureC !== null
+        ? eFinal + cVessel * resEnergy.finalState.vesselTemperatureC
+        : NaN;
 
-    const energyResidualJoules = Math.abs(eFinal - eInitial);
+    const energyResidualJoules = Math.abs(eFinalTotal - eInitial);
 
     assert(
       suite,
@@ -482,7 +486,7 @@ export async function runContentIntegratorTestSuite(): Promise<TestResult[]> {
     assert(
       suite,
       'Температура стенок остаётся неизменной (80.0 °C)',
-      Math.abs(resIsolated.finalState.vesselTemperatureC - 80.0) < 1e-12
+      Math.abs((resIsolated.finalState.vesselTemperatureC ?? 0) - 80.0) < 1e-12
     );
   }
 
@@ -503,17 +507,17 @@ export async function runContentIntegratorTestSuite(): Promise<TestResult[]> {
 
     const minAllowed = Math.min(
       validWetBaseState.contentTemperatureC!,
-      validWetBaseState.vesselTemperatureC,
+      validWetBaseState.vesselTemperatureC!,
       validWetBaseState.ambientTemperatureC
     );
     const maxAllowed = Math.max(
       validWetBaseState.contentTemperatureC!,
-      validWetBaseState.vesselTemperatureC,
+      validWetBaseState.vesselTemperatureC!,
       validWetBaseState.ambientTemperatureC
     );
 
     const allPointsBounded = resBounds.curvePoints.every((pt) => {
-      if (pt.contentTemperatureC === null) return false;
+      if (pt.contentTemperatureC === null || pt.vesselTemperatureC === null) return false;
       return (
         pt.contentTemperatureC >= minAllowed - 1e-4 &&
         pt.contentTemperatureC <= maxAllowed + 1e-4 &&
@@ -687,6 +691,7 @@ export async function runContentIntegratorTestSuite(): Promise<TestResult[]> {
       {
         ...validWetBaseState,
         contentTemperatureC: null,
+        liquidTemperatureC: null,
       },
       gaiwanProfile,
       undefined,
@@ -730,6 +735,330 @@ export async function runContentIntegratorTestSuite(): Promise<TestResult[]> {
       legacyRes.finalState.liquidTemperatureC !== null &&
         legacyRes.finalState.liquidTemperatureC < 95.0 &&
         legacyRes.finalState.liquidTemperatureC > 22.0
+    );
+  }
+
+  // =========================================================================
+  // 14. Достоверность заблокированного состояния и валидация метаданных (Этап 2B.3.3.2.1)
+  // =========================================================================
+  {
+    const suite = '14. Достоверность blocked state и метаданные (Этап 2B.3.3.2.1)';
+
+    function expectThermalError(name: string, fn: () => void, code?: string) {
+      try {
+        fn();
+        assert(suite, `${name} (ожидалось исключение)`, false, 'Исключение не выброшено');
+      } catch (err) {
+        const isExpected = err instanceof ThermalValidationError;
+        const codeMatches = code ? (err as ThermalValidationError).code === code : true;
+        assert(
+          suite,
+          name,
+          isExpected && codeMatches,
+          `Ожидалась ThermalValidationError с кодом ${code}, получено: ${err}`
+        );
+      }
+    }
+
+    // 14.1. Заблокированный интервал положительной длительности (durationSeconds > 0)
+    // обнуляет vesselTemperatureC, minVesselTempC, maxVesselTempC и очищает curvePoints
+    const resBlockedPosDuration = integrateContentThermalStep(
+      {
+        ...validWetBaseState,
+        leafSpecificHeatCapacity: UNKNOWN_LEAF_SPECIFIC_HEAT,
+      },
+      gaiwanProfile,
+      undefined,
+      10.0
+    );
+
+    assert(
+      suite,
+      'Заблокированный интервал (duration > 0): vesselTemperatureC === null',
+      resBlockedPosDuration.finalState.vesselTemperatureC === null
+    );
+    assert(
+      suite,
+      'Заблокированный интервал (duration > 0): minVesselTempC === null',
+      resBlockedPosDuration.minVesselTempC === null
+    );
+    assert(
+      suite,
+      'Заблокированный интервал (duration > 0): maxVesselTempC === null',
+      resBlockedPosDuration.maxVesselTempC === null
+    );
+    assert(
+      suite,
+      'Заблокированный интервал (duration > 0): curvePoints пустой массив []',
+      Array.isArray(resBlockedPosDuration.curvePoints) && resBlockedPosDuration.curvePoints.length === 0
+    );
+
+    // 14.2. Заблокированный интервал нулевой длительности (durationSeconds === 0)
+    // сохраняет начальную температуру сосуда, так как физическое время не шло
+    const resBlockedZeroDuration = integrateContentThermalStep(
+      {
+        ...validWetBaseState,
+        leafSpecificHeatCapacity: UNKNOWN_LEAF_SPECIFIC_HEAT,
+      },
+      gaiwanProfile,
+      undefined,
+      0.0
+    );
+
+    assert(
+      suite,
+      'Заблокированный интервал (duration = 0): vesselTemperatureC сохраняется',
+      resBlockedZeroDuration.finalState.vesselTemperatureC === validWetBaseState.vesselTemperatureC
+    );
+    assert(
+      suite,
+      'Заблокированный интервал (duration = 0): minVesselTempC сохраняется',
+      resBlockedZeroDuration.minVesselTempC === validWetBaseState.vesselTemperatureC
+    );
+    assert(
+      suite,
+      'Заблокированный интервал (duration = 0): maxVesselTempC сохраняется',
+      resBlockedZeroDuration.maxVesselTempC === validWetBaseState.vesselTemperatureC
+    );
+    assert(
+      suite,
+      'Заблокированный интервал (duration = 0): curvePoints содержит начальную точку',
+      resBlockedZeroDuration.curvePoints.length === 1 &&
+        resBlockedZeroDuration.curvePoints[0].vesselTemperatureC === validWetBaseState.vesselTemperatureC
+    );
+
+    // 14.3. Передача vesselTemperatureC === null вызывает blocked_by_unknown_prior_state
+    const resBlockedNullVessel = integrateContentThermalStep(
+      {
+        ...validWetBaseState,
+        vesselTemperatureC: null,
+      },
+      gaiwanProfile,
+      undefined,
+      10.0
+    );
+
+    assert(
+      suite,
+      'При initialState.vesselTemperatureC === null статус blocked_by_unknown_prior_state',
+      resBlockedNullVessel.status === 'blocked_by_unknown_prior_state'
+    );
+    assert(
+      suite,
+      'При initialState.vesselTemperatureC === null выходной vesselTemperatureC === null',
+      resBlockedNullVessel.finalState.vesselTemperatureC === null
+    );
+
+    // 14.4. Валидация elapsedSeconds (отрицательный, NaN, Infinity, не-число)
+    expectThermalError('Отрицательный elapsedSeconds (-5)', () =>
+      integrateContentThermalStep(
+        { ...validWetBaseState, elapsedSeconds: -5 },
+        gaiwanProfile,
+        undefined,
+        10.0
+      ),
+      'INVALID_ELAPSED_SECONDS'
+    );
+
+    expectThermalError('NaN elapsedSeconds', () =>
+      integrateContentThermalStep(
+        { ...validWetBaseState, elapsedSeconds: NaN },
+        gaiwanProfile,
+        undefined,
+        10.0
+      ),
+      'INVALID_ELAPSED_SECONDS'
+    );
+
+    expectThermalError('Infinity elapsedSeconds', () =>
+      integrateContentThermalStep(
+        { ...validWetBaseState, elapsedSeconds: Infinity },
+        gaiwanProfile,
+        undefined,
+        10.0
+      ),
+      'INVALID_ELAPSED_SECONDS'
+    );
+
+    expectThermalError('Не-числовой elapsedSeconds ("0")', () =>
+      integrateContentThermalStep(
+        { ...validWetBaseState, elapsedSeconds: '0' as any },
+        gaiwanProfile,
+        undefined,
+        10.0
+      ),
+      'INVALID_ELAPSED_SECONDS'
+    );
+
+    // 14.5. Переполнение elapsedSeconds + durationSeconds
+    expectThermalError('Переполнение elapsedSeconds + durationSeconds', () =>
+      integrateContentThermalStep(
+        { ...validWetBaseState, elapsedSeconds: Number.MAX_SAFE_INTEGER },
+        gaiwanProfile,
+        undefined,
+        10.0
+      ),
+      'ELAPSED_SECONDS_OVERFLOW'
+    );
+
+    // 14.6. liquidTemperatureC !== null при freeWaterMassGrams === 0
+    expectThermalError('liquidTemperatureC !== null при freeWaterMassGrams === 0', () =>
+      integrateContentThermalStep(
+        {
+          ...validDrainedBaseState,
+          liquidTemperatureC: 85.0,
+        },
+        gaiwanProfile,
+        {
+          conductanceDrainedContentVesselWPerK: ZERO_DRAINED_G,
+          conductanceDrainedContentAmbientWPerK: ZERO_DRAINED_G,
+        },
+        10.0
+      ),
+      'LIQUID_TEMPERATURE_FREE_WATER_MISMATCH'
+    );
+
+    // 14.7. liquidTemperatureC !== null при freeWaterMassGrams === null
+    expectThermalError('liquidTemperatureC !== null при freeWaterMassGrams === null', () =>
+      integrateContentThermalStep(
+        {
+          ...validWetBaseState,
+          freeWaterMassGrams: null,
+          liquidTemperatureC: 92.0,
+        },
+        gaiwanProfile,
+        undefined,
+        10.0
+      ),
+      'LIQUID_TEMPERATURE_FREE_WATER_MISMATCH'
+    );
+
+    // 14.8. liquidTemperatureC !== null при contentTemperatureC === null
+    expectThermalError('liquidTemperatureC !== null при contentTemperatureC === null', () =>
+      integrateContentThermalStep(
+        {
+          ...validWetBaseState,
+          contentTemperatureC: null,
+          liquidTemperatureC: 92.0,
+        },
+        gaiwanProfile,
+        undefined,
+        10.0
+      ),
+      'LIQUID_TEMPERATURE_CONTENT_MISMATCH'
+    );
+
+    // 14.9. Рассогласование или null в liquidTemperatureC при наличии свободной воды
+    expectThermalError('liquidTemperatureC === null при наличии свободной воды', () =>
+      integrateContentThermalStep(
+        {
+          ...validWetBaseState,
+          freeWaterMassGrams: 50.0,
+          contentTemperatureC: 90.0,
+          liquidTemperatureC: null,
+        },
+        gaiwanProfile,
+        undefined,
+        10.0
+      ),
+      'LIQUID_TEMPERATURE_CONTENT_MISMATCH'
+    );
+
+    expectThermalError('liquidTemperatureC не совпадает с contentTemperatureC при наличии свободной воды', () =>
+      integrateContentThermalStep(
+        {
+          ...validWetBaseState,
+          freeWaterMassGrams: 50.0,
+          contentTemperatureC: 90.0,
+          liquidTemperatureC: 80.0,
+        },
+        gaiwanProfile,
+        undefined,
+        10.0
+      ),
+      'LIQUID_TEMPERATURE_CONTENT_MISMATCH'
+    );
+
+    // 14.10. drainedConductance, переданная как null, число или не-объект
+    expectThermalError('drainedOptions === null', () =>
+      integrateContentThermalStep(
+        validDrainedBaseState,
+        gaiwanProfile,
+        null as any,
+        10.0
+      ),
+      'INVALID_DRAINED_OPTIONS_OBJECT'
+    );
+
+    expectThermalError('conductanceDrainedContentVesselWPerK === null', () =>
+      integrateContentThermalStep(
+        validDrainedBaseState,
+        gaiwanProfile,
+        {
+          conductanceDrainedContentVesselWPerK: null as any,
+          conductanceDrainedContentAmbientWPerK: ZERO_DRAINED_G,
+        },
+        10.0
+      ),
+      'INVALID_CONDUCTANCE_OBJECT'
+    );
+
+    expectThermalError('conductanceDrainedContentAmbientWPerK как число', () =>
+      integrateContentThermalStep(
+        validDrainedBaseState,
+        gaiwanProfile,
+        {
+          conductanceDrainedContentVesselWPerK: ZERO_DRAINED_G,
+          conductanceDrainedContentAmbientWPerK: 0.5 as any,
+        },
+        10.0
+      ),
+      'INVALID_CONDUCTANCE_OBJECT'
+    );
+
+    // 14.11. drainedConductance с origin: 'unknown' и числовым value
+    expectThermalError('drainedConductance с origin: "unknown" и числовым value', () =>
+      integrateContentThermalStep(
+        validDrainedBaseState,
+        gaiwanProfile,
+        {
+          conductanceDrainedContentVesselWPerK: {
+            origin: 'unknown',
+            value: 0.5 as any,
+            unit: 'W/K',
+          },
+          conductanceDrainedContentAmbientWPerK: ZERO_DRAINED_G,
+        },
+        10.0
+      ),
+      'INVALID_CONDUCTANCE_ORIGIN_VALUE_MISMATCH'
+    );
+
+    // 14.12. Корректный unknown G возвращает статус unknown_drained_conductance
+    const resUnknownDrained = integrateContentThermalStep(
+      validDrainedBaseState,
+      gaiwanProfile,
+      {
+        conductanceDrainedContentVesselWPerK: UNKNOWN_DRAINED_G,
+        conductanceDrainedContentAmbientWPerK: ZERO_DRAINED_G,
+      },
+      10.0
+    );
+
+    assert(
+      suite,
+      'Корректный unknown G возвращает статус unknown_drained_conductance',
+      resUnknownDrained.status === 'unknown_drained_conductance'
+    );
+    assert(
+      suite,
+      'Корректный unknown G при duration > 0 возвращает vesselTemperatureC === null',
+      resUnknownDrained.finalState.vesselTemperatureC === null
+    );
+    assert(
+      suite,
+      'Корректный unknown G при duration > 0 возвращает curvePoints: []',
+      Array.isArray(resUnknownDrained.curvePoints) && resUnknownDrained.curvePoints.length === 0
     );
   }
 

@@ -231,8 +231,8 @@ export interface ContentThermalState {
    * или contentTemperatureC === null, значение строго равно null.
    */
   readonly liquidTemperatureC: number | null;
-  /** Средняя температура стенок заварочного сосуда (°C) */
-  readonly vesselTemperatureC: number;
+  /** Средняя температура стенок заварочного сосуда (°C). null, если состояние стенок неизвестно или заблокировано. */
+  readonly vesselTemperatureC: number | null;
   /** Температура окружающего воздуха (°C) */
   readonly ambientTemperatureC: number;
   /** Удельная изобарная теплоёмкость листа с метаданными происхождения */
@@ -266,8 +266,8 @@ export interface ContentThermalSimulationPoint {
   readonly contentTemperatureC: number | null;
   /** Температура свободной жидкости (°C). null, если свободная вода отсутствует (freeWaterMassGrams === 0). */
   readonly liquidTemperatureC: number | null;
-  /** Температура стенок сосуда (°C). */
-  readonly vesselTemperatureC: number;
+  /** Температура стенок сосуда (°C). null, если не рассчитана. */
+  readonly vesselTemperatureC: number | null;
   /** Масса свободной воды в сосуде в данный момент (г). */
   readonly freeWaterMassGrams: number | null;
 }
@@ -295,10 +295,10 @@ export interface ContentIntegrationStepResult {
   readonly minLiquidTempC: number | null;
   /** Максимальная зафиксированная температура свободной жидкости (°C) */
   readonly maxLiquidTempC: number | null;
-  /** Минимальная зафиксированная температура стенок сосуда (°C) */
-  readonly minVesselTempC: number;
-  /** Максимальная зафиксированная температура стенок сосуда (°C) */
-  readonly maxVesselTempC: number;
+  /** Минимальная зафиксированная температура стенок сосуда (°C). null при неизвестном/заблокированном состоянии. */
+  readonly minVesselTempC: number | null;
+  /** Максимальная зафиксированная температура стенок сосуда (°C). null при неизвестном/заблокированном состоянии. */
+  readonly maxVesselTempC: number | null;
   /** Пояснение причины блокировки при status !== 'calculated' */
   readonly reason?: string;
   /** Предупреждения численного интегратора */

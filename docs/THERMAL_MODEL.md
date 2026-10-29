@@ -215,10 +215,29 @@ $$|1 + \lambda \Delta t + \frac{1}{2} (\lambda \Delta t)^2| < 1 \implies \Delta 
 - При $G_{cv} = G_{ca} = G_{va} = 0$ система устойчива при любом $dt$ ($dt_{\text{crit}} = \infty$), температуры узлов строго постоянны.
 - Предиктор и корректор контролируют термодинамические границы $T \in [\min(T_c, T_v, T_a) - 10^{-4}, \max(T_c, T_v, T_a) + 10^{-4}]$.
 
-### 8.4. Политика неопределённости (Unknown ≠ 0)
-- `blocked_by_unknown_prior_state`: если $T_{\text{contents}}$ в начальном состоянии равна `null`;
-- `unknown_water_masses`: если $m_{\text{abs}}$ или $m_{\text{free}}$ равны `null`;
-- `unknown_leaf_specific_heat`: если удельная теплоёмкость листа unknown или `null`;
-- `unknown_drained_conductance`: если при $m_{\text{free}} = 0$ не заданы или неизвестны проводимости мокрого листа.
-- Legacy-модель `integrateThermalStep` сохранена без изменений для автономного жидкостного расчёта.
+### 8.5. Достоверность заблокированного состояния и инварианты метаданных (Этап 2B.3.3.2.1)
+
+- **Nullable-типизация температуры сосуда:** Поля `ContentThermalState.vesselTemperatureC`, `ContentThermalSimulationPoint.vesselTemperatureC`, а также экстремумы `ContentIntegrationStepResult.minVesselTempC` и `maxVesselTempC` типизированы как `number | null`.
+- **Строгое обнуление температуры стенок при блокировке (`durationSeconds > 0`):**
+  - При отсутствии обязательных входных данных (неизвестное предшествующее состояние, неизвестные массы воды, неизвестная теплоёмкость листа, неизвестные проводимости осушенного содержимого) динамика теплообмена на интервале не рассчитывается.
+  - Сохранение начальной температуры стенок при $t > 0$ запрещено как ложно положительное знание. Конечное состояние `finalState.vesselTemperatureC` строго равно `null`, экстремумы `minVesselTempC` и `maxVesselTempC` равны `null`.
+  - Массив `curvePoints` возвращается строго пустым (`[]`), предотвращая генерацию фиктивных траекторий.
+- **Инвариант нулевой длительности (`durationSeconds === 0`):**
+  - При нулевой длительности физическое время не шло, теплоперенос не происходил. Если начальная температура сосуда была известна, она детерминированно сохраняется в `finalState.vesselTemperatureC` и в начальной точке кривой.
+- **Каскадное распространение неопределённости:** Передача `initialState.vesselTemperatureC === null` в последующий шаг интегрирования штатно блокирует расчёт со статусом `blocked_by_unknown_prior_state`.
+- **Строгая валидация временной шкалы:**
+  - `initialState.elapsedSeconds` проверяется на конечность, числовой тип и неотрицательность ($\ge 0$). При нарушении выбрасывается `ThermalValidationError` с кодом `'INVALID_ELAPSED_SECONDS'`.
+  - Сумма `initialState.elapsedSeconds + durationSeconds` проверяется на непревышение `Number.MAX_SAFE_INTEGER` и сохранение конечности (`'ELAPSED_SECONDS_OVERFLOW'`).
+- **Инварианты согласованности производной температуры жидкости `liquidTemperatureC`:**
+  - При `freeWaterMassGrams === 0` или `freeWaterMassGrams === null`: свободная жидкость отсутствует либо не определена, поэтому `liquidTemperatureC` обязана быть строго `null`. Передача числа отклоняется с кодом `'LIQUID_TEMPERATURE_FREE_WATER_MISMATCH'`.
+  - При `contentTemperatureC === null`: температура содержимого неизвестна, поэтому `liquidTemperatureC` не может иметь числового значения и обязана быть строго `null` (`'LIQUID_TEMPERATURE_CONTENT_MISMATCH'`).
+  - При `freeWaterMassGrams > 0` и `contentTemperatureC !== null`: в модели единого сосредоточенного узла жидкость обязана иметь известную температуру, совпадающую с `contentTemperatureC` (с допуском $10^{-4}$ °C). Несовпадение или `null` отклоняются с кодом `'LIQUID_TEMPERATURE_CONTENT_MISMATCH'`.
+- **Контракт валидации проводимостей осушенного содержимого `drainedOptions`:**
+  - Отсутствие объекта или отдельных свойств (`undefined`) расценивается как отсутствие данных и блокирует расчёт со статусом `unknown_drained_conductance`.
+  - Передача `null` или примитива вместо объекта `drainedOptions` вызывает `'INVALID_DRAINED_OPTIONS_OBJECT'`.
+  - Передача не-объекта или `null` в качестве свойства проводимости вызывает `'INVALID_CONDUCTANCE_OBJECT'`.
+  - Поля `origin` и `unit` строго валидируются на допустимость (`'INVALID_CONDUCTANCE_ORIGIN'`, `'INVALID_CONDUCTANCE_UNIT'`).
+  - **Инвариант `origin: 'unknown'`:** Если свойство имеет `origin: 'unknown'`, его `value` обязано быть строго `null`. Числовые значения отклоняются с `'INVALID_CONDUCTANCE_ORIGIN_VALUE_MISMATCH'`.
+  - Числовые значения известных проводимостей обязаны быть конечными неотрицательными ($\ge 0$) числами (`'INVALID_CONDUCTANCE'`).
+
 

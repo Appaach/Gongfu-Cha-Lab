@@ -565,6 +565,44 @@
     13. Регрессионная совместимость legacy `integrateThermalStep`.
   - Общий объём тестов проекта увеличился с 470 до 513 проверок, 100% тестов проходят успешно.
 
+###### Этап 2B.3.3.2.1: Достоверность blocked state в contentIntegrator (ВЫПОЛНЕНО)
+**Цель:** Устранение возможности представления неизвестной конечной температуры сосуда как известного числового значения после заблокированного теплового интервала, введение nullable-типизации температуры стенок, усиление runtime-валидации производного поля `liquidTemperatureC`, временной метки состояния `elapsedSeconds` и проводимостей осушенного содержимого `drainedOptions`.
+
+- [x] **Nullable-типизация температуры сосуда (`src/engine/thermal/types.ts`)**:
+  - `ContentThermalState.vesselTemperatureC`: `number | null`;
+  - `ContentThermalSimulationPoint.vesselTemperatureC`: `number | null`;
+  - `ContentIntegrationStepResult.minVesselTempC` и `maxVesselTempC`: `number | null`.
+- [x] **Достоверность заблокированного состояния (`src/engine/thermal/contentIntegrator.ts`)**:
+  - При блокировке шага интегрирования (`durationSeconds > 0`): `finalState.vesselTemperatureC`, `minVesselTempC` и `maxVesselTempC` строго возвращаются как `null` (запрещено сохранение начальной температуры как ложно известного значения);
+  - Массив `curvePoints` при `durationSeconds > 0` строго пуст (`[]`) без генерации фиктивных точек;
+  - При `durationSeconds === 0` (физическое время не шло): начальная температура сосуда сохраняется, формируется одна исходная точка траектории;
+  - При передаче `initialState.vesselTemperatureC === null` расчёт штатно блокируется со статусом `'blocked_by_unknown_prior_state'`.
+- [x] **Строгая runtime-валидация шкалы времени и производной температуры**:
+  - Валидация `initialState.elapsedSeconds`: проверка на конечность, тип и неотрицательность (`'INVALID_ELAPSED_SECONDS'`);
+  - Валидация переполнения `elapsedSeconds + durationSeconds > Number.MAX_SAFE_INTEGER` (`'ELAPSED_SECONDS_OVERFLOW'`);
+  - Инвариант `liquidTemperatureC`: при `freeWaterMassGrams === 0` или `freeWaterMassGrams === null` поле обязано быть строго `null` (`'LIQUID_TEMPERATURE_FREE_WATER_MISMATCH'`);
+  - Инвариант `liquidTemperatureC`: при `contentTemperatureC === null` поле обязано быть строго `null` (`'LIQUID_TEMPERATURE_CONTENT_MISMATCH'`);
+  - Инвариант `liquidTemperatureC`: при `freeWaterMassGrams > 0` и `contentTemperatureC !== null` поле обязано совпадать с `contentTemperatureC` (`'LIQUID_TEMPERATURE_CONTENT_MISMATCH'`).
+- [x] **Контракт валидации `drainedOptions`**:
+  - `undefined` трактуется как неизвестность и блокирует расчёт (`'unknown_drained_conductance'`);
+  - `null` или не-объект отклоняется с кодом `'INVALID_DRAINED_OPTIONS_OBJECT'`;
+  - Свойства проводимостей валидируются на объектный тип (`'INVALID_CONDUCTANCE_OBJECT'`), происхождение (`'INVALID_CONDUCTANCE_ORIGIN'`), единицы измерения (`'INVALID_CONDUCTANCE_UNIT'`), согласованность `origin: 'unknown'` и `value === null` (`'INVALID_CONDUCTANCE_ORIGIN_VALUE_MISMATCH'`) и неотрицательность (`'INVALID_CONDUCTANCE'`).
+- [x] **Автоматизированное регрессионное тестирование (`src/tests/contentIntegrator.test.ts`)**:
+  - Добавлен 14-й тестовый набор **14. Достоверность blocked state и метаданные (Этап 2B.3.3.2.1)** (27 новых проверок):
+    1. Заблокированный интервал с `durationSeconds > 0` возвращает `vesselTemperatureC === null`, `minVesselTempC === null`, `maxVesselTempC === null`, `curvePoints: []`;
+    2. Заблокированный интервал с `durationSeconds === 0` сохраняет начальную температуру сосуда;
+    3. Передача `vesselTemperatureC === null` вызывает `blocked_by_unknown_prior_state`;
+    4. Отрицательный, NaN, Infinity и нечисловой `elapsedSeconds` отклоняются с кодом `INVALID_ELAPSED_SECONDS`;
+    5. Переполнение `elapsedSeconds + durationSeconds` отклоняется с кодом `ELAPSED_SECONDS_OVERFLOW`;
+    6. Не-null `liquidTemperatureC` при `freeWaterMassGrams === 0` отклоняется с кодом `LIQUID_TEMPERATURE_FREE_WATER_MISMATCH`;
+    7. Не-null `liquidTemperatureC` при `freeWaterMassGrams === null` отклоняется с кодом `LIQUID_TEMPERATURE_FREE_WATER_MISMATCH`;
+    8. Не-null `liquidTemperatureC` при `contentTemperatureC === null` отклоняется с кодом `LIQUID_TEMPERATURE_CONTENT_MISMATCH`;
+    9. `null` или несовпадающий `liquidTemperatureC` при наличии свободной воды отклоняется с кодом `LIQUID_TEMPERATURE_CONTENT_MISMATCH`;
+    10. `null` или примитив в `drainedOptions` и свойствах проводимости отклоняются с кодами `INVALID_DRAINED_OPTIONS_OBJECT` и `INVALID_CONDUCTANCE_OBJECT`;
+    11. `origin: 'unknown'` с числовым `value` в проводимости отклоняется с кодом `INVALID_CONDUCTANCE_ORIGIN_VALUE_MISMATCH`;
+    12. Корректный unknown G возвращает `unknown_drained_conductance` с `vesselTemperatureC === null` и `curvePoints: []`.
+  - Общий объём тестов проекта увеличился с 513 до 540 проверок, 100% тестов проходят успешно.
+
 ###### Последующие подэтапы тепловой связки:
 - [ ] **Этап 2B.3.3.3:** Интеграция методов заваривания (Гунфу Ча, Лю Гэнь Пао, Lazy Mug) с результатами водного баланса и межпроливными паузами.
 
