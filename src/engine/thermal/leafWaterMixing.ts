@@ -304,11 +304,22 @@ export function solveLeafWaterThermalMixing(
     );
   }
 
+  // 8.3. Проверка согласованности origin и value:
+  // При origin === 'unknown' значение value обязано быть строго null (Unknown ≠ 0)
+  if (cpLeafObj.origin === 'unknown' && cpLeafObj.value !== null) {
+    throw new ThermalValidationError(
+      `Несогласованность метаданных: при origin === 'unknown' значение value обязано быть строго null (получено: ${cpLeafObj.value}).`,
+      'INVALID_LEAF_SPECIFIC_HEAT_ORIGIN_VALUE_MISMATCH',
+      'leafSpecificHeatCapacity.value',
+      cpLeafObj.value
+    );
+  }
+
   // Перевод масс воды в килограммы
   const mAddedKg = params.addedWaterMassGrams * 0.001;
   const addedWaterHeatCapacityJPerK = mAddedKg * SPECIFIC_HEAT_WATER_J_PER_KG_K;
 
-  // 8.3. Проверка неизвестного значения удельной теплоёмкости листа (Unknown ≠ 0)
+  // 8.4. Проверка неизвестного значения удельной теплоёмкости листа (Unknown ≠ 0)
   if (
     cpLeafObj.origin === 'unknown' ||
     cpLeafObj.value === null ||
