@@ -10,6 +10,7 @@ import { runHydrationKineticsTestSuite } from './hydrationKinetics.test.ts';
 import { runGongfuWaterBalanceTestSuite } from './gongfuWaterBalance.test.ts';
 import { runLiuGenPaoWaterBalanceTestSuite } from './liuGenPaoWaterBalance.test.ts';
 import { runLazyMugWaterBalanceTestSuite } from './lazyMugWaterBalance.test.ts';
+import { runLeafWaterMixingTestSuite } from './leafWaterMixing.test.ts';
 
 async function main() {
   console.log('--- Запуск верификации предметных инвариантов Gongfu Cha Lab ---');
@@ -26,6 +27,8 @@ async function main() {
   const liuGenPaoWaterBalanceResults = await runLiuGenPaoWaterBalanceTestSuite();
   console.log('--- Запуск верификации водного баланса Lazy Mug (Этап 2B.3.2.2) ---');
   const lazyMugWaterBalanceResults = await runLazyMugWaterBalanceTestSuite();
+  console.log('--- Запуск верификации смешения чайного листа и воды (Этап 2B.3.3.1) ---');
+  const leafWaterMixingResults = await runLeafWaterMixingTestSuite();
 
   const results = [
     ...domainResults,
@@ -35,6 +38,7 @@ async function main() {
     ...gongfuWaterBalanceResults,
     ...liuGenPaoWaterBalanceResults,
     ...lazyMugWaterBalanceResults,
+    ...leafWaterMixingResults,
   ];
   let failures = 0;
 

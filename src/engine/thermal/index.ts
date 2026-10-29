@@ -9,3 +9,4 @@ export * from './errors.ts';
 export * from './profiles.ts';
 export * from './integrator.ts';
 export * from './engine.ts';
+export * from './leafWaterMixing.ts';
