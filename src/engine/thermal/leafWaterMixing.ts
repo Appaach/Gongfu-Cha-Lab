@@ -3,12 +3,23 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ValueWithOrigin } from '../../domain/tea/types.ts';
+import { ValueWithOrigin, DataOriginType } from '../../domain/tea/types.ts';
 import { SPECIFIC_HEAT_WATER_J_PER_KG_K } from './constants.ts';
 import {
   ThermalRangeError,
   ThermalValidationError,
 } from './errors.ts';
+
+/**
+ * Допустимые значения статуса происхождения данных удельной теплоёмкости листа.
+ */
+export const VALID_DATA_ORIGINS = new Set<DataOriginType>([
+  'measured',
+  'literature',
+  'model_profile',
+  'user_defined',
+  'unknown',
+]);
 
 /**
  * Допустимые единицы измерения удельной теплоёмкости сухого чайного листа.
@@ -21,7 +32,7 @@ export const VALID_SPECIFIC_HEAT_UNITS = new Set<string>([
   'Дж/кг/К',
   'J/(kg·K)',
   'J/(kg*K)',
-  'J/(kg K)',
+  'J/(kg К)',
   'J/kg/K',
   'J/(kg.K)',
   'J/(kg·k)',
@@ -49,9 +60,11 @@ export interface LeafWaterThermalMixingParams {
 
   /**
    * Удельная изобарная теплоёмкость сухого листа с метаданными происхождения, Дж/(кг·К).
+   * Обязательный объект ValueWithOrigin<number>.
+   * При неизвестной теплоёмкости передаётся объект с origin: 'unknown' и value: null.
    * Должна строго соответствовать принятой массовой базе leafMassGrams.
    */
-  readonly leafSpecificHeatCapacity: ValueWithOrigin<number> | null | undefined;
+  readonly leafSpecificHeatCapacity: ValueWithOrigin<number>;
 
   /**
    * Масса воды, поглощённой клеточной матрицей листа к моменту смешения, г (>= 0).
@@ -262,20 +275,47 @@ export function solveLeafWaterThermalMixing(
     );
   }
 
+  const cpLeafObj = params.leafSpecificHeatCapacity;
+
+  // 8. Строгая валидация метаданных объекта (origin и unit) ДО проверки значения
+  // 8.1. Проверка статуса происхождения (origin)
+  if (
+    typeof cpLeafObj.origin !== 'string' ||
+    !VALID_DATA_ORIGINS.has(cpLeafObj.origin as DataOriginType)
+  ) {
+    throw new ThermalValidationError(
+      `Недопустимый статус происхождения удельной теплоёмкости листа: "${cpLeafObj.origin}". Ожидается один из допустимых типов DataOriginType: measured, literature, model_profile, user_defined, unknown.`,
+      'INVALID_LEAF_SPECIFIC_HEAT_ORIGIN',
+      'leafSpecificHeatCapacity.origin',
+      cpLeafObj.origin
+    );
+  }
+
+  // 8.2. Проверка единицы измерения (unit) с обязательной проверкой строкового типа до trim()
+  if (
+    typeof cpLeafObj.unit !== 'string' ||
+    !VALID_SPECIFIC_HEAT_UNITS.has(cpLeafObj.unit.trim())
+  ) {
+    throw new ThermalValidationError(
+      `Недопустимая единица измерения удельной теплоёмкости листа: ${typeof cpLeafObj.unit === 'string' ? `"${cpLeafObj.unit}"` : cpLeafObj.unit}. Ожидается Дж/(кг·К) или J/(kg·K).`,
+      'INVALID_SPECIFIC_HEAT_UNIT',
+      'leafSpecificHeatCapacity.unit',
+      cpLeafObj.unit
+    );
+  }
+
   // Перевод масс воды в килограммы
   const mAddedKg = params.addedWaterMassGrams * 0.001;
   const addedWaterHeatCapacityJPerK = mAddedKg * SPECIFIC_HEAT_WATER_J_PER_KG_K;
 
-  // 8. Проверка происхождения и определённости удельной теплоёмкости листа
-  const cpLeafObj = params.leafSpecificHeatCapacity;
-
+  // 8.3. Проверка неизвестного значения удельной теплоёмкости листа (Unknown ≠ 0)
   if (
     cpLeafObj.origin === 'unknown' ||
     cpLeafObj.value === null ||
     cpLeafObj.value === undefined
   ) {
     diagnostics.push(
-      'Удельная теплоёмкость чайного листа неизвестна (origin: unknown, Unknown ≠ 0).'
+      `Удельная теплоёмкость чайного листа неизвестна (origin: ${cpLeafObj.origin}, Unknown ≠ 0).`
     );
     diagnostics.push(
       'Расчёт адиабатического смешения заблокирован: зависимые теплоёмкости и температура возвращены как null.'
@@ -295,7 +335,7 @@ export function solveLeafWaterThermalMixing(
     };
   }
 
-  // Если происхождение известно, значение обязано быть валидным числом > 0
+  // 8.4. Если происхождение известно, значение обязано быть валидным числом > 0
   if (
     typeof cpLeafObj.value !== 'number' ||
     !Number.isFinite(cpLeafObj.value) ||
@@ -306,16 +346,6 @@ export function solveLeafWaterThermalMixing(
       'INVALID_LEAF_SPECIFIC_HEAT_VALUE',
       'leafSpecificHeatCapacity.value',
       cpLeafObj.value
-    );
-  }
-
-  // Проверка единиц измерения
-  if (!cpLeafObj.unit || !VALID_SPECIFIC_HEAT_UNITS.has(cpLeafObj.unit.trim())) {
-    throw new ThermalValidationError(
-      `Недопустимая единица измерения удельной теплоёмкости листа: "${cpLeafObj.unit}". Ожидается Дж/(кг·К) или J/(kg·K).`,
-      'INVALID_SPECIFIC_HEAT_UNIT',
-      'leafSpecificHeatCapacity.unit',
-      cpLeafObj.unit
     );
   }
 

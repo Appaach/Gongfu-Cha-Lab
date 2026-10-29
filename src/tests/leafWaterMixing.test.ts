@@ -537,7 +537,7 @@ export async function runLeafWaterMixingTestSuite(): Promise<TestResult[]> {
 
     // Ошибки объекта теплоёмкости листа
     expectThermalError('Отсутствующий объект leafSpecificHeatCapacity (undefined)', () =>
-      solveLeafWaterThermalMixing({ ...validBase, leafSpecificHeatCapacity: undefined }), 'INVALID_LEAF_SPECIFIC_HEAT_OBJECT'
+      solveLeafWaterThermalMixing({ ...validBase, leafSpecificHeatCapacity: undefined as any }), 'INVALID_LEAF_SPECIFIC_HEAT_OBJECT'
     );
     expectThermalError('Некорректный тип leafSpecificHeatCapacity (число вместо объекта)', () =>
       solveLeafWaterThermalMixing({ ...validBase, leafSpecificHeatCapacity: 1500 as any }), 'INVALID_LEAF_SPECIFIC_HEAT_OBJECT'
@@ -654,6 +654,170 @@ export async function runLeafWaterMixingTestSuite(): Promise<TestResult[]> {
         suite,
         `Единица измерения "${unit}" успешно валидируется`,
         resUnit.status === 'calculated'
+      );
+    }
+  }
+
+  // =========================================================================
+  // 11. Усиленная runtime-валидация leafSpecificHeatCapacity (Этап 2B.3.3.1.1)
+  // =========================================================================
+  {
+    const suite = '11. Усиленная валидация leafSpecificHeatCapacity (Этап 2B.3.3.1.1)';
+
+    function expectThermalError(name: string, fn: () => void, code?: string) {
+      try {
+        fn();
+        assert(suite, `${name} (ожидалось исключение)`, false, 'Исключение не выброшено');
+      } catch (err) {
+        const isExpected = err instanceof ThermalValidationError;
+        const codeMatches = code ? (err as ThermalValidationError).code === code : true;
+        assert(
+          suite,
+          name,
+          isExpected && codeMatches,
+          `Ожидалась ThermalValidationError с кодом ${code}, получено: ${err}`
+        );
+      }
+    }
+
+    const validBase: LeafWaterThermalMixingParams = {
+      leafMassGrams: 5.0,
+      leafSpecificHeatCapacity: SYNTHETIC_LEAF_SPECIFIC_HEAT,
+      absorbedWaterGrams: 0.0,
+      existingFreeWaterGrams: 0.0,
+      contentTemperatureBeforeMixingC: 22.0,
+      addedWaterMassGrams: 100.0,
+      addedWaterTemperatureC: 95.0,
+    };
+
+    // 1. unit числового типа вызывает ThermalValidationError (INVALID_SPECIFIC_HEAT_UNIT), а не TypeError
+    expectThermalError(
+      'unit числового типа вызывает INVALID_SPECIFIC_HEAT_UNIT без падения на trim()',
+      () =>
+        solveLeafWaterThermalMixing({
+          ...validBase,
+          leafSpecificHeatCapacity: { origin: 'literature', value: 1500, unit: 42 as any },
+        }),
+      'INVALID_SPECIFIC_HEAT_UNIT'
+    );
+
+    // 2. unit отсутствует (undefined/null) или имеет недопустимое строковое значение
+    expectThermalError(
+      'unit undefined вызывает INVALID_SPECIFIC_HEAT_UNIT',
+      () =>
+        solveLeafWaterThermalMixing({
+          ...validBase,
+          leafSpecificHeatCapacity: { origin: 'literature', value: 1500, unit: undefined as any },
+        }),
+      'INVALID_SPECIFIC_HEAT_UNIT'
+    );
+    expectThermalError(
+      'unit null вызывает INVALID_SPECIFIC_HEAT_UNIT',
+      () =>
+        solveLeafWaterThermalMixing({
+          ...validBase,
+          leafSpecificHeatCapacity: { origin: 'literature', value: 1500, unit: null as any },
+        }),
+      'INVALID_SPECIFIC_HEAT_UNIT'
+    );
+    expectThermalError(
+      'unit недопустимая строка (BTU/lb) вызывает INVALID_SPECIFIC_HEAT_UNIT',
+      () =>
+        solveLeafWaterThermalMixing({
+          ...validBase,
+          leafSpecificHeatCapacity: { origin: 'literature', value: 1500, unit: 'BTU/(lb*F)' },
+        }),
+      'INVALID_SPECIFIC_HEAT_UNIT'
+    );
+
+    // 3. Недопустимый origin вызывает INVALID_LEAF_SPECIFIC_HEAT_ORIGIN
+    expectThermalError(
+      'origin недопустимая строка вызывает INVALID_LEAF_SPECIFIC_HEAT_ORIGIN',
+      () =>
+        solveLeafWaterThermalMixing({
+          ...validBase,
+          leafSpecificHeatCapacity: { origin: 'fabricated_data' as any, value: 1500, unit: 'Дж/(кг·К)' },
+        }),
+      'INVALID_LEAF_SPECIFIC_HEAT_ORIGIN'
+    );
+    expectThermalError(
+      'origin числового типа вызывает INVALID_LEAF_SPECIFIC_HEAT_ORIGIN',
+      () =>
+        solveLeafWaterThermalMixing({
+          ...validBase,
+          leafSpecificHeatCapacity: { origin: 100 as any, value: 1500, unit: 'Дж/(кг·К)' },
+        }),
+      'INVALID_LEAF_SPECIFIC_HEAT_ORIGIN'
+    );
+
+    // 4. Некорректный origin не маскируется веткой обработки value === null
+    expectThermalError(
+      'Некорректный origin при value === null вызывает INVALID_LEAF_SPECIFIC_HEAT_ORIGIN',
+      () =>
+        solveLeafWaterThermalMixing({
+          ...validBase,
+          leafSpecificHeatCapacity: { origin: 'unknown_fake' as any, value: null, unit: 'Дж/(кг·К)' },
+        }),
+      'INVALID_LEAF_SPECIFIC_HEAT_ORIGIN'
+    );
+    expectThermalError(
+      'Числовой unit при origin: "unknown" и value: null вызывает INVALID_SPECIFIC_HEAT_UNIT',
+      () =>
+        solveLeafWaterThermalMixing({
+          ...validBase,
+          leafSpecificHeatCapacity: { origin: 'unknown', value: null, unit: 12345 as any },
+        }),
+      'INVALID_SPECIFIC_HEAT_UNIT'
+    );
+
+    // 5. Весь объект теплоёмкости null вызывает INVALID_LEAF_SPECIFIC_HEAT_OBJECT
+    expectThermalError(
+      'leafSpecificHeatCapacity === null вызывает INVALID_LEAF_SPECIFIC_HEAT_OBJECT',
+      () =>
+        solveLeafWaterThermalMixing({
+          ...validBase,
+          leafSpecificHeatCapacity: null as any,
+        }),
+      'INVALID_LEAF_SPECIFIC_HEAT_OBJECT'
+    );
+
+    // 6. Весь объект теплоёмкости undefined вызывает INVALID_LEAF_SPECIFIC_HEAT_OBJECT
+    expectThermalError(
+      'leafSpecificHeatCapacity === undefined вызывает INVALID_LEAF_SPECIFIC_HEAT_OBJECT',
+      () =>
+        solveLeafWaterThermalMixing({
+          ...validBase,
+          leafSpecificHeatCapacity: undefined as any,
+        }),
+      'INVALID_LEAF_SPECIFIC_HEAT_OBJECT'
+    );
+
+    // 7. Корректный объект с origin: 'unknown' и value: null возвращает unknown_leaf_specific_heat
+    const resUnknownValid = solveLeafWaterThermalMixing({
+      ...validBase,
+      leafSpecificHeatCapacity: { origin: 'unknown', value: null, unit: 'Дж/(кг·К)' },
+    });
+    assert(
+      suite,
+      'Корректный объект с origin: "unknown" и value: null штатно возвращает unknown_leaf_specific_heat',
+      resUnknownValid.status === 'unknown_leaf_specific_heat' &&
+        resUnknownValid.mixedTemperatureC === null &&
+        resUnknownValid.contentHeatCapacityBeforeMixingJPerK === null &&
+        resUnknownValid.contentHeatCapacityAfterMixingJPerK === null
+    );
+
+    // 8. Все допустимые известные происхождения (measured, literature, model_profile, user_defined) рассчитываются штатно
+    for (const validOrigin of ['measured', 'literature', 'model_profile', 'user_defined'] as const) {
+      const resOrigin = solveLeafWaterThermalMixing({
+        ...validBase,
+        leafSpecificHeatCapacity: { origin: validOrigin, value: 1600.0, unit: 'Дж/(кг·К)' },
+      });
+      assert(
+        suite,
+        `Происхождение "${validOrigin}" рассчитывается со статусом calculated`,
+        resOrigin.status === 'calculated' &&
+          typeof resOrigin.mixedTemperatureC === 'number' &&
+          Number.isFinite(resOrigin.mixedTemperatureC)
       );
     }
   }
