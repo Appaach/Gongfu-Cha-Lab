@@ -10,3 +10,5 @@ export * from './profiles.ts';
 export * from './integrator.ts';
 export * from './engine.ts';
 export * from './leafWaterMixing.ts';
+export * from './contentIntegrator.ts';
+

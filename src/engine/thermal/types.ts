@@ -4,7 +4,7 @@
  */
 
 import { VesselMaterial } from '../../domain/brewing/types.ts';
-import { DataOriginType } from '../../domain/tea/types.ts';
+import { DataOriginType, ValueWithOrigin } from '../../domain/tea/types.ts';
 
 /**
  * Единицы измерения физических величин тепловой модели:
@@ -192,3 +192,118 @@ export interface ThermalConvergenceReport {
   readonly maxDeltaC: number;
   readonly isConverged: boolean;
 }
+
+/**
+ * Метрологический статус результата интегрирования теплового узла содержимого.
+ *
+ * - 'calculated': успешный расчёт динамики температур;
+ * - 'unknown_leaf_specific_heat': удельная теплоёмкость листа неизвестна (Unknown ≠ 0);
+ * - 'unknown_water_masses': масса поглощённой или свободной воды неизвестна;
+ * - 'unknown_drained_conductance': в режиме без свободной воды не заданы проводимости мокрого листа;
+ * - 'blocked_by_unknown_prior_state': предшествующая температура содержимого неизвестна (null).
+ */
+export type ContentThermalStatus =
+  | 'calculated'
+  | 'unknown_leaf_specific_heat'
+  | 'unknown_water_masses'
+  | 'unknown_drained_conductance'
+  | 'blocked_by_unknown_prior_state';
+
+/**
+ * Термодинамическое состояние узла содержимого заварочного сосуда (чайный лист + поглощённая влага + свободная вода).
+ */
+export interface ContentThermalState {
+  /** Масса навески сухого чайного листа (г, строго > 0) */
+  readonly leafMassGrams: number;
+  /** Масса воды, поглощённой матрицей чайного листа (г, >= 0 или null при неизвестном значении) */
+  readonly absorbedWaterGrams: number | null;
+  /** Фактическая масса свободной жидкости в сосуде (г, >= 0 или null при неизвестном значении) */
+  readonly freeWaterMassGrams: number | null;
+  /**
+   * Температура всего содержимого (°C).
+   * Может быть известна и при отсутствии свободной жидкости (температура мокрого листа на дне).
+   * null при неизвестном состоянии.
+   */
+  readonly contentTemperatureC: number | null;
+  /**
+   * Производное представление температуры свободной фазы (°C).
+   * Принцип Unknown ≠ 0: если freeWaterMassGrams === 0, freeWaterMassGrams === null
+   * или contentTemperatureC === null, значение строго равно null.
+   */
+  readonly liquidTemperatureC: number | null;
+  /** Средняя температура стенок заварочного сосуда (°C) */
+  readonly vesselTemperatureC: number;
+  /** Температура окружающего воздуха (°C) */
+  readonly ambientTemperatureC: number;
+  /** Удельная изобарная теплоёмкость листа с метаданными происхождения */
+  readonly leafSpecificHeatCapacity: ValueWithOrigin<number>;
+  /** Время от начала шага / интервала экспозиции (с) */
+  readonly elapsedSeconds: number;
+}
+
+/**
+ * Параметры эффективных тепловых проводимостей для режима без свободной жидкости (осушенный/слитый сосуд).
+ */
+export interface DrainedContentConductanceOptions {
+  /**
+   * Эффективная тепловая проводимость между влажным чайным листом и стенками сосуда (Вт/К, W/K).
+   * Должна передаваться явно как ValueWithOrigin<number>.
+   */
+  readonly conductanceDrainedContentVesselWPerK?: ValueWithOrigin<number>;
+  /**
+   * Эффективная тепловая проводимость между влажным чайным листом и окружающим воздухом (Вт/К, W/K).
+   * Должна передаваться явно как ValueWithOrigin<number>.
+   */
+  readonly conductanceDrainedContentAmbientWPerK?: ValueWithOrigin<number>;
+}
+
+/**
+ * Точка на дискретной температурной кривой охлаждения содержимого.
+ */
+export interface ContentThermalSimulationPoint {
+  readonly timeSeconds: number;
+  /** Температура содержимого (°C). null при неизвестном состоянии. */
+  readonly contentTemperatureC: number | null;
+  /** Температура свободной жидкости (°C). null, если свободная вода отсутствует (freeWaterMassGrams === 0). */
+  readonly liquidTemperatureC: number | null;
+  /** Температура стенок сосуда (°C). */
+  readonly vesselTemperatureC: number;
+  /** Масса свободной воды в сосуде в данный момент (г). */
+  readonly freeWaterMassGrams: number | null;
+}
+
+/**
+ * Результат выполнения численного интегрирования теплового узла содержимого.
+ */
+export interface ContentIntegrationStepResult {
+  readonly status: ContentThermalStatus;
+  readonly finalState: ContentThermalState;
+  readonly curvePoints: ContentThermalSimulationPoint[];
+  /** Полная теплоёмкость содержимого C_contents = C_dry + (m_abs + m_free) * cp_water (Дж/К) */
+  readonly contentHeatCapacityJPerK: number | null;
+  /** Теплоёмкость сухой матрицы листа C_dry = m_leaf * cp_leaf (Дж/К) */
+  readonly dryLeafHeatCapacityJPerK: number | null;
+  /** Теплоёмкость влажного листа C_leaf = C_dry + m_abs * cp_water (Дж/К) */
+  readonly wetLeafHeatCapacityJPerK: number | null;
+  /** Теплоёмкость свободной воды C_free = m_free * cp_water (Дж/К) */
+  readonly freeWaterHeatCapacityJPerK: number | null;
+  /** Минимальная зафиксированная температура содержимого (°C) */
+  readonly minContentTempC: number | null;
+  /** Максимальная зафиксированная температура содержимого (°C) */
+  readonly maxContentTempC: number | null;
+  /** Минимальная зафиксированная температура свободной жидкости (°C) */
+  readonly minLiquidTempC: number | null;
+  /** Максимальная зафиксированная температура свободной жидкости (°C) */
+  readonly maxLiquidTempC: number | null;
+  /** Минимальная зафиксированная температура стенок сосуда (°C) */
+  readonly minVesselTempC: number;
+  /** Максимальная зафиксированная температура стенок сосуда (°C) */
+  readonly maxVesselTempC: number;
+  /** Пояснение причины блокировки при status !== 'calculated' */
+  readonly reason?: string;
+  /** Предупреждения численного интегратора */
+  readonly warnings: string[];
+  /** Диагностические сообщения и применённые модельные допущения */
+  readonly diagnostics: string[];
+}
+

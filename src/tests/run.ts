@@ -11,6 +11,7 @@ import { runGongfuWaterBalanceTestSuite } from './gongfuWaterBalance.test.ts';
 import { runLiuGenPaoWaterBalanceTestSuite } from './liuGenPaoWaterBalance.test.ts';
 import { runLazyMugWaterBalanceTestSuite } from './lazyMugWaterBalance.test.ts';
 import { runLeafWaterMixingTestSuite } from './leafWaterMixing.test.ts';
+import { runContentIntegratorTestSuite } from './contentIntegrator.test.ts';
 
 async function main() {
   console.log('--- Запуск верификации предметных инвариантов Gongfu Cha Lab ---');
@@ -29,6 +30,8 @@ async function main() {
   const lazyMugWaterBalanceResults = await runLazyMugWaterBalanceTestSuite();
   console.log('--- Запуск верификации смешения чайного листа и воды (Этап 2B.3.3.1) ---');
   const leafWaterMixingResults = await runLeafWaterMixingTestSuite();
+  console.log('--- Запуск верификации интегратора содержимого с листом (Этап 2B.3.3.2) ---');
+  const contentIntegratorResults = await runContentIntegratorTestSuite();
 
   const results = [
     ...domainResults,
@@ -39,6 +42,7 @@ async function main() {
     ...liuGenPaoWaterBalanceResults,
     ...lazyMugWaterBalanceResults,
     ...leafWaterMixingResults,
+    ...contentIntegratorResults,
   ];
   let failures = 0;
 
