@@ -200,14 +200,16 @@ export interface ThermalConvergenceReport {
  * - 'unknown_leaf_specific_heat': удельная теплоёмкость листа неизвестна (Unknown ≠ 0);
  * - 'unknown_water_masses': масса поглощённой или свободной воды неизвестна;
  * - 'unknown_drained_conductance': в режиме без свободной воды не заданы проводимости мокрого листа;
- * - 'blocked_by_unknown_prior_state': предшествующая температура содержимого неизвестна (null).
+ * - 'blocked_by_unknown_prior_state': предшествующая температура содержимого неизвестна (null);
+ * - 'no_time_elapsed': нулевая длительность интегрирования (no-op, физическое время не изменялось).
  */
 export type ContentThermalStatus =
   | 'calculated'
   | 'unknown_leaf_specific_heat'
   | 'unknown_water_masses'
   | 'unknown_drained_conductance'
-  | 'blocked_by_unknown_prior_state';
+  | 'blocked_by_unknown_prior_state'
+  | 'no_time_elapsed';
 
 /**
  * Термодинамическое состояние узла содержимого заварочного сосуда (чайный лист + поглощённая влага + свободная вода).

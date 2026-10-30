@@ -400,7 +400,166 @@ export function integrateContentThermalStep(
     );
   }
 
-  // Вспомогательная функция для формирования заблокированного результата (Этап 2B.3.3.2.1)
+  // 1.11. Опции проводимостей осушенного содержимого (если переданы)
+  const validateConductanceProp = (
+    prop: unknown,
+    fieldName: string
+  ): void => {
+    if (prop === undefined) {
+      return; // Отсутствующее свойство трактуется как unknown conductance
+    }
+    if (prop === null || typeof prop !== 'object') {
+      throw new ThermalValidationError(
+        `Параметр ${fieldName} должен быть объектом ValueWithOrigin<number>.`,
+        'INVALID_CONDUCTANCE_OBJECT',
+        fieldName,
+        prop
+      );
+    }
+    const obj = prop as ValueWithOrigin<number>;
+    if (
+      typeof obj.origin !== 'string' ||
+      !VALID_DATA_ORIGINS.has(obj.origin as DataOriginType)
+    ) {
+      throw new ThermalValidationError(
+        `Недопустимый статус происхождения для ${fieldName}: "${obj.origin}".`,
+        'INVALID_CONDUCTANCE_ORIGIN',
+        `${fieldName}.origin`,
+        obj.origin
+      );
+    }
+    if (
+      typeof obj.unit !== 'string' ||
+      !VALID_THERMAL_CONDUCTANCE_UNITS.has(obj.unit.trim())
+    ) {
+      throw new ThermalValidationError(
+        `Недопустимая единица измерения для ${fieldName}: "${obj.unit}". Ожидается Вт/К или W/K.`,
+        'INVALID_CONDUCTANCE_UNIT',
+        `${fieldName}.unit`,
+        obj.unit
+      );
+    }
+    if (obj.origin === 'unknown' && obj.value !== null) {
+      throw new ThermalValidationError(
+        `Несогласованность метаданных: при origin === 'unknown' значение value обязано быть строго null для ${fieldName}.`,
+        'INVALID_CONDUCTANCE_ORIGIN_VALUE_MISMATCH',
+        `${fieldName}.value`,
+        obj.value
+      );
+    }
+    if (obj.origin !== 'unknown' && obj.value !== null) {
+      if (typeof obj.value !== 'number' || !Number.isFinite(obj.value) || obj.value < 0) {
+        throw new ThermalValidationError(
+          `Известный коэффициент проводимости ${fieldName} должен быть конечным неотрицательным числом (>= 0 Вт/К): ${obj.value}.`,
+          'INVALID_CONDUCTANCE',
+          `${fieldName}.value`,
+          obj.value
+        );
+      }
+    }
+  };
+
+  if (drainedOptions !== undefined) {
+    if (drainedOptions === null || typeof drainedOptions !== 'object') {
+      throw new ThermalValidationError(
+        'Параметр drainedOptions должен быть объектом DrainedContentConductanceOptions.',
+        'INVALID_DRAINED_OPTIONS_OBJECT',
+        'drainedOptions',
+        drainedOptions
+      );
+    }
+
+    validateConductanceProp(
+      drainedOptions.conductanceDrainedContentVesselWPerK,
+      'conductanceDrainedContentVesselWPerK'
+    );
+    validateConductanceProp(
+      drainedOptions.conductanceDrainedContentAmbientWPerK,
+      'conductanceDrainedContentAmbientWPerK'
+    );
+  }
+
+  // =========================================================================
+  // 2. Обработка валидного нулевого временного интервала (no-op, Этап 2B.3.3.2.2)
+  // =========================================================================
+  if (durationSeconds === 0) {
+    diagnostics.push(
+      'Интервал нулевой длительности (durationSeconds === 0): выполнен no-op, динамика температур не интегрировалась.'
+    );
+
+    const mLeafKg = initialState.leafMassGrams * 0.001;
+    const cpWater = SPECIFIC_HEAT_WATER_J_PER_KG_K;
+
+    // Расчёт теплоёмкостей только при наличии всех необходимых для них данных
+    let dryLeafHeatCapacityJPerK: number | null = null;
+    if (cpLeafObj.origin !== 'unknown' && cpLeafObj.value !== null) {
+      dryLeafHeatCapacityJPerK = mLeafKg * cpLeafObj.value;
+    }
+
+    let wetLeafHeatCapacityJPerK: number | null = null;
+    if (dryLeafHeatCapacityJPerK !== null && initialState.absorbedWaterGrams !== null) {
+      wetLeafHeatCapacityJPerK =
+        dryLeafHeatCapacityJPerK + initialState.absorbedWaterGrams * 0.001 * cpWater;
+    }
+
+    let freeWaterHeatCapacityJPerK: number | null = null;
+    if (initialState.freeWaterMassGrams !== null) {
+      freeWaterHeatCapacityJPerK =
+        initialState.freeWaterMassGrams * 0.001 * cpWater;
+    }
+
+    let contentHeatCapacityJPerK: number | null = null;
+    if (wetLeafHeatCapacityJPerK !== null && freeWaterHeatCapacityJPerK !== null) {
+      contentHeatCapacityJPerK = wetLeafHeatCapacityJPerK + freeWaterHeatCapacityJPerK;
+    }
+
+    // curvePoints содержит валидную исходную точку при известной температуре содержимого
+    // либо пустой массив, если исходное состояние не позволяет достоверно сформировать точку
+    const curvePoints: ContentThermalSimulationPoint[] =
+      initialState.contentTemperatureC !== null
+        ? [
+            {
+              timeSeconds: 0,
+              contentTemperatureC: initialState.contentTemperatureC,
+              liquidTemperatureC: initialState.liquidTemperatureC,
+              vesselTemperatureC: initialState.vesselTemperatureC,
+              freeWaterMassGrams: initialState.freeWaterMassGrams,
+            },
+          ]
+        : [];
+
+    return {
+      status: 'no_time_elapsed',
+      finalState: {
+        ...initialState,
+        contentTemperatureC: initialState.contentTemperatureC,
+        liquidTemperatureC: initialState.liquidTemperatureC,
+        vesselTemperatureC: initialState.vesselTemperatureC,
+        elapsedSeconds: initialState.elapsedSeconds,
+      },
+      curvePoints,
+      contentHeatCapacityJPerK,
+      dryLeafHeatCapacityJPerK,
+      wetLeafHeatCapacityJPerK,
+      freeWaterHeatCapacityJPerK,
+      minContentTempC: initialState.contentTemperatureC,
+      maxContentTempC: initialState.contentTemperatureC,
+      minLiquidTempC: initialState.liquidTemperatureC,
+      maxLiquidTempC: initialState.liquidTemperatureC,
+      minVesselTempC: initialState.vesselTemperatureC,
+      maxVesselTempC: initialState.vesselTemperatureC,
+      reason:
+        'Интервал нулевой длительности (durationSeconds === 0): физическое время не изменялось, расчет динамики температур не требовался. Исходное термодинамическое состояние сохранено.',
+      warnings,
+      diagnostics,
+    };
+  }
+
+  // =========================================================================
+  // 3. Проверка параметров модели, расчёт теплоёмкостей и интегрирование (durationSeconds > 0)
+  // =========================================================================
+
+  // Вспомогательная функция для формирования заблокированного результата при durationSeconds > 0
   const createBlockedResult = (
     status: ContentThermalStatus,
     reason: string,
@@ -411,37 +570,16 @@ export function integrateContentThermalStep(
   ): ContentIntegrationStepResult => {
     diagnostics.push(reason);
 
-    const isZeroDuration = durationSeconds === 0;
-    // При durationSeconds === 0 физический интервал времени отсутствует:
-    // если начальная температура стенок была известна, она не изменилась.
-    // При durationSeconds > 0 перенос тепла не был рассчитан: конечная температура
-    // стенок неизвестна и строго возвращается как null!
-    const finalVesselTemp = isZeroDuration ? initialState.vesselTemperatureC : null;
-    const minVessel = isZeroDuration ? initialState.vesselTemperatureC : null;
-    const maxVessel = isZeroDuration ? initialState.vesselTemperatureC : null;
-
-    const curvePoints: ContentThermalSimulationPoint[] = isZeroDuration
-      ? [
-          {
-            timeSeconds: 0,
-            contentTemperatureC: null,
-            liquidTemperatureC: null,
-            vesselTemperatureC: initialState.vesselTemperatureC,
-            freeWaterMassGrams: initialState.freeWaterMassGrams,
-          },
-        ]
-      : [];
-
     return {
       status,
       finalState: {
         ...initialState,
         contentTemperatureC: null,
         liquidTemperatureC: null,
-        vesselTemperatureC: finalVesselTemp,
+        vesselTemperatureC: null,
         elapsedSeconds: projectedElapsedSeconds,
       },
-      curvePoints,
+      curvePoints: [],
       contentHeatCapacityJPerK: cContents,
       dryLeafHeatCapacityJPerK: cDry,
       wetLeafHeatCapacityJPerK: cWet,
@@ -450,19 +588,15 @@ export function integrateContentThermalStep(
       maxContentTempC: null,
       minLiquidTempC: null,
       maxLiquidTempC: null,
-      minVesselTempC: minVessel,
-      maxVesselTempC: maxVessel,
+      minVesselTempC: null,
+      maxVesselTempC: null,
       reason,
       warnings,
       diagnostics,
     };
   };
 
-  // =========================================================================
-  // 2. Проверка условий блокировки расчёта (Unknown ≠ 0)
-  // =========================================================================
-
-  // 2.1. Предшествующее состояние стенок сосуда не определено (Этап 2B.3.3.2.1)
+  // 3.1. Предшествующее состояние стенок сосуда не определено (Этап 2B.3.3.2.1)
   if (initialState.vesselTemperatureC === null) {
     return createBlockedResult(
       'blocked_by_unknown_prior_state',
@@ -470,7 +604,7 @@ export function integrateContentThermalStep(
     );
   }
 
-  // 2.2. Предшествующее температурное состояние содержимого не определено
+  // 3.2. Предшествующее температурное состояние содержимого не определено
   if (initialState.contentTemperatureC === null) {
     return createBlockedResult(
       'blocked_by_unknown_prior_state',
@@ -478,7 +612,7 @@ export function integrateContentThermalStep(
     );
   }
 
-  // 2.3. Массы водного баланса не определены
+  // 3.3. Массы водного баланса не определены
   if (
     initialState.absorbedWaterGrams === null ||
     initialState.freeWaterMassGrams === null
@@ -489,7 +623,7 @@ export function integrateContentThermalStep(
     );
   }
 
-  // 2.4. Удельная теплоёмкость листа не определена
+  // 3.4. Удельная теплоёмкость листа не определена
   if (cpLeafObj.origin === 'unknown' || cpLeafObj.value === null) {
     return createBlockedResult(
       'unknown_leaf_specific_heat',
@@ -497,10 +631,7 @@ export function integrateContentThermalStep(
     );
   }
 
-  // =========================================================================
-  // 3. Расчёт теплоёмкостей содержимого и сосуда
-  // =========================================================================
-
+  // 3.5. Расчёт теплоёмкостей содержимого и сосуда
   const mLeafKg = initialState.leafMassGrams * 0.001;
   const mAbsKg = initialState.absorbedWaterGrams * 0.001;
   const mFreeKg = initialState.freeWaterMassGrams * 0.001;
@@ -533,10 +664,7 @@ export function integrateContentThermalStep(
     );
   }
 
-  // =========================================================================
-  // 4. Определение проводимостей теплообмена (Режимы А и Б)
-  // =========================================================================
-
+  // 3.6. Определение проводимостей теплообмена (Режимы А и Б)
   let gCv = 0;
   let gCa = 0;
   const gVa = profile.conductanceVesselAmbientWPerK;
@@ -563,79 +691,8 @@ export function integrateContentThermalStep(
       );
     }
 
-    if (drainedOptions === null || typeof drainedOptions !== 'object') {
-      throw new ThermalValidationError(
-        'Параметр drainedOptions должен быть объектом DrainedContentConductanceOptions.',
-        'INVALID_DRAINED_OPTIONS_OBJECT',
-        'drainedOptions',
-        drainedOptions
-      );
-    }
-
-    // Валидация свойств проводимости осушенного содержимого (Этап 2B.3.3.2.1)
-    const validateConductanceProp = (
-      prop: unknown,
-      fieldName: string
-    ): void => {
-      if (prop === undefined) {
-        return; // Отсутствующее свойство трактуется как unknown conductance
-      }
-      if (prop === null || typeof prop !== 'object') {
-        throw new ThermalValidationError(
-          `Параметр ${fieldName} должен быть объектом ValueWithOrigin<number>.`,
-          'INVALID_CONDUCTANCE_OBJECT',
-          fieldName,
-          prop
-        );
-      }
-      const obj = prop as ValueWithOrigin<number>;
-      if (
-        typeof obj.origin !== 'string' ||
-        !VALID_DATA_ORIGINS.has(obj.origin as DataOriginType)
-      ) {
-        throw new ThermalValidationError(
-          `Недопустимый статус происхождения для ${fieldName}: "${obj.origin}".`,
-          'INVALID_CONDUCTANCE_ORIGIN',
-          `${fieldName}.origin`,
-          obj.origin
-        );
-      }
-      if (
-        typeof obj.unit !== 'string' ||
-        !VALID_THERMAL_CONDUCTANCE_UNITS.has(obj.unit.trim())
-      ) {
-        throw new ThermalValidationError(
-          `Недопустимая единица измерения для ${fieldName}: "${obj.unit}". Ожидается Вт/К или W/K.`,
-          'INVALID_CONDUCTANCE_UNIT',
-          `${fieldName}.unit`,
-          obj.unit
-        );
-      }
-      if (obj.origin === 'unknown' && obj.value !== null) {
-        throw new ThermalValidationError(
-          `Несогласованность метаданных: при origin === 'unknown' значение value обязано быть строго null для ${fieldName}.`,
-          'INVALID_CONDUCTANCE_ORIGIN_VALUE_MISMATCH',
-          `${fieldName}.value`,
-          obj.value
-        );
-      }
-      if (obj.origin !== 'unknown' && obj.value !== null) {
-        if (typeof obj.value !== 'number' || !Number.isFinite(obj.value) || obj.value < 0) {
-          throw new ThermalValidationError(
-            `Известный коэффициент проводимости ${fieldName} должен быть конечным неотрицательным числом (>= 0 Вт/К): ${obj.value}.`,
-            'INVALID_CONDUCTANCE',
-            `${fieldName}.value`,
-            obj.value
-          );
-        }
-      }
-    };
-
     const gDrainedVesselProp = drainedOptions.conductanceDrainedContentVesselWPerK;
     const gDrainedAmbientProp = drainedOptions.conductanceDrainedContentAmbientWPerK;
-
-    validateConductanceProp(gDrainedVesselProp, 'conductanceDrainedContentVesselWPerK');
-    validateConductanceProp(gDrainedAmbientProp, 'conductanceDrainedContentAmbientWPerK');
 
     // Если хотя бы одна проводимость не задана (undefined) или неизвестна (origin: unknown / value: null)
     if (
@@ -664,10 +721,7 @@ export function integrateContentThermalStep(
     );
   }
 
-  // =========================================================================
-  // 5. Инициализация переменных интегрирования и краевые условия
-  // =========================================================================
-
+  // 3.7. Инициализация переменных интегрирования и краевые условия
   let tContents = initialState.contentTemperatureC;
   let tVessel = initialState.vesselTemperatureC;
   const tAmbient = initialState.ambientTemperatureC;
@@ -683,32 +737,6 @@ export function integrateContentThermalStep(
     vesselTemperatureC: Math.round(tVessel * 100) / 100,
     freeWaterMassGrams: initialState.freeWaterMassGrams,
   });
-
-  if (durationSeconds === 0) {
-    return {
-      status: 'calculated',
-      finalState: {
-        ...initialState,
-        contentTemperatureC: tContents,
-        liquidTemperatureC: isFreeWaterPresent ? tContents : null,
-        vesselTemperatureC: tVessel,
-        elapsedSeconds: projectedElapsedSeconds,
-      },
-      curvePoints,
-      contentHeatCapacityJPerK,
-      dryLeafHeatCapacityJPerK,
-      wetLeafHeatCapacityJPerK,
-      freeWaterHeatCapacityJPerK,
-      minContentTempC: tContents,
-      maxContentTempC: tContents,
-      minLiquidTempC: isFreeWaterPresent ? tContents : null,
-      maxLiquidTempC: isFreeWaterPresent ? tContents : null,
-      minVesselTempC: tVessel,
-      maxVesselTempC: tVessel,
-      warnings,
-      diagnostics,
-    };
-  }
 
   // =========================================================================
   // 6. Проверка численной устойчивости явной схемы Хойна (RK2)

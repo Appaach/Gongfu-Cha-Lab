@@ -132,7 +132,7 @@ export async function runContentIntegratorTestSuite(): Promise<TestResult[]> {
       0 // мгновенная точка t=0
     );
 
-    assert(suite, 'Статус расчёта равен calculated', res.status === 'calculated');
+    assert(suite, 'Статус расчёта равен no_time_elapsed', res.status === 'no_time_elapsed');
 
     // C_dry = 0.005 * 1500 = 7.5 Дж/К
     const expectedCdry = 0.005 * 1500.0;
@@ -183,7 +183,7 @@ export async function runContentIntegratorTestSuite(): Promise<TestResult[]> {
       0
     );
 
-    assert(suite, 'Статус расчёта равен calculated', res.status === 'calculated');
+    assert(suite, 'Статус расчёта равен no_time_elapsed', res.status === 'no_time_elapsed');
 
     // C_free strictly 0
     assert(
@@ -1059,6 +1059,332 @@ export async function runContentIntegratorTestSuite(): Promise<TestResult[]> {
       suite,
       'Корректный unknown G при duration > 0 возвращает curvePoints: []',
       Array.isArray(resUnknownDrained.curvePoints) && resUnknownDrained.curvePoints.length === 0
+    );
+  }
+
+  // =========================================================================
+  // 15. Корректный no-op при нулевой длительности интегрирования (Этап 2B.3.3.2.2)
+  // =========================================================================
+  {
+    const suite = '15. Корректный no-op при нулевой длительности (Этап 2B.3.3.2.2)';
+
+    function expectThermalError(name: string, fn: () => void, code?: string) {
+      try {
+        fn();
+        assert(suite, `${name} (ожидалось исключение)`, false, 'Исключение не выброшено');
+      } catch (err) {
+        const isExpected = err instanceof ThermalValidationError;
+        const codeMatches = code ? (err as ThermalValidationError).code === code : true;
+        assert(
+          suite,
+          name,
+          isExpected && codeMatches,
+          `Ожидалась ThermalValidationError с кодом ${code}, получено: ${err}`
+        );
+      }
+    }
+
+    // 15.1. durationSeconds === 0, неизвестная теплоёмкость листа, известные исходные температуры
+    const resNoOpUnknownCp = integrateContentThermalStep(
+      {
+        ...validWetBaseState,
+        leafSpecificHeatCapacity: UNKNOWN_LEAF_SPECIFIC_HEAT,
+      },
+      gaiwanProfile,
+      undefined,
+      0.0
+    );
+
+    assert(
+      suite,
+      'При duration=0 и неизвестной cp_leaf статус равен no_time_elapsed',
+      resNoOpUnknownCp.status === 'no_time_elapsed'
+    );
+    assert(
+      suite,
+      'При duration=0 известная исходная температура содержимого сохранена',
+      resNoOpUnknownCp.finalState.contentTemperatureC === validWetBaseState.contentTemperatureC
+    );
+    assert(
+      suite,
+      'При duration=0 известная исходная температура стенок сохранена',
+      resNoOpUnknownCp.finalState.vesselTemperatureC === validWetBaseState.vesselTemperatureC
+    );
+    assert(
+      suite,
+      'При duration=0 производная температура жидкости сохранена',
+      resNoOpUnknownCp.finalState.liquidTemperatureC === validWetBaseState.liquidTemperatureC
+    );
+    assert(
+      suite,
+      'При duration=0 время elapsedSeconds не изменилось',
+      resNoOpUnknownCp.finalState.elapsedSeconds === validWetBaseState.elapsedSeconds
+    );
+    assert(
+      suite,
+      'При duration=0 и неизвестной cp_leaf зависимая теплоёмкость содержимого null',
+      resNoOpUnknownCp.contentHeatCapacityJPerK === null &&
+        resNoOpUnknownCp.dryLeafHeatCapacityJPerK === null
+    );
+
+    // 15.2. Нулевая длительность при отсутствии drainedOptions и freeWaterMassGrams === 0
+    const resNoOpDrainedNoOptions = integrateContentThermalStep(
+      validDrainedBaseState,
+      gaiwanProfile,
+      undefined,
+      0.0
+    );
+
+    assert(
+      suite,
+      'При duration=0 и отсутствии drainedOptions статус равен no_time_elapsed',
+      resNoOpDrainedNoOptions.status === 'no_time_elapsed'
+    );
+    assert(
+      suite,
+      'При duration=0 без drainedOptions исходная температура содержимого сохранена',
+      resNoOpDrainedNoOptions.finalState.contentTemperatureC === validDrainedBaseState.contentTemperatureC
+    );
+    assert(
+      suite,
+      'При duration=0 без drainedOptions исходная температура стенок сохранена',
+      resNoOpDrainedNoOptions.finalState.vesselTemperatureC === validDrainedBaseState.vesselTemperatureC
+    );
+    assert(
+      suite,
+      'При duration=0 в режиме без свободной воды liquidTemperatureC строго null',
+      resNoOpDrainedNoOptions.finalState.liquidTemperatureC === null
+    );
+
+    // Сравнение с положительной длительностью при тех же параметрах: блокировка
+    const resPosDrainedNoOptions = integrateContentThermalStep(
+      validDrainedBaseState,
+      gaiwanProfile,
+      undefined,
+      10.0
+    );
+    assert(
+      suite,
+      'При duration > 0 без drainedOptions статус блокируется как unknown_drained_conductance',
+      resPosDrainedNoOptions.status === 'unknown_drained_conductance' &&
+        resPosDrainedNoOptions.finalState.contentTemperatureC === null
+    );
+
+    // 15.3. Нулевая длительность при неизвестных массах воды
+    const resNoOpUnknownWater = integrateContentThermalStep(
+      {
+        ...validWetBaseState,
+        absorbedWaterGrams: null,
+        freeWaterMassGrams: null,
+        liquidTemperatureC: null, // строго null по инварианту freeWaterMassGrams === null
+      },
+      gaiwanProfile,
+      undefined,
+      0.0
+    );
+
+    assert(
+      suite,
+      'При duration=0 и неизвестных массах статус равен no_time_elapsed',
+      resNoOpUnknownWater.status === 'no_time_elapsed'
+    );
+    assert(
+      suite,
+      'При duration=0 с неизвестными массами температуры не превращаются в null',
+      resNoOpUnknownWater.finalState.contentTemperatureC === validWetBaseState.contentTemperatureC &&
+        resNoOpUnknownWater.finalState.vesselTemperatureC === validWetBaseState.vesselTemperatureC
+    );
+    assert(
+      suite,
+      'Теплоёмкости, зависящие от неизвестных масс, остаются null',
+      resNoOpUnknownWater.wetLeafHeatCapacityJPerK === null &&
+        resNoOpUnknownWater.freeWaterHeatCapacityJPerK === null &&
+        resNoOpUnknownWater.contentHeatCapacityJPerK === null
+    );
+    assert(
+      suite,
+      'Теплоёмкость сухого листа рассчитана, так как её параметры известны',
+      typeof resNoOpUnknownWater.dryLeafHeatCapacityJPerK === 'number' &&
+        Math.abs(resNoOpUnknownWater.dryLeafHeatCapacityJPerK - 0.005 * 1500) < 1e-12
+    );
+
+    // 15.4. Нулевая длительность при неизвестной температуре стенок (vesselTemperatureC === null)
+    const resNoOpUnknownVessel = integrateContentThermalStep(
+      {
+        ...validWetBaseState,
+        vesselTemperatureC: null,
+      },
+      gaiwanProfile,
+      undefined,
+      0.0
+    );
+
+    assert(
+      suite,
+      'При duration=0 и vesselTemperatureC === null статус равен no_time_elapsed',
+      resNoOpUnknownVessel.status === 'no_time_elapsed'
+    );
+    assert(
+      suite,
+      'При duration=0 и vesselTemperatureC === null стенки остаются null',
+      resNoOpUnknownVessel.finalState.vesselTemperatureC === null
+    );
+    assert(
+      suite,
+      'При duration=0 и неизвестных стенках температура содержимого сохранена',
+      resNoOpUnknownVessel.finalState.contentTemperatureC === validWetBaseState.contentTemperatureC
+    );
+
+    // 15.5. Нулевая длительность при contentTemperatureC === null
+    const resNoOpUnknownContent = integrateContentThermalStep(
+      {
+        ...validWetBaseState,
+        contentTemperatureC: null,
+        liquidTemperatureC: null,
+      },
+      gaiwanProfile,
+      undefined,
+      0.0
+    );
+
+    assert(
+      suite,
+      'При duration=0 и contentTemperatureC === null статус равен no_time_elapsed',
+      resNoOpUnknownContent.status === 'no_time_elapsed'
+    );
+    assert(
+      suite,
+      'При duration=0 и contentTemperatureC === null содержимое остаётся null (нет фиктивной температуры)',
+      resNoOpUnknownContent.finalState.contentTemperatureC === null
+    );
+    assert(
+      suite,
+      'При contentTemperatureC === null curvePoints строго пустой массив []',
+      Array.isArray(resNoOpUnknownContent.curvePoints) &&
+        resNoOpUnknownContent.curvePoints.length === 0
+    );
+
+    // 15.6. Время elapsedSeconds сохраняется точно без изменения при durationSeconds === 0
+    const resNoOpElapsedPreserved = integrateContentThermalStep(
+      {
+        ...validWetBaseState,
+        elapsedSeconds: 45.5,
+      },
+      gaiwanProfile,
+      undefined,
+      0.0
+    );
+
+    assert(
+      suite,
+      'Время elapsedSeconds сохраняется точно без изменения (45.5 с)',
+      resNoOpElapsedPreserved.finalState.elapsedSeconds === 45.5
+    );
+
+    // 15.7. В curvePoints присутствует только одна валидная исходная точка либо пустой массив
+    const resValidPoint = integrateContentThermalStep(
+      validWetBaseState,
+      gaiwanProfile,
+      undefined,
+      0.0
+    );
+
+    assert(
+      suite,
+      'При валидном исходном состоянии curvePoints содержит ровно 1 точку в t=0',
+      resValidPoint.curvePoints.length === 1 &&
+        resValidPoint.curvePoints[0].timeSeconds === 0 &&
+        resValidPoint.curvePoints[0].contentTemperatureC === validWetBaseState.contentTemperatureC &&
+        resValidPoint.curvePoints[0].vesselTemperatureC === validWetBaseState.vesselTemperatureC
+    );
+    assert(
+      suite,
+      'При duration=0 отсутствуют любые будущие точки (timeSeconds > 0)',
+      resValidPoint.curvePoints.every((pt) => pt.timeSeconds === 0)
+    );
+
+    // 15.8. Для durationSeconds > 0 прежняя политика блокировки сохраняется
+    const resPosBlocked = integrateContentThermalStep(
+      {
+        ...validWetBaseState,
+        leafSpecificHeatCapacity: UNKNOWN_LEAF_SPECIFIC_HEAT,
+      },
+      gaiwanProfile,
+      undefined,
+      10.0
+    );
+
+    assert(
+      suite,
+      'При duration > 0 блокировка возвращает null для всех конечных температур',
+      resPosBlocked.finalState.contentTemperatureC === null &&
+        resPosBlocked.finalState.liquidTemperatureC === null &&
+        resPosBlocked.finalState.vesselTemperatureC === null &&
+        resPosBlocked.minVesselTempC === null &&
+        resPosBlocked.maxVesselTempC === null
+    );
+    assert(
+      suite,
+      'При duration > 0 заблокированный результат не создаёт точек траектории (curvePoints: [])',
+      resPosBlocked.curvePoints.length === 0
+    );
+
+    // 15.9. Строгая валидация сохраняется даже при durationSeconds === 0
+    expectThermalError('Отрицательная масса листа при duration=0', () =>
+      integrateContentThermalStep(
+        { ...validWetBaseState, leafMassGrams: -5 },
+        gaiwanProfile,
+        undefined,
+        0.0
+      ),
+      'INVALID_LEAF_MASS'
+    );
+
+    expectThermalError('Отрицательный elapsedSeconds при duration=0', () =>
+      integrateContentThermalStep(
+        { ...validWetBaseState, elapsedSeconds: -1 },
+        gaiwanProfile,
+        undefined,
+        0.0
+      ),
+      'INVALID_ELAPSED_SECONDS'
+    );
+
+    expectThermalError('Несогласованный liquidTemperatureC при duration=0', () =>
+      integrateContentThermalStep(
+        { ...validDrainedBaseState, liquidTemperatureC: 80.0 },
+        gaiwanProfile,
+        undefined,
+        0.0
+      ),
+      'LIQUID_TEMPERATURE_FREE_WATER_MISMATCH'
+    );
+
+    expectThermalError('drainedOptions === null при duration=0', () =>
+      integrateContentThermalStep(
+        validDrainedBaseState,
+        gaiwanProfile,
+        null as any,
+        0.0
+      ),
+      'INVALID_DRAINED_OPTIONS_OBJECT'
+    );
+
+    expectThermalError('origin: "unknown" с числовым значением в проводимости при duration=0', () =>
+      integrateContentThermalStep(
+        validDrainedBaseState,
+        gaiwanProfile,
+        {
+          conductanceDrainedContentVesselWPerK: {
+            origin: 'unknown',
+            value: 0.5 as any,
+            unit: 'W/K',
+          },
+          conductanceDrainedContentAmbientWPerK: ZERO_DRAINED_G,
+        },
+        0.0
+      ),
+      'INVALID_CONDUCTANCE_ORIGIN_VALUE_MISMATCH'
     );
   }
 
