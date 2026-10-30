@@ -660,6 +660,28 @@
     7. Температурный режим сосуда (прогретый/непрогретый) и обратная совместимость legacy `simulateGongfu`.
   - Общий объём тестов проекта увеличился с 571 до 621 проверки, 100% тестов проходят успешно.
 
+######## Этап 2B.3.3.3.1.1: Массовое состояние экспозиции и строгая валидация метаданных (ВЫПОЛНЕНО)
+**Цель:** Исправление контракта построения `exposureState` на основе начальных масс до гидратации шага, документирование модельного приближения при исчерпании свободной воды в ходе гидратации, усиление runtime-валидации метаданных `leafSpecificHeatCapacity` и `drainedContentConductanceOptions`.
+
+- [x] **Исправление состояния экспозиции (`src/engine/thermal/gongfuCoupling.ts`)**:
+  - `absorbedWaterGrams` в `exposureState` строго берётся из `stepWb.absorbedWaterBeforeStepGrams` (начальное содержание влаги в листе до гидратации шага);
+  - `freeWaterMassGrams` в `exposureState` строго берётся из `stepWb.freeWaterBeforeUptakeMassGrams` (начальная свободная вода до гидратации шага);
+  - `liquidTemperatureC` задаётся равной температуре содержимого только при известной положительной начальной массе свободной воды (`freeWaterBeforeUptakeMassGrams > 0`) и известной температуре смеси; в остальных случаях строго `null`;
+  - При неизвестных массах сохраняется `null` без подстановки 0 (Unknown ≠ 0);
+  - Конечные массы после гидратации (`absorbedWaterAfterStepGrams`, `retainedLiquorMassGrams`) по-прежнему используются для `postDrainageState`.
+- [x] **Диагностика приближения исчерпания свободной воды**:
+  - При одновременном выполнении условий: `freeWaterBeforeUptakeMassGrams > 0`, `freeWaterAfterUptakeMassGrams === 0` и `infusionTimeSeconds > 0` формируется подробное русскоязычное диагностическое сообщение в `stepDiagnostics`;
+  - Зафиксировано, что интервал рассчитывается по Режиму А, точный момент исчерпания внутри интервала не рассчитывается, фазовый переход внутри одного шага не моделируется, а последующая пауза требует `drainedOptions`.
+- [x] **Усиленная runtime-валидация метаданных**:
+  - `validateLeafSpecificHeatCapacity`: `origin === 'unknown'` допускает строго `value === null` (`INVALID_LEAF_SPECIFIC_HEAT_ORIGIN_VALUE_MISMATCH`); `origin !== 'unknown'` требует конечное числовое значение `value > 0` (`INVALID_LEAF_SPECIFIC_HEAT_VALUE`);
+  - `validateDrainedConductanceOptions`: оба свойства (`conductanceDrainedContentVesselWPerK`, `conductanceDrainedContentAmbientWPerK`) независимо проверяются: `origin === 'unknown'` допускает строго `value === null` (`INVALID_CONDUCTANCE_ORIGIN_VALUE_MISMATCH`); `origin !== 'unknown'` требует конечное числовое значение `value >= 0` (`INVALID_CONDUCTANCE`).
+- [x] **Автоматизированное регрессионное тестирование (`src/tests/gongfuCoupling.test.ts`)**:
+  - Добавлены 3 новые тестовые сюиты (21 новая проверка):
+    1. **Сюита 8 (Сценарий А):** Исчерпание свободной воды в ходе гидратации (Режим А для экспозиции, отсутствие `drainedOptions` не блокирует экспозицию, использование начальных масс, `postDrainageState` использует конечные массы, диагностика сообщает о приближении, положительная пауза без воды требует `drainedOptions`);
+    2. **Сюита 9 (Сценарий B):** Усиленная валидация `leafSpecificHeatCapacity` (`origin: 'measured'` с `value: null`, `origin: 'model_profile'` с `value: undefined`, `origin: 'measured'` с `value: NaN`, `origin: 'unknown'` с числом, допустимый `origin: 'unknown'` с `value: null`);
+    3. **Сюита 10 (Сценарий C):** Усиленная валидация `drainedContentConductanceOptions` по обоим полям независимо (`value: null`, `value: undefined`, отрицательное значение, `origin: 'unknown'` с числом, допустимый `origin: 'unknown'` с `value: null`).
+  - Общий объём тестов проекта увеличился с 621 до 642 проверок, 100% тестов проходят успешно.
+
 ###### Последующие подэтапы тепловой связки:
 - [ ] **Этап 2B.3.3.3.2:** Интеграция водного баланса и теплового ядра для Лю Гэнь Пао (`simulateLiuGenPaoCoupled`).
 - [ ] **Этап 2B.3.3.3.3:** Интеграция водного баланса и теплового ядра для Lazy Mug (`simulateLazyMugCoupled`).

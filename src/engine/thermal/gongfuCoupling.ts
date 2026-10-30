@@ -174,17 +174,20 @@ export function validateLeafSpecificHeatCapacity(
     );
   }
 
-  if (obj.origin === 'unknown' && obj.value !== null) {
-    throw new ThermalValidationError(
-      `Несогласованность метаданных: при origin === 'unknown' значение value обязано быть строго null (получено: ${obj.value}).`,
-      'INVALID_LEAF_SPECIFIC_HEAT_ORIGIN_VALUE_MISMATCH',
-      'leafSpecificHeatCapacity.value',
-      obj.value
-    );
-  }
-
-  if (obj.origin !== 'unknown' && obj.value !== null) {
+  if (obj.origin === 'unknown') {
+    if (obj.value !== null) {
+      throw new ThermalValidationError(
+        `Несогласованность метаданных: при origin === 'unknown' значение value обязано быть строго null (получено: ${obj.value}).`,
+        'INVALID_LEAF_SPECIFIC_HEAT_ORIGIN_VALUE_MISMATCH',
+        'leafSpecificHeatCapacity.value',
+        obj.value
+      );
+    }
+  } else {
+    // origin !== 'unknown'
     if (
+      obj.value === null ||
+      obj.value === undefined ||
       typeof obj.value !== 'number' ||
       !Number.isFinite(obj.value) ||
       obj.value <= 0
@@ -257,16 +260,20 @@ function validateDrainedConductanceOptions(
         obj.unit
       );
     }
-    if (obj.origin === 'unknown' && obj.value !== null) {
-      throw new ThermalValidationError(
-        `Несогласованность метаданных: при origin === 'unknown' значение value обязано быть строго null для ${fieldName}.`,
-        'INVALID_CONDUCTANCE_ORIGIN_VALUE_MISMATCH',
-        `${fieldName}.value`,
-        obj.value
-      );
-    }
-    if (obj.origin !== 'unknown' && obj.value !== null) {
+    if (obj.origin === 'unknown') {
+      if (obj.value !== null) {
+        throw new ThermalValidationError(
+          `Несогласованность метаданных: при origin === 'unknown' значение value обязано быть строго null для ${fieldName}.`,
+          'INVALID_CONDUCTANCE_ORIGIN_VALUE_MISMATCH',
+          `${fieldName}.value`,
+          obj.value
+        );
+      }
+    } else {
+      // origin !== 'unknown'
       if (
+        obj.value === null ||
+        obj.value === undefined ||
         typeof obj.value !== 'number' ||
         !Number.isFinite(obj.value) ||
         obj.value < 0
@@ -530,12 +537,20 @@ export function simulateGongfuCoupled(
     }
 
     // 7.2. Экспозиция (интегрирование теплообмена во время настаивания)
-    // Сохранение частичной определённости: если массы до поглощения известны,
-    // экспозиция рассчитывается даже при неизвестности кинетики или последующего дренажа
-    const exposureAbsorbed =
-      stepWb.absorbedWaterAfterStepGrams ?? stepWb.absorbedWaterBeforeStepGrams;
-    const exposureFree =
-      stepWb.freeWaterAfterUptakeMassGrams ?? stepWb.freeWaterBeforeUptakeMassGrams;
+    // Состояние экспозиции строится строго на основе начальных масс до гидратации шага
+    const exposureAbsorbed = stepWb.absorbedWaterBeforeStepGrams;
+    const exposureFree = stepWb.freeWaterBeforeUptakeMassGrams;
+
+    if (
+      stepWb.freeWaterBeforeUptakeMassGrams !== null &&
+      stepWb.freeWaterBeforeUptakeMassGrams > 0 &&
+      stepWb.freeWaterAfterUptakeMassGrams === 0 &&
+      step.infusionTimeSeconds > 0
+    ) {
+      stepDiagnostics.push(
+        `Шаг ${step.stepNumber}: в начале экспозиции свободная вода присутствовала (${stepWb.freeWaterBeforeUptakeMassGrams} г), поэтому для всего интервала применяется Режим А. К концу гидратации вся свободная вода поглощена листом (freeWaterAfterUptakeMassGrams === 0). Точное время исчерпания свободной фазы внутри интервала не рассчитывается; переход Режим А -> Режим Б внутри одного интервала не моделируется.`
+      );
+    }
 
     const exposureState: ContentThermalState = {
       leafMassGrams: session.leafMassGrams,

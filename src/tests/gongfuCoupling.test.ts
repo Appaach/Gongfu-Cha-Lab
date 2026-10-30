@@ -845,5 +845,423 @@ export async function runGongfuCouplingTestSuite(): Promise<TestResult[]> {
     );
   }
 
+  // =========================================================================
+  // Сюита 8: Сценарий А: исчерпание свободной воды в ходе гидратации (Этап 2B.3.3.3.1.1)
+  // =========================================================================
+  {
+    const suite = '8. Сценарий А: исчерпание свободной воды в ходе гидратации (Этап 2B.3.3.3.1.1)';
+
+    // Навеска 10 г, настой 10 мл (10 г воды). При к-те поглощения 2.5 г/г предел поглощения 25 г.
+    // За 15 с экспозиции вся свободная вода (10 г) поглощается листом:
+    // freeWaterBeforeUptakeMassGrams === 10 г, freeWaterAfterUptakeMassGrams === 0.
+    const session = createTestCoupledSession({
+      leafMassGrams: 10.0,
+      steps: [
+        {
+          stepNumber: 1,
+          infusionTimeSeconds: 15.0,
+          pourWaterVolumeMl: 10.0,
+          waterTemperatureC: 95.0,
+        },
+        {
+          stepNumber: 2,
+          infusionTimeSeconds: 20.0,
+          pourWaterVolumeMl: 100.0,
+          waterTemperatureC: 95.0,
+        },
+      ],
+    });
+
+    // Опции без drainedContentConductanceOptions, пауза между проливами 10 с
+    const res = simulateGongfuCoupled(
+      session,
+      SYNTHETIC_COUPLED_TEA,
+      createTestCoupledOptions({
+        thermalSimulationOptions: {
+          interInfusionPauseSeconds: 10.0,
+        },
+        drainedContentConductanceOptions: undefined,
+      })
+    );
+
+    const step1 = res.steps[0];
+
+    // 8.1 Для интервала экспозиции применяется Режим А
+    assert(
+      suite,
+      'Для всего интервала экспозиции применяется Режим А (наличие свободной воды в начале)',
+      step1.infusionIntegration.status === 'calculated' &&
+        step1.infusionIntegration.diagnostics.some((d) => d.includes('Режим А'))
+    );
+
+    // 8.2 Отсутствие drainedOptions не блокирует расчет экспозиции
+    assert(
+      suite,
+      'Отсутствие drainedContentConductanceOptions не блокирует расчет экспозиции',
+      step1.infusionIntegration.status !== 'blocked_by_unknown_prior_state' &&
+        step1.infusionIntegration.status === 'calculated'
+    );
+
+    // 8.3 В расчете экспозиции используются начальные массы (до поглощения)
+    assert(
+      suite,
+      'В расчете экспозиции используются начальные массы до поглощения шага (freeWaterMassGrams > 0)',
+      step1.waterBalanceStep.freeWaterBeforeUptakeMassGrams === 10.0 &&
+        step1.infusionIntegration.curvePoints[0].freeWaterMassGrams === 10.0
+    );
+
+    // 8.4 Состояние postDrainageState использует конечные массы после гидратации
+    assert(
+      suite,
+      'Состояние postDrainageState использует конечные массы после гидратации (freeWater === 0, liquidTemp === null)',
+      step1.postDrainageState.freeWaterMassGrams === 0 &&
+        step1.postDrainageState.liquidTemperatureC === null &&
+        step1.waterBalanceStep.freeWaterAfterUptakeMassGrams === 0
+    );
+
+    // 8.5 Диагностика сообщает о приближении исчерпания свободной воды
+    assert(
+      suite,
+      'Диагностика сообщает о применении приближения при полном исчерпании свободной воды',
+      step1.diagnostics.some(
+        (d) =>
+          d.includes('Режим А') &&
+          d.includes('freeWaterAfterUptakeMassGrams === 0') &&
+          d.includes('Точное время исчерпания')
+      )
+    );
+
+    // 8.6 Положительная пауза без свободной воды требует drainedOptions и блокируется со статусом unknown_drained_conductance
+    assert(
+      suite,
+      'Положительная пауза без свободной воды требует drainedOptions и блокируется со статусом unknown_drained_conductance',
+      step1.pauseIntegration?.status === 'unknown_drained_conductance' &&
+        step1.status === 'unknown_drained_conductance'
+    );
+  }
+
+  // =========================================================================
+  // Сюита 9: Сценарий B: усиленная runtime-валидация leafSpecificHeatCapacity (Этап 2B.3.3.3.1.1)
+  // =========================================================================
+  {
+    const suite = '9. Сценарий B: усиленная валидация leafSpecificHeatCapacity (Этап 2B.3.3.3.1.1)';
+    const session = createTestCoupledSession();
+
+    // 9.1 origin: 'measured', value: null -> INVALID_LEAF_SPECIFIC_HEAT_VALUE
+    let caughtNull = false;
+    try {
+      simulateGongfuCoupled(session, SYNTHETIC_COUPLED_TEA, {
+        ...createTestCoupledOptions(),
+        leafSpecificHeatCapacity: {
+          origin: 'measured',
+          value: null,
+          unit: 'Дж/(кг·К)',
+        } as any,
+      });
+    } catch (err) {
+      if (err instanceof ThermalValidationError && err.code === 'INVALID_LEAF_SPECIFIC_HEAT_VALUE') {
+        caughtNull = true;
+      }
+    }
+    assert(suite, 'origin: "measured" с value: null отклоняется с INVALID_LEAF_SPECIFIC_HEAT_VALUE', caughtNull);
+
+    // 9.2 origin: 'model_profile', value: undefined -> INVALID_LEAF_SPECIFIC_HEAT_VALUE
+    let caughtUndef = false;
+    try {
+      simulateGongfuCoupled(session, SYNTHETIC_COUPLED_TEA, {
+        ...createTestCoupledOptions(),
+        leafSpecificHeatCapacity: {
+          origin: 'model_profile',
+          value: undefined,
+          unit: 'Дж/(кг·К)',
+        } as any,
+      });
+    } catch (err) {
+      if (err instanceof ThermalValidationError && err.code === 'INVALID_LEAF_SPECIFIC_HEAT_VALUE') {
+        caughtUndef = true;
+      }
+    }
+    assert(suite, 'origin: "model_profile" с value: undefined отклоняется с INVALID_LEAF_SPECIFIC_HEAT_VALUE', caughtUndef);
+
+    // 9.3 origin: 'measured', value: NaN -> INVALID_LEAF_SPECIFIC_HEAT_VALUE
+    let caughtNaN = false;
+    try {
+      simulateGongfuCoupled(session, SYNTHETIC_COUPLED_TEA, {
+        ...createTestCoupledOptions(),
+        leafSpecificHeatCapacity: {
+          origin: 'measured',
+          value: NaN,
+          unit: 'Дж/(кг·К)',
+        } as any,
+      });
+    } catch (err) {
+      if (err instanceof ThermalValidationError && err.code === 'INVALID_LEAF_SPECIFIC_HEAT_VALUE') {
+        caughtNaN = true;
+      }
+    }
+    assert(suite, 'origin: "measured" с value: NaN отклоняется с INVALID_LEAF_SPECIFIC_HEAT_VALUE', caughtNaN);
+
+    // 9.4 origin: 'unknown', value: 1500 -> INVALID_LEAF_SPECIFIC_HEAT_ORIGIN_VALUE_MISMATCH
+    let caughtMismatch = false;
+    try {
+      simulateGongfuCoupled(session, SYNTHETIC_COUPLED_TEA, {
+        ...createTestCoupledOptions(),
+        leafSpecificHeatCapacity: {
+          origin: 'unknown',
+          value: 1500,
+          unit: 'Дж/(кг·К)',
+        } as any,
+      });
+    } catch (err) {
+      if (err instanceof ThermalValidationError && err.code === 'INVALID_LEAF_SPECIFIC_HEAT_ORIGIN_VALUE_MISMATCH') {
+        caughtMismatch = true;
+      }
+    }
+    assert(suite, 'origin: "unknown" с числовым value: 1500 отклоняется с INVALID_LEAF_SPECIFIC_HEAT_ORIGIN_VALUE_MISMATCH', caughtMismatch);
+
+    // 9.5 Допустимый origin: 'unknown', value: null -> не бросает validation error, статус unknown_leaf_specific_heat
+    let caughtValidUnknownError = false;
+    let resValidUnknown: CoupledGongfuSimulationResult | null = null;
+    try {
+      resValidUnknown = simulateGongfuCoupled(session, SYNTHETIC_COUPLED_TEA, {
+        ...createTestCoupledOptions(),
+        leafSpecificHeatCapacity: {
+          origin: 'unknown',
+          value: null,
+          unit: 'Дж/(кг·К)',
+        },
+      });
+    } catch (err) {
+      caughtValidUnknownError = true;
+    }
+    assert(
+      suite,
+      'Допустимый origin: "unknown" с value: null принимается валидацией и приводит к graceful unknown_leaf_specific_heat',
+      !caughtValidUnknownError &&
+        resValidUnknown !== null &&
+        resValidUnknown.status === 'unknown_leaf_specific_heat'
+    );
+  }
+
+  // =========================================================================
+  // Сюита 10: Сценарий C: усиленная валидация drainedContentConductanceOptions (Этап 2B.3.3.3.1.1)
+  // =========================================================================
+  {
+    const suite = '10. Сценарий C: усиленная валидация drainedContentConductanceOptions (Этап 2B.3.3.3.1.1)';
+    const session = createTestCoupledSession();
+
+    const validConductance = createValueWithOrigin(0.5, 'model_profile', 'Вт/К');
+
+    // --- Проверка conductanceDrainedContentVesselWPerK ---
+
+    // 10.1 conductanceDrainedContentVesselWPerK: value: null при origin !== 'unknown'
+    let caughtVesselNull = false;
+    try {
+      simulateGongfuCoupled(session, SYNTHETIC_COUPLED_TEA, {
+        ...createTestCoupledOptions(),
+        drainedContentConductanceOptions: {
+          conductanceDrainedContentVesselWPerK: {
+            origin: 'measured',
+            value: null,
+            unit: 'Вт/К',
+          } as any,
+          conductanceDrainedContentAmbientWPerK: validConductance,
+        },
+      });
+    } catch (err) {
+      if (err instanceof ThermalValidationError && err.code === 'INVALID_CONDUCTANCE') {
+        caughtVesselNull = true;
+      }
+    }
+    assert(suite, 'conductanceDrainedContentVesselWPerK с value: null отклоняется с INVALID_CONDUCTANCE', caughtVesselNull);
+
+    // 10.2 conductanceDrainedContentVesselWPerK: value: undefined при origin !== 'unknown'
+    let caughtVesselUndef = false;
+    try {
+      simulateGongfuCoupled(session, SYNTHETIC_COUPLED_TEA, {
+        ...createTestCoupledOptions(),
+        drainedContentConductanceOptions: {
+          conductanceDrainedContentVesselWPerK: {
+            origin: 'model_profile',
+            value: undefined,
+            unit: 'Вт/К',
+          } as any,
+          conductanceDrainedContentAmbientWPerK: validConductance,
+        },
+      });
+    } catch (err) {
+      if (err instanceof ThermalValidationError && err.code === 'INVALID_CONDUCTANCE') {
+        caughtVesselUndef = true;
+      }
+    }
+    assert(suite, 'conductanceDrainedContentVesselWPerK с value: undefined отклоняется с INVALID_CONDUCTANCE', caughtVesselUndef);
+
+    // 10.3 conductanceDrainedContentVesselWPerK: value < 0
+    let caughtVesselNeg = false;
+    try {
+      simulateGongfuCoupled(session, SYNTHETIC_COUPLED_TEA, {
+        ...createTestCoupledOptions(),
+        drainedContentConductanceOptions: {
+          conductanceDrainedContentVesselWPerK: {
+            origin: 'measured',
+            value: -0.1,
+            unit: 'Вт/К',
+          },
+          conductanceDrainedContentAmbientWPerK: validConductance,
+        },
+      });
+    } catch (err) {
+      if (err instanceof ThermalValidationError && err.code === 'INVALID_CONDUCTANCE') {
+        caughtVesselNeg = true;
+      }
+    }
+    assert(suite, 'conductanceDrainedContentVesselWPerK с отрицательным value отклоняется с INVALID_CONDUCTANCE', caughtVesselNeg);
+
+    // 10.4 conductanceDrainedContentVesselWPerK: origin: 'unknown' с числовым значением
+    let caughtVesselMismatch = false;
+    try {
+      simulateGongfuCoupled(session, SYNTHETIC_COUPLED_TEA, {
+        ...createTestCoupledOptions(),
+        drainedContentConductanceOptions: {
+          conductanceDrainedContentVesselWPerK: {
+            origin: 'unknown',
+            value: 0.5,
+            unit: 'Вт/К',
+          } as any,
+          conductanceDrainedContentAmbientWPerK: validConductance,
+        },
+      });
+    } catch (err) {
+      if (err instanceof ThermalValidationError && err.code === 'INVALID_CONDUCTANCE_ORIGIN_VALUE_MISMATCH') {
+        caughtVesselMismatch = true;
+      }
+    }
+    assert(suite, 'conductanceDrainedContentVesselWPerK origin: "unknown" с числом отклоняется с INVALID_CONDUCTANCE_ORIGIN_VALUE_MISMATCH', caughtVesselMismatch);
+
+    // 10.5 conductanceDrainedContentVesselWPerK: допустимый origin: 'unknown', value: null
+    let caughtVesselValidUnknown = false;
+    try {
+      simulateGongfuCoupled(session, SYNTHETIC_COUPLED_TEA, {
+        ...createTestCoupledOptions(),
+        drainedContentConductanceOptions: {
+          conductanceDrainedContentVesselWPerK: {
+            origin: 'unknown',
+            value: null,
+            unit: 'Вт/К',
+          },
+          conductanceDrainedContentAmbientWPerK: validConductance,
+        },
+      });
+    } catch (err) {
+      caughtVesselValidUnknown = true;
+    }
+    assert(suite, 'conductanceDrainedContentVesselWPerK origin: "unknown" с value: null принимается валидацией', !caughtVesselValidUnknown);
+
+    // --- Проверка conductanceDrainedContentAmbientWPerK ---
+
+    // 10.6 conductanceDrainedContentAmbientWPerK: value: null при origin !== 'unknown'
+    let caughtAmbientNull = false;
+    try {
+      simulateGongfuCoupled(session, SYNTHETIC_COUPLED_TEA, {
+        ...createTestCoupledOptions(),
+        drainedContentConductanceOptions: {
+          conductanceDrainedContentVesselWPerK: validConductance,
+          conductanceDrainedContentAmbientWPerK: {
+            origin: 'measured',
+            value: null,
+            unit: 'Вт/К',
+          } as any,
+        },
+      });
+    } catch (err) {
+      if (err instanceof ThermalValidationError && err.code === 'INVALID_CONDUCTANCE') {
+        caughtAmbientNull = true;
+      }
+    }
+    assert(suite, 'conductanceDrainedContentAmbientWPerK с value: null отклоняется с INVALID_CONDUCTANCE', caughtAmbientNull);
+
+    // 10.7 conductanceDrainedContentAmbientWPerK: value: undefined при origin !== 'unknown'
+    let caughtAmbientUndef = false;
+    try {
+      simulateGongfuCoupled(session, SYNTHETIC_COUPLED_TEA, {
+        ...createTestCoupledOptions(),
+        drainedContentConductanceOptions: {
+          conductanceDrainedContentVesselWPerK: validConductance,
+          conductanceDrainedContentAmbientWPerK: {
+            origin: 'model_profile',
+            value: undefined,
+            unit: 'Вт/К',
+          } as any,
+        },
+      });
+    } catch (err) {
+      if (err instanceof ThermalValidationError && err.code === 'INVALID_CONDUCTANCE') {
+        caughtAmbientUndef = true;
+      }
+    }
+    assert(suite, 'conductanceDrainedContentAmbientWPerK с value: undefined отклоняется с INVALID_CONDUCTANCE', caughtAmbientUndef);
+
+    // 10.8 conductanceDrainedContentAmbientWPerK: value < 0
+    let caughtAmbientNeg = false;
+    try {
+      simulateGongfuCoupled(session, SYNTHETIC_COUPLED_TEA, {
+        ...createTestCoupledOptions(),
+        drainedContentConductanceOptions: {
+          conductanceDrainedContentVesselWPerK: validConductance,
+          conductanceDrainedContentAmbientWPerK: {
+            origin: 'measured',
+            value: -0.2,
+            unit: 'Вт/К',
+          },
+        },
+      });
+    } catch (err) {
+      if (err instanceof ThermalValidationError && err.code === 'INVALID_CONDUCTANCE') {
+        caughtAmbientNeg = true;
+      }
+    }
+    assert(suite, 'conductanceDrainedContentAmbientWPerK с отрицательным value отклоняется с INVALID_CONDUCTANCE', caughtAmbientNeg);
+
+    // 10.9 conductanceDrainedContentAmbientWPerK: origin: 'unknown' с числовым значением
+    let caughtAmbientMismatch = false;
+    try {
+      simulateGongfuCoupled(session, SYNTHETIC_COUPLED_TEA, {
+        ...createTestCoupledOptions(),
+        drainedContentConductanceOptions: {
+          conductanceDrainedContentVesselWPerK: validConductance,
+          conductanceDrainedContentAmbientWPerK: {
+            origin: 'unknown',
+            value: 0.8,
+            unit: 'Вт/К',
+          } as any,
+        },
+      });
+    } catch (err) {
+      if (err instanceof ThermalValidationError && err.code === 'INVALID_CONDUCTANCE_ORIGIN_VALUE_MISMATCH') {
+        caughtAmbientMismatch = true;
+      }
+    }
+    assert(suite, 'conductanceDrainedContentAmbientWPerK origin: "unknown" с числом отклоняется с INVALID_CONDUCTANCE_ORIGIN_VALUE_MISMATCH', caughtAmbientMismatch);
+
+    // 10.10 conductanceDrainedContentAmbientWPerK: допустимый origin: 'unknown', value: null
+    let caughtAmbientValidUnknown = false;
+    try {
+      simulateGongfuCoupled(session, SYNTHETIC_COUPLED_TEA, {
+        ...createTestCoupledOptions(),
+        drainedContentConductanceOptions: {
+          conductanceDrainedContentVesselWPerK: validConductance,
+          conductanceDrainedContentAmbientWPerK: {
+            origin: 'unknown',
+            value: null,
+            unit: 'Вт/К',
+          },
+        },
+      });
+    } catch (err) {
+      caughtAmbientValidUnknown = true;
+    }
+    assert(suite, 'conductanceDrainedContentAmbientWPerK origin: "unknown" с value: null принимается валидацией', !caughtAmbientValidUnknown);
+  }
+
   return results;
 }
