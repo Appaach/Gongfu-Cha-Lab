@@ -10,6 +10,7 @@ import {
   LazyMugTimelineEvent,
   VesselMaterial,
 } from '../../domain/brewing/types.ts';
+import { TeaSample } from '../../domain/tea/types.ts';
 import {
   DEFAULT_AMBIENT_TEMPERATURE_C,
   DEFAULT_PREHEATED_VESSEL_TEMPERATURE_C,
@@ -36,11 +37,109 @@ import {
   ThermalStepResult,
   SessionThermalSummary,
   VesselThermalProfile,
+  CoupledGongfuSimulationOptions,
+  CoupledGongfuSimulationResult,
 } from './types.ts';
+import { simulateGongfuCoupled } from './gongfuCoupling.ts';
 
 export interface ThermalSimulationOutput {
   readonly summary: SessionThermalSummary;
   readonly stepResults: ThermalStepResult[];
+}
+
+/**
+ * Разрешение параметров моделирования и начального состояния сосуда со строгой валидацией входных настроек.
+ */
+export function resolveThermalSimulationOptions(
+  vesselId: string,
+  vesselVolumeMl: number,
+  vesselMaterialFallback: VesselMaterial,
+  options?: ThermalSimulationOptions,
+  defaultPauseSeconds: number = DEFAULT_INTER_INFUSION_PAUSE_SECONDS
+): {
+  profile: VesselThermalProfile;
+  ambientTemp: number;
+  initialVesselTemp: number;
+  isPreheated: boolean;
+  interPause: number;
+  dt: number;
+} {
+  const profile = getVesselThermalProfile(vesselId, vesselMaterialFallback, vesselVolumeMl);
+
+  // Валидация температуры окружающей среды
+  let ambientTemp = DEFAULT_AMBIENT_TEMPERATURE_C;
+  if (options?.ambientTemperatureC !== undefined) {
+    if (!Number.isFinite(options.ambientTemperatureC) || options.ambientTemperatureC < -50 || options.ambientTemperatureC > 80) {
+      throw new ThermalValidationError(
+        `Температура окружающей среды (${options.ambientTemperatureC} °C) выходит за физически допустимые пределы помещения (-50..+80 °C).`,
+        'INVALID_AMBIENT_TEMPERATURE',
+        'ambientTemperatureC',
+        options.ambientTemperatureC
+      );
+    }
+    ambientTemp = options.ambientTemperatureC;
+  }
+
+  const isPreheated = options?.isVesselPreheated ?? true;
+
+  // Валидация температуры прогрева сосуда
+  let initialVesselTemp = ambientTemp;
+  if (isPreheated) {
+    if (options?.preheatedVesselTemperatureC !== undefined) {
+      if (!Number.isFinite(options.preheatedVesselTemperatureC) || options.preheatedVesselTemperatureC < 0 || options.preheatedVesselTemperatureC > 150) {
+        throw new ThermalValidationError(
+          `Температура предварительно прогретого сосуда (${options.preheatedVesselTemperatureC} °C) выходит за допустимые пределы (0..+150 °C).`,
+          'INVALID_PREHEATED_VESSEL_TEMPERATURE',
+          'preheatedVesselTemperatureC',
+          options.preheatedVesselTemperatureC
+        );
+      }
+      initialVesselTemp = options.preheatedVesselTemperatureC;
+    } else {
+      initialVesselTemp = DEFAULT_PREHEATED_VESSEL_TEMPERATURE_C;
+    }
+  }
+
+  // Валидация паузы между проливами
+  let interPause = defaultPauseSeconds;
+  if (options?.interInfusionPauseSeconds !== undefined) {
+    if (!Number.isFinite(options.interInfusionPauseSeconds) || options.interInfusionPauseSeconds < 0) {
+      throw new ThermalValidationError(
+        `Пауза между проливами не может быть отрицательной или NaN: ${options.interInfusionPauseSeconds} с.`,
+        'INVALID_PAUSE_DURATION',
+        'interInfusionPauseSeconds',
+        options.interInfusionPauseSeconds
+      );
+    }
+    interPause = options.interInfusionPauseSeconds;
+  }
+
+  // Валидация шага численного интегратора
+  let dt = DEFAULT_INTEGRATOR_TIME_STEP_SECONDS;
+  if (options?.integratorTimeStepSeconds !== undefined) {
+    if (
+      !Number.isFinite(options.integratorTimeStepSeconds) ||
+      options.integratorTimeStepSeconds < MIN_INTEGRATOR_TIME_STEP_SECONDS ||
+      options.integratorTimeStepSeconds > MAX_INTEGRATOR_TIME_STEP_SECONDS
+    ) {
+      throw new ThermalValidationError(
+        `Шаг численного интегрирования (${options.integratorTimeStepSeconds} с) выходит за допустимый диапазон [${MIN_INTEGRATOR_TIME_STEP_SECONDS}, ${MAX_INTEGRATOR_TIME_STEP_SECONDS}] с.`,
+        'INVALID_TIME_STEP',
+        'integratorTimeStepSeconds',
+        options.integratorTimeStepSeconds
+      );
+    }
+    dt = options.integratorTimeStepSeconds;
+  }
+
+  return {
+    profile,
+    ambientTemp,
+    initialVesselTemp,
+    isPreheated,
+    interPause,
+    dt,
+  };
 }
 
 /**
@@ -57,90 +156,14 @@ export class BrewingThermalEngine {
     vesselMaterialFallback: VesselMaterial,
     options?: ThermalSimulationOptions,
     defaultPauseSeconds: number = DEFAULT_INTER_INFUSION_PAUSE_SECONDS
-  ): {
-    profile: VesselThermalProfile;
-    ambientTemp: number;
-    initialVesselTemp: number;
-    isPreheated: boolean;
-    interPause: number;
-    dt: number;
-  } {
-    const profile = getVesselThermalProfile(vesselId, vesselMaterialFallback, vesselVolumeMl);
-
-    // Валидация температуры окружающей среды
-    let ambientTemp = DEFAULT_AMBIENT_TEMPERATURE_C;
-    if (options?.ambientTemperatureC !== undefined) {
-      if (!Number.isFinite(options.ambientTemperatureC) || options.ambientTemperatureC < -50 || options.ambientTemperatureC > 80) {
-        throw new ThermalValidationError(
-          `Температура окружающей среды (${options.ambientTemperatureC} °C) выходит за физически допустимые пределы помещения (-50..+80 °C).`,
-          'INVALID_AMBIENT_TEMPERATURE',
-          'ambientTemperatureC',
-          options.ambientTemperatureC
-        );
-      }
-      ambientTemp = options.ambientTemperatureC;
-    }
-
-    const isPreheated = options?.isVesselPreheated ?? true;
-
-    // Валидация температуры прогрева сосуда
-    let initialVesselTemp = ambientTemp;
-    if (isPreheated) {
-      if (options?.preheatedVesselTemperatureC !== undefined) {
-        if (!Number.isFinite(options.preheatedVesselTemperatureC) || options.preheatedVesselTemperatureC < 0 || options.preheatedVesselTemperatureC > 150) {
-          throw new ThermalValidationError(
-            `Температура предварительно прогретого сосуда (${options.preheatedVesselTemperatureC} °C) выходит за допустимые пределы (0..+150 °C).`,
-            'INVALID_PREHEATED_VESSEL_TEMPERATURE',
-            'preheatedVesselTemperatureC',
-            options.preheatedVesselTemperatureC
-          );
-        }
-        initialVesselTemp = options.preheatedVesselTemperatureC;
-      } else {
-        initialVesselTemp = DEFAULT_PREHEATED_VESSEL_TEMPERATURE_C;
-      }
-    }
-
-    // Валидация паузы между проливами
-    let interPause = defaultPauseSeconds;
-    if (options?.interInfusionPauseSeconds !== undefined) {
-      if (!Number.isFinite(options.interInfusionPauseSeconds) || options.interInfusionPauseSeconds < 0) {
-        throw new ThermalValidationError(
-          `Пауза между проливами не может быть отрицательной или NaN: ${options.interInfusionPauseSeconds} с.`,
-          'INVALID_PAUSE_DURATION',
-          'interInfusionPauseSeconds',
-          options.interInfusionPauseSeconds
-        );
-      }
-      interPause = options.interInfusionPauseSeconds;
-    }
-
-    // Валидация шага численного интегратора
-    let dt = DEFAULT_INTEGRATOR_TIME_STEP_SECONDS;
-    if (options?.integratorTimeStepSeconds !== undefined) {
-      if (
-        !Number.isFinite(options.integratorTimeStepSeconds) ||
-        options.integratorTimeStepSeconds < MIN_INTEGRATOR_TIME_STEP_SECONDS ||
-        options.integratorTimeStepSeconds > MAX_INTEGRATOR_TIME_STEP_SECONDS
-      ) {
-        throw new ThermalValidationError(
-          `Шаг численного интегрирования (${options.integratorTimeStepSeconds} с) выходит за допустимый диапазон [${MIN_INTEGRATOR_TIME_STEP_SECONDS}, ${MAX_INTEGRATOR_TIME_STEP_SECONDS}] с.`,
-          'INVALID_TIME_STEP',
-          'integratorTimeStepSeconds',
-          options.integratorTimeStepSeconds
-        );
-      }
-      dt = options.integratorTimeStepSeconds;
-    }
-
-    return {
-      profile,
-      ambientTemp,
-      initialVesselTemp,
-      isPreheated,
-      interPause,
-      dt,
-    };
+  ) {
+    return resolveThermalSimulationOptions(
+      vesselId,
+      vesselVolumeMl,
+      vesselMaterialFallback,
+      options,
+      defaultPauseSeconds
+    );
   }
 
   /**
@@ -755,6 +778,19 @@ export class BrewingThermalEngine {
     };
 
     return { summary, stepResults };
+  }
+
+  /**
+   * Связанное физическое моделирование водного баланса и теплового ядра Гунфу Ча (Этап 2B.3.3.3.1).
+   * Рассчитывает поглощение листом, адиабатическое смешение при заливке, остывание настоя,
+   * мгновенный слив и межпроливную паузу с остаточной влагой.
+   */
+  simulateGongfuCoupled(
+    session: GongfuSessionConfig,
+    tea: TeaSample,
+    options: CoupledGongfuSimulationOptions
+  ): CoupledGongfuSimulationResult {
+    return simulateGongfuCoupled(session, tea, options);
   }
 }
 

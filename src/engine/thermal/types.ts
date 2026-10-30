@@ -5,6 +5,12 @@
 
 import { VesselMaterial } from '../../domain/brewing/types.ts';
 import { DataOriginType, ValueWithOrigin } from '../../domain/tea/types.ts';
+import {
+  GongfuWaterBalanceOptions,
+  GongfuStepWaterBalanceResult,
+  GongfuWaterBalanceResult,
+} from '../water-balance/gongfuWaterBalance.ts';
+import { LeafWaterThermalMixingResult } from './leafWaterMixing.ts';
 
 /**
  * Единицы измерения физических величин тепловой модели:
@@ -307,5 +313,120 @@ export interface ContentIntegrationStepResult {
   readonly warnings: string[];
   /** Диагностические сообщения и применённые модельные допущения */
   readonly diagnostics: string[];
+}
+
+/**
+ * Опции связанного физического моделирования водного баланса и теплового ядра Гунфу Ча.
+ */
+export interface CoupledGongfuSimulationOptions {
+  /** Опции расчёта водного баланса (капиллярное удержание, плотность воды) */
+  readonly waterBalanceOptions?: GongfuWaterBalanceOptions;
+  /** Тепловые опции сосуда и окружения (прогрев, температура воздуха, dt и т.д.) */
+  readonly thermalSimulationOptions?: ThermalSimulationOptions;
+  /**
+   * Удельная изобарная теплоёмкость сухого листа с метаданными происхождения (Дж/(кг·К)).
+   * Обязательный параметр (ValueWithOrigin<number>).
+   */
+  readonly leafSpecificHeatCapacity: ValueWithOrigin<number>;
+  /**
+   * Начальная температура сухого листа до начала сессии с метаданными происхождения (°C).
+   * Обязательный параметр (ValueWithOrigin<number>).
+   */
+  readonly initialContentTemperatureC: ValueWithOrigin<number>;
+  /**
+   * Опции проводимостей осушенного содержимого при паузе между проливами (если свободная вода отсутствует).
+   */
+  readonly drainedContentConductanceOptions?: DrainedContentConductanceOptions;
+}
+
+/**
+ * Метрологический статус отдельного связанного шага Гунфу Ча.
+ */
+export type CoupledGongfuStepStatus =
+  | 'calculated'
+  | 'unknown_leaf_specific_heat'
+  | 'unknown_hydration_profile'
+  | 'unknown_capillary_hold_up'
+  | 'unknown_drained_conductance'
+  | 'unknown_water_masses'
+  | 'blocked_by_unknown_prior_state'
+  | 'no_time_elapsed';
+
+/**
+ * Результат моделирования отдельного связанного шага Гунфу Ча (смешение, экспозиция, слив, пауза).
+ */
+export interface CoupledGongfuStepResult {
+  /** Номер шага (1-based) */
+  readonly stepNumber: number;
+  /** Метрологический статус шага */
+  readonly status: CoupledGongfuStepStatus;
+  /** Результат водного баланса на данном шаге */
+  readonly waterBalanceStep: GongfuStepWaterBalanceResult;
+  /** Результат адиабатического смешения свежей воды с содержимым */
+  readonly mixingResult: LeafWaterThermalMixingResult;
+  /** Результат численного интегрирования теплообмена во время экспозиции (настаивания) */
+  readonly infusionIntegration: ContentIntegrationStepResult;
+  /**
+   * Состояние содержимого и сосуда непосредственно после мгновенного слива настоя.
+   * Температура содержимого равна температуре на конец экспозиции, масса свободной воды равна удержанному корню.
+   */
+  readonly postDrainageState: ContentThermalState;
+  /** Параметры слитого настоя */
+  readonly drainedLiquor: {
+    readonly volumeMl: number | null;
+    readonly massGrams: number | null;
+    readonly temperatureC: number | null;
+  };
+  /**
+   * Результат численного интегрирования теплообмена во время межпроливной паузы.
+   * null для последнего пролива сессии (пауза отсутствует).
+   */
+  readonly pauseIntegration: ContentIntegrationStepResult | null;
+  /**
+   * Состояние содержимого и сосуда после завершения межпроливной паузы (перед следующим проливом).
+   * null для последнего пролива сессии.
+   */
+  readonly postPauseState: ContentThermalState | null;
+  /** Пояснение причины блокировки при status !== 'calculated' и status !== 'no_time_elapsed' */
+  readonly reason?: string;
+  /** Предупреждения численного расчёта */
+  readonly warnings: string[];
+  /** Диагностические сообщения шага */
+  readonly diagnostics: string[];
+}
+
+/**
+ * Метрологический статус связанной сессии Гунфу Ча.
+ */
+export type CoupledGongfuSessionStatus =
+  | 'calculated'
+  | 'unknown_leaf_specific_heat'
+  | 'unknown_hydration_profile'
+  | 'unknown_capillary_hold_up'
+  | 'unknown_drained_conductance'
+  | 'unknown_water_masses'
+  | 'blocked_by_unknown_prior_state'
+  | 'partially_blocked';
+
+/**
+ * Итоговый результат связанного моделирования водного и теплового баланса сессии Гунфу Ча.
+ */
+export interface CoupledGongfuSimulationResult {
+  /** Итоговый метрологический статус сессии */
+  readonly status: CoupledGongfuSessionStatus;
+  /** Полный результат водного баланса всей сессии */
+  readonly waterBalanceResult: GongfuWaterBalanceResult;
+  /** Пошаговые результаты связанного моделирования */
+  readonly steps: CoupledGongfuStepResult[];
+  /** Суммарное время экспозиции настоя за все шаги, с */
+  readonly totalInfusionTimeSeconds: number;
+  /** Полное астрономическое время моделируемой сессии (экспозиции + паузы), с */
+  readonly totalElapsedTimeSeconds: number;
+  /** Тепловой профиль использованного сосуда */
+  readonly profile: VesselThermalProfile;
+  /** Общие диагностические сообщения */
+  readonly diagnostics: string[];
+  /** Общие предупреждения */
+  readonly warnings: string[];
 }
 

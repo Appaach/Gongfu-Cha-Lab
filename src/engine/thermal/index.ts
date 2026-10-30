@@ -11,4 +11,5 @@ export * from './integrator.ts';
 export * from './engine.ts';
 export * from './leafWaterMixing.ts';
 export * from './contentIntegrator.ts';
+export * from './gongfuCoupling.ts';
 
