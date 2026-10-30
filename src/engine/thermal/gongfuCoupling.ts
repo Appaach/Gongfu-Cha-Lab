@@ -207,7 +207,7 @@ export function validateLeafSpecificHeatCapacity(
 /**
  * Валидация проводимостей осушенного содержимого.
  */
-function validateDrainedConductanceOptions(
+export function validateDrainedConductanceOptions(
   drainedOptions?: DrainedContentConductanceOptions
 ): void {
   if (drainedOptions === undefined) {

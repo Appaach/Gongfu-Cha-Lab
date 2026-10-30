@@ -39,8 +39,11 @@ import {
   VesselThermalProfile,
   CoupledGongfuSimulationOptions,
   CoupledGongfuSimulationResult,
+  CoupledLiuGenPaoSimulationOptions,
+  CoupledLiuGenPaoSimulationResult,
 } from './types.ts';
 import { simulateGongfuCoupled } from './gongfuCoupling.ts';
+import { simulateLiuGenPaoCoupled } from './liuGenPaoCoupling.ts';
 
 export interface ThermalSimulationOutput {
   readonly summary: SessionThermalSummary;
@@ -791,6 +794,19 @@ export class BrewingThermalEngine {
     options: CoupledGongfuSimulationOptions
   ): CoupledGongfuSimulationResult {
     return simulateGongfuCoupled(session, tea, options);
+  }
+
+  /**
+   * Связанное физическое моделирование водного баланса и теплового ядра Лю Гэнь Пао (Этап 2B.3.3.3.2).
+   * Рассчитывает смешение свежей воды с сохранённым корнем, гидратацию, частичный слив корня
+   * и межпроливную паузу с остаточным корнем.
+   */
+  simulateLiuGenPaoCoupled(
+    session: LiuGenPaoSessionConfig,
+    tea: TeaSample,
+    options: CoupledLiuGenPaoSimulationOptions
+  ): CoupledLiuGenPaoSimulationResult {
+    return simulateLiuGenPaoCoupled(session, tea, options);
   }
 }
 

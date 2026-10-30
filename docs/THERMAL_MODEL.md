@@ -313,9 +313,70 @@ $$|1 + \lambda \Delta t + \frac{1}{2} (\lambda \Delta t)^2| < 1 \implies \Delta 
     5. На шаге формируется русскоязычное диагностическое сообщение (`stepDiagnostics`), фиксирующее применение данного приближения;
     6. После завершения экспозиции и дренажа в `postDrainageState` масса свободной воды строго равна 0 (`freeWaterMassGrams === 0`), `liquidTemperatureC === null`. Последующая межпроливная пауза (при положительной длительности) стартует уже в **Режиме Б** и строго требует задания параметров `drainedContentConductanceOptions`, блокируясь со статусом `unknown_drained_conductance` при их отсутствии.
 
+
 - **Усиленная runtime-валидация метаданных:**
   - `leafSpecificHeatCapacity`: при `origin === 'unknown'` поле `value` обязано быть строго `null` (`INVALID_LEAF_SPECIFIC_HEAT_ORIGIN_VALUE_MISMATCH`); при `origin !== 'unknown'` поле `value` обязано быть конечным строго положительным числом $> 0$ (`INVALID_LEAF_SPECIFIC_HEAT_VALUE`).
   - `drainedContentConductanceOptions`: каждое поле проводимости (`conductanceDrainedContentVesselWPerK`, `conductanceDrainedContentAmbientWPerK`) независимо валидируется: при `origin === 'unknown'` значение `value` обязано быть строго `null` (`INVALID_CONDUCTANCE_ORIGIN_VALUE_MISMATCH`); при `origin !== 'unknown'` значение `value` обязано быть конечным неотрицательным числом $\ge 0$ (`INVALID_CONDUCTANCE`).
+
+---
+
+## 8.8. Связанная интеграция водного баланса и теплового ядра Лю Гэнь Пао (Этап 2B.3.3.3.2)
+
+Метод Лю Гэнь Пао (留根泡 — «заваривание с сохранением корня») представляет собой многоступенчатый протокол экстракции, при котором после завершения времени настаивания из заварочного сосуда сливается только определённая доля готового настоя, а остальная свободная жидкость («корень» настоя) остаётся в сосуде вместе с влажным листом и смешивается со свежей водой последующего долива.
+
+Связанная модель `simulateLiuGenPaoCoupled(session, tea, options)` объединяет модуль водного баланса `simulateLiuGenPaoWaterBalance`, энергетическое смешение `solveLeafWaterThermalMixing` и изолированный интегратор Хойна `integrateContentThermalStep`.
+
+### 8.8.1. Термодинамический цикл шага Лю Гэнь Пао
+
+Каждый шаг $i$ связанной модели состоит из следующих физических фаз:
+
+1. **Водный баланс шага (`simulateLiuGenPaoWaterBalance`):**
+   - Расчёт кинетики поглощения влаги листом и определение свободной воды до и после гидратации;
+   - Расчёт сливаемого настоя $V_{\text{drained}}$ и сохраняемого свободного корня $V_{\text{retained}} = \min(V_{\text{free, post}}, \max(r \cdot V_{\text{free, post}}, V_{\text{interstitial}}))$, исключающий двойной учёт капиллярного остатка и технологического корня;
+   - Передача масс: $m_{\text{added}}$, $m_{\text{carried}}$, $m_{\text{abs, before}}$, $m_{\text{abs, after}}$, $m_{\text{free, pre}}$, $m_{\text{retained}}$, $m_{\text{drained}}$.
+
+2. **Адиабатическое смешение при доливе (`solveLeafWaterThermalMixing`):**
+   - На шаге 1: сухой лист при $T_{\text{leaf, initial}}$ смешивается со свежей заливкой массы $m_{\text{added}}$ при $T_{\text{added}}$;
+   - На шаге $i > 0$: доливаемая вода смешивается с влажным листом и **сохранённым корнем** настоя предыдущего шага, имеющими температуру $T_{\text{contents, before}}$ (на конец предшествующей межпроливной паузы или предшествующего слива):
+     $$C_{\text{contents, before}} = m_{\text{dry}} c_{p,\text{leaf}} + (m_{\text{abs, before}} + m_{\text{free, carried}}) c_{p,\text{water}}$$
+     $$C_{\text{added}} = m_{\text{added}} c_{p,\text{water}}$$
+     $$T_{\text{mix}} = \frac{C_{\text{contents, before}} T_{\text{contents, before}} + C_{\text{added}} T_{\text{added}}}{C_{\text{contents, before}} + C_{\text{added}}}$$
+   - Наличие горячего корня существенно снижает термический градиент и начальное падение температуры настоя по сравнению с полным сливом.
+
+3. **Экспозиция заваривания (`integrateContentThermalStep`):**
+   - Формируется состояние экспозиции `exposureState` на основе начальных pre-uptake масс:
+     - `freeWaterMassGrams = stepWb.freeWaterBeforeUptakeMassGrams`;
+     - `absorbedWaterGrams = stepWb.absorbedWaterBeforeStepGrams`;
+     - `liquidTemperatureC = mixResult.mixtureTemperatureC` (при $m_{\text{free, pre}} > 0$).
+   - Выполняется интеграция совместного остывания содержимого и стенок посуды на интервале `infusionTimeSeconds`;
+   - Присутствие свободной воды обуславливает расчёт теплоотдачи по проводимостям жидкой фазы $G_{cv} = G_{lv}$ и $G_{ca} = G_{la}$ (**Режим А**);
+   - При исчерпании свободной воды матрицей листа в ходе гидратации фиксируется русскоязычное диагностическое сообщение `stepDiagnostics` о применении модельного приближения Режима А к интервалу экспозиции.
+
+4. **Частичный слив готового настоя:**
+   - Слитая фракция настоя удаляется из сосуда при конечной температуре экспозиции $T_{\text{contents, postInfusion}}$;
+   - Температура остающегося влажного листа и сохранённого корня не изменяется:
+     $$T_{\text{contents, postDrain}} = T_{\text{contents, postInfusion}}, \quad T_{\text{vessel, postDrain}} = T_{\text{vessel, postInfusion}}$$
+   - Формируется `postDrainageState` с конечными массами:
+     - `absorbedWaterGrams = stepWb.absorbedWaterAfterStepGrams`;
+     - `freeWaterMassGrams = stepWb.retainedLiquorMassGrams`;
+     - `liquidTemperatureC`: равен температуре содержимого, если $m_{\text{retained}} > 0$; строго `null`, если $m_{\text{retained}} = 0$.
+
+5. **Межпроливная пауза:**
+   - По умолчанию в Лю Гэнь Пао `DEFAULT_LIU_GEN_PAO_PAUSE_SECONDS = 0.0`, так как при традиционном заваривании свежая вода доливается немедленно после частичного слива.
+   - При $\tau_{\text{pause}} = 0$: чистый детерминированный no-op со статусом `no_time_elapsed`, температуры сохраняются без потерь.
+   - При $\tau_{\text{pause}} > 0$:
+     - **Режим А ($m_{\text{retained}} > 0$):** теплообмен оставшегося свободного корня и листа со стенками и воздухом рассчитывается по проводимостям жидкой фазы $G_{lv}$, $G_{la}$;
+     - **Режим Б ($m_{\text{retained}} = 0$):** если весь свободный настой был слит, теплообмен влажного листа рассчитывается по `drainedContentConductanceOptions`. При их отсутствии шаг паузы блокируется со статусом `unknown_drained_conductance`.
+
+6. **Метрологический принцип частичной определённости (Unknown ≠ 0):**
+   - Если массы водного баланса известны, расчёт смешения и экспозиции шага 1 выполняется со статусом `calculated`;
+   - При неизвестных параметрах гидратации или капиллярной ёмкости последующие зависимые шаги каскадно блокируются со статусом `blocked_by_unknown_prior_state` и значениями `null` без подстановки нулей или фиктивных значений;
+   - Температура несуществующей жидкости строго равна `null` (`LIQUID_TEMPERATURE_FREE_WATER_MISMATCH`).
+
+7. **Обратная совместимость:**
+   - Метод `simulateLiuGenPao` на классе `BrewingThermalEngine` сохранён в первоначальном виде (100% обратная совместимость);
+   - Новый связанный метод доступен через `engine.simulateLiuGenPaoCoupled(session, tea, options)` и чистую функцию `simulateLiuGenPaoCoupled`.
+
 
 
 
